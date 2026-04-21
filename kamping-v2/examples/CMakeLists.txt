@@ -1,5 +1,7 @@
 add_executable(example_v2_send_recv send_recv_example.cpp)
 target_link_libraries(example_v2_send_recv PRIVATE kamping_v2 kamping_v2_warnings)
+target_compile_features(example_v2_send_recv PRIVATE cxx_std_23) # for std::println
 
 add_executable(example_v2_collectives collectives_example.cpp)
 target_link_libraries(example_v2_collectives PRIVATE kamping_v2 kamping_v2_warnings)
+target_compile_features(example_v2_collectives PRIVATE cxx_std_23) # for std::println

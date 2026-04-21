@@ -106,7 +106,7 @@ TEST(V2AllgathervTest, ExplicitCountsAutoDisplsNoResize) {
     std::vector<int> send_data(static_cast<std::size_t>(rank) + 1, rank);
     std::vector<int> recv_data(static_cast<std::size_t>(size) * (static_cast<std::size_t>(size) + 1) / 2);
     std::vector<int> counts(static_cast<std::size_t>(size)); // pre-sized, no auto-resize
-    std::ranges::iota(counts, 1);
+    std::iota(counts.begin(), counts.end(), 1);
 
     kamping::v2::allgatherv(
         send_data,

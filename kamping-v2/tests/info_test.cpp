@@ -3,6 +3,7 @@
 #include <vector>
 
 #include <gtest/gtest.h>
+#include <gmock/gmock.h>
 #include <mpi.h>
 
 #include "mpi/handle.hpp"
@@ -10,6 +11,7 @@
 #include "mpi/thread_level.hpp"
 
 using namespace mpi::experimental;
+using namespace ::testing;
 
 // ── info_view ────────────────────────────────────────────────────────────────
 
@@ -137,8 +139,8 @@ TEST(InfoTest, NthKey) {
     // MPI_Info keys are ordered by insertion, but the standard doesn't guarantee it —
     // collect both and check by content.
     std::vector<std::string> keys = {i.nth_key(0), i.nth_key(1)};
-    EXPECT_TRUE(std::ranges::contains(keys, "alpha"));
-    EXPECT_TRUE(std::ranges::contains(keys, "beta"));
+    EXPECT_THAT(keys, Contains("alpha"));
+    EXPECT_THAT(keys, Contains("beta"));
 }
 
 // ── sentinel / iteration ─────────────────────────────────────────────────────

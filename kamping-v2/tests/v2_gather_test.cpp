@@ -28,7 +28,7 @@ TEST_F(GatherTest, gather_simple) {
     kamping::v2::gather(send_data, recv_data);
     if (rank_ == 0) {
         std::vector<int> expected(static_cast<std::size_t>(2 * size_));
-        std::ranges::iota(expected, 0);
+        std::iota(expected.begin(), expected.end(), 0);
         EXPECT_THAT(recv_data, testing::ElementsAreArray(expected));
     }
 }
@@ -40,7 +40,7 @@ TEST_F(GatherTest, gather_recv_buf_only_on_root) {
         std::vector<int> recv_data(static_cast<std::size_t>(2 * size_));
         kamping::v2::gather(send_data, recv_data);
         std::vector<int> expected(static_cast<std::size_t>(2 * size_));
-        std::ranges::iota(expected, 0);
+        std::iota(expected.begin(), expected.end(), 0);
         EXPECT_THAT(recv_data, testing::ElementsAreArray(expected));
     } else {
         kamping::v2::gather(send_data);
@@ -54,7 +54,7 @@ TEST_F(GatherTest, gather_resize) {
         std::vector<int> recv_data(static_cast<std::size_t>(2 * size_));
         kamping::v2::gather(send_data, recv_data | kamping::v2::views::resize);
         std::vector<int> expected(static_cast<std::size_t>(2 * size_));
-        std::ranges::iota(expected, 0);
+        std::iota(expected.begin(), expected.end(), 0);
         EXPECT_THAT(recv_data, testing::ElementsAreArray(expected));
     } else {
         kamping::v2::gather(send_data);
