@@ -1,0 +1,5 @@
+add_executable(example_v2_send_recv send_recv_example.cpp)
+target_link_libraries(example_v2_send_recv PRIVATE kamping_v2 kamping_v2_warnings)
+
+add_executable(example_v2_collectives collectives_example.cpp)
+target_link_libraries(example_v2_collectives PRIVATE kamping_v2 kamping_v2_warnings)

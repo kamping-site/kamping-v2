@@ -1,0 +1,2 @@
+add_executable(example_cereal_send_recv cereal_send_recv_example.cpp)
+target_link_libraries(example_cereal_send_recv PRIVATE kamping_ecosystem_cereal kamping_v2_warnings)

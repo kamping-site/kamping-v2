@@ -1,0 +1,46 @@
+#include <print>
+#include <vector>
+
+#include <mpi.h>
+
+#include "kamping/v2/collectives/allgather.hpp"
+#include "kamping/v2/collectives/allgatherv.hpp"
+#include "kamping/v2/collectives/bcast.hpp"
+#include "kamping/v2/environment.hpp"
+#include "kamping/v2/views.hpp"
+#include "kamping/v2/views/ref_single_view.hpp"
+#include "kamping/v2/views/resize_view.hpp"
+#include "mpi/comm.hpp"
+
+int main(int argc, char* argv[]) {
+    kamping::v2::environment           env(argc, argv);
+    mpi::experimental::comm_view const world{MPI_COMM_WORLD};
+    MPI_Comm_set_errhandler(MPI_COMM_WORLD, MPI_ERRORS_RETURN);
+
+    {
+        int val = 0;
+        if (world.rank() == 0) {
+            val = 42;
+        }
+        kamping::v2::bcast(kamping::v2::views::ref_single(val), 0, world);
+        std::println("[R{}] bcast result={}", world.rank(), val);
+    }
+    {
+        std::vector<int> sbuf{static_cast<int>(world.rank()), static_cast<int>(world.rank())};
+        auto             v = kamping::v2::allgather(sbuf, std::vector<int>{} | kamping::v2::views::resize, world).recv;
+        std::println("allgather v={}", v);
+    }
+    {
+        std::vector<int> sbuf{static_cast<int>(world.rank()), static_cast<int>(world.rank())};
+        auto             v =
+            kamping::v2::allgatherv(
+                sbuf,
+                std::vector<int>{} | kamping::v2::views::auto_counts() | kamping::v2::views::auto_displs()
+                    | kamping::v2::views::resize_v,
+                world
+            )
+                .recv;
+        std::println("allgatherv v={}", v);
+    }
+    return 0;
+}
