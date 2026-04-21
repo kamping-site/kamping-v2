@@ -15,9 +15,7 @@
             "cacheVariables": {
                 "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
                 "KAMPING_BUILD_EXAMPLES_AND_TESTS": "ON",
-                "KAMPING_WARNINGS_ARE_ERRORS": "OFF",
-                "KAMPING_ENABLE_ULFM": "OFF",
-                "KAMPING_TESTS_DISCOVER": "OFF"
+                "KAMPING_WARNINGS_ARE_ERRORS": "OFF"
             }
         },
         {
