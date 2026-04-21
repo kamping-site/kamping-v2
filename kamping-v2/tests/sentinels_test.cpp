@@ -42,7 +42,7 @@ TEST(SentinelsTest, BottomData) {
 
 // Composed with with_type + with_size it becomes a full send_buffer
 TEST(SentinelsTest, BottomComposed) {
-    auto buf = v2::bottom | v2::views::with_type(MPI_BYTE) | v2::views::with_size(4);
+    auto buf = v2::bottom | v2::views::with_type(MPI_BYTE) | v2::views::with_count(4);
     static_assert(mpi::experimental::send_buffer<decltype(buf)>);
     EXPECT_EQ(mpi::experimental::ptr(buf), MPI_BOTTOM);
     EXPECT_EQ(mpi::experimental::type(buf), MPI_BYTE);
