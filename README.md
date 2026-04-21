@@ -1,4 +1,3 @@
-[![C/C++ CI](https://github.com/kamping-site/kamping-v2/actions/workflows/build.yml/badge.svg)](https://github.com/kamping-site/kamping-v2/actions/workflows/build.yml)
 ![GitHub](https://img.shields.io/github/license/kamping-site/kamping-v2)
 
 # KaMPIng v2
