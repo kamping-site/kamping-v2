@@ -164,4 +164,4 @@ The original KaMPIng (named-parameter / template-metaprogramming API, C++17) liv
 
 ## License
 
-KaMPIng is released under the GNU Lesser General Public License. See [COPYING](COPYING) and [COPYING.LESSER](COPYING.LESSER) for details.
+KaMPIng v2 is released under the MIT License. See [LICENSE](LICENSE) for details.
