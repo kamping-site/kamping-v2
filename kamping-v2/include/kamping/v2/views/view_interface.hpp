@@ -77,6 +77,12 @@ template <typename D>
 concept has_const_base_range = requires(D const& d) {
     { d.base() } -> std::ranges::range;
 };
+
+template <typename D>
+concept has_base = requires(D& d) { d.base(); };
+
+template <typename D>
+concept has_const_base = requires(D const& d) { d.base(); };
 } // namespace detail
 
 template <typename Derived>
@@ -181,6 +187,29 @@ struct view_interface : public view_interface_base, public std::ranges::view_int
         requires kamping::v2::has_monotonic_displs<decltype(derived().base())>
     {
         return derived().base().displs_monotonic();
+    }
+
+    /// Returns a reference to the innermost base that does not derive from
+    /// view_interface_base, peeling through all kamping view layers.
+    constexpr auto& underlying() &
+        requires detail::has_base<Derived>
+    {
+        if constexpr (std::derived_from<std::remove_cvref_t<decltype(derived().base())>, view_interface_base>) {
+            return derived().base().underlying();
+        } else {
+            return derived().base();
+        }
+    }
+
+    /// Const overload of underlying().
+    constexpr auto const& underlying() const &
+        requires detail::has_const_base<Derived>
+    {
+        if constexpr (std::derived_from<std::remove_cvref_t<decltype(derived().base())>, view_interface_base>) {
+            return derived().base().underlying();
+        } else {
+            return derived().base();
+        }
     }
 };
 
