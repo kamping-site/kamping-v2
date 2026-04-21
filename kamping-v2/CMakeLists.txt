@@ -45,7 +45,7 @@ endif ()
 
 add_library(kamping_v2 INTERFACE)
 target_include_directories(kamping_v2 INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_compile_features(kamping_v2 INTERFACE cxx_std_23)
+target_compile_features(kamping_v2 INTERFACE cxx_std_20)
 target_link_libraries(kamping_v2 INTERFACE kamping::mpi_core)
 add_library(kamping::v2 ALIAS kamping_v2)
 

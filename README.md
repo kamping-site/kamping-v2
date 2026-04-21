@@ -2,7 +2,7 @@
 
 # KaMPIng v2
 
-KaMPIng v2 is a next-generation C++23 MPI wrapper built around a *concept-based buffer protocol* and composable range adaptors. Instead of wrapping arguments in named-parameter factories, callers pipe standard C++ objects through `std::ranges`-style view chains that attach MPI metadata (element count, MPI datatype, per-rank counts, displacements). The resulting view satisfies one of the buffer concepts and is passed directly to a free-function MPI wrapper.
+KaMPIng v2 is a next-generation C++20 MPI wrapper built around a *concept-based buffer protocol* and composable range adaptors. Instead of wrapping arguments in named-parameter factories, callers pipe standard C++ objects through `std::ranges`-style view chains that attach MPI metadata (element count, MPI datatype, per-rank counts, displacements). The resulting view satisfies one of the buffer concepts and is passed directly to a free-function MPI wrapper.
 
 ```cpp
 // Simple point-to-point
@@ -24,9 +24,9 @@ auto result = req.wait();
 
 | Component | Description | C++ standard | CMake target |
 |-----------|-------------|:---:|---|
-| `mpi-core/` | Low-level MPI wrappers. Buffer concepts and accessor dispatch (`mpi::experimental::`). | C++23 | `kamping::mpi_core` |
-| `kamping-v2/` | High-level wrappers with ownership, infer, resize, auto-counts/displs (`kamping::v2::`). | C++23 | `kamping::v2` |
-| `ecosystem/cereal/` | Cereal serialization adapter (`kamping::ecosystem::cereal`). | C++23 | `kamping::ecosystem::cereal` |
+| `mpi-core/` | Low-level MPI wrappers. Buffer concepts and accessor dispatch (`mpi::experimental::`). | C++20 | `kamping::mpi_core` |
+| `kamping-v2/` | High-level wrappers with ownership, infer, resize, auto-counts/displs (`kamping::v2::`). | C++20 | `kamping::v2` |
+| `ecosystem/cereal/` | Cereal serialization adapter (`kamping::ecosystem::cereal`). | C++20 | `kamping::ecosystem::cereal` |
 
 `kamping-types` (MPI datatype registry, `kamping::types`) is consumed from the [kamping-site/kamping](https://github.com/kamping-site/kamping) repository via FetchContent.
 
@@ -61,7 +61,7 @@ target_link_libraries(myapp PRIVATE kamping::mpi_core)
 
 ## Building
 
-Requires CMake 3.25+, a C++23 compiler, and an MPI installation.
+Requires CMake 3.25+, a C++20 compiler, and an MPI installation.
 
 ```bash
 # Configure (builds tests and examples)

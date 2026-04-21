@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.25)
 
 project(
     KaMPIng
-    DESCRIPTION "KaMPIng v2 — concept-based C++23 MPI bindings"
+    DESCRIPTION "KaMPIng v2 — concept-based C++20 MPI bindings"
     LANGUAGES CXX
     VERSION 0.1.0
 )
