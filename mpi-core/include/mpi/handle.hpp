@@ -8,6 +8,17 @@
 
 namespace mpi::experimental {
 
+namespace detail {
+// C++20 replacement for is_scoped_enum_v (C++23).
+template <typename T, bool = std::is_enum_v<T>>
+struct is_scoped_enum_impl : std::false_type {};
+template <typename T>
+struct is_scoped_enum_impl<T, true> : std::bool_constant<!std::is_convertible_v<T, std::underlying_type_t<T>>> {};
+} // namespace detail
+
+template <typename T>
+inline constexpr bool is_scoped_enum_v = detail::is_scoped_enum_impl<T>::value;
+
 template <typename T>
 concept builtin_handle = std::same_as<T, MPI_Comm> || std::same_as<T, MPI_Datatype> || std::same_as<T, MPI_Request>
                          || std::same_as<T, MPI_Status> || std::same_as<T, MPI_Message> || std::same_as<T, MPI_Op>
@@ -158,13 +169,13 @@ constexpr int to_rank(T const& t) {
 }
 
 template <typename T>
-    requires(!detail::rank_traits_has_rank<std::remove_cvref_t<T>>) && std::is_scoped_enum_v<std::remove_cvref_t<T>>
+    requires(!detail::rank_traits_has_rank<std::remove_cvref_t<T>>) && is_scoped_enum_v<std::remove_cvref_t<T>>
 constexpr int to_rank(T t) {
-    return static_cast<int>(std::to_underlying(t));
+    return static_cast<int>(static_cast<std::underlying_type_t<std::remove_cvref_t<T>>>(t));
 }
 
 template <typename T>
-    requires(!detail::rank_traits_has_rank<std::remove_cvref_t<T>>) && (!std::is_scoped_enum_v<std::remove_cvref_t<T>>)
+    requires(!detail::rank_traits_has_rank<std::remove_cvref_t<T>>) && (!is_scoped_enum_v<std::remove_cvref_t<T>>)
             && std::convertible_to<T, int>
 constexpr int to_rank(T t) {
     return static_cast<int>(t);
@@ -177,13 +188,13 @@ constexpr int to_tag(T const& t) {
 }
 
 template <typename T>
-    requires(!detail::tag_traits_has_tag<std::remove_cvref_t<T>>) && std::is_scoped_enum_v<std::remove_cvref_t<T>>
+    requires(!detail::tag_traits_has_tag<std::remove_cvref_t<T>>) && is_scoped_enum_v<std::remove_cvref_t<T>>
 constexpr int to_tag(T t) {
-    return static_cast<int>(std::to_underlying(t));
+    return static_cast<int>(static_cast<std::underlying_type_t<std::remove_cvref_t<T>>>(t));
 }
 
 template <typename T>
-    requires(!detail::tag_traits_has_tag<std::remove_cvref_t<T>>) && (!std::is_scoped_enum_v<std::remove_cvref_t<T>>)
+    requires(!detail::tag_traits_has_tag<std::remove_cvref_t<T>>) && (!is_scoped_enum_v<std::remove_cvref_t<T>>)
             && std::convertible_to<T, int>
 constexpr int to_tag(T t) {
     return static_cast<int>(t);

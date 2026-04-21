@@ -3,7 +3,7 @@ project(mpi-core LANGUAGES CXX)
 
 add_library(mpi_core INTERFACE)
 target_include_directories(mpi_core INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_compile_features(mpi_core INTERFACE cxx_std_23)
+target_compile_features(mpi_core INTERFACE cxx_std_20)
 target_link_libraries(mpi_core INTERFACE MPI::MPI_CXX kamping::kassert kamping::types)
 
 # Set a sensible default assertion level so kassert does not warn about a missing definition

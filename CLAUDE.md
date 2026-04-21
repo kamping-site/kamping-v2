@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-KaMPIng v2 is a **header-only C++23 MPI wrapper library** built on a concept-based buffer protocol with composable range adaptors. It replaces the named-parameter / template-metaprogramming approach of v1 with a clean layered architecture and `std::ranges`-style view pipelines.
+KaMPIng v2 is a **header-only C++20 MPI wrapper library** built on a concept-based buffer protocol with composable range adaptors. It replaces the named-parameter / template-metaprogramming approach of v1 with a clean layered architecture and `std::ranges`-style view pipelines.
 
 ## Build Commands
 
