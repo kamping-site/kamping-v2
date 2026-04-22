@@ -65,6 +65,42 @@ TEST(InfoTest, DupCreatesIndependentCopy) {
     EXPECT_EQ(a.get("k"), std::optional<std::string>{"v"});
 }
 
+TEST(InfoTest, FromNativeAdoptsHandle) {
+    MPI_Info raw = MPI_INFO_NULL;
+    MPI_Info_create(&raw);
+    MPI_Info_set(raw, "k", "v");
+    info i = info::from_native(raw);
+    EXPECT_EQ(i.mpi_handle(), raw);
+    EXPECT_EQ(i.get("k"), std::optional<std::string>{"v"});
+    // freed by i's destructor
+}
+
+TEST(InfoTest, DisownRelinquishesOwnership) {
+    info     i;
+    MPI_Info raw     = i.mpi_handle();
+    MPI_Info disowned = std::move(i).disown();
+    EXPECT_EQ(disowned, raw);
+    EXPECT_EQ(i.mpi_handle(), MPI_INFO_NULL);
+    MPI_Info_free(&disowned);
+}
+
+TEST(InfoTest, ImplicitConversionToView) {
+    info      i;
+    i.set("k", "v");
+    info_view iv = i;
+    EXPECT_EQ(iv.mpi_handle(), i.mpi_handle());
+    EXPECT_EQ(iv.get("k"), std::optional<std::string>{"v"});
+}
+
+TEST(InfoViewTest, DupViaAccessorBase) {
+    info      i;
+    i.set("k", "v");
+    info_view iv  = i;
+    info      dup = iv.dup();
+    EXPECT_NE(dup.mpi_handle(), i.mpi_handle());
+    EXPECT_EQ(dup.get("k"), std::optional<std::string>{"v"});
+}
+
 // ── get / set / contains / erase ─────────────────────────────────────────────
 
 TEST(InfoTest, SetAndGetString) {
