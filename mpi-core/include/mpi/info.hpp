@@ -213,6 +213,11 @@ struct entry_sentinel {
 
 static_assert(std::sentinel_for<entry_sentinel, entry_iterator>);
 
+// ─── Forward declaration ──────────────────────────────────────────────────────
+// Needed so info_accessors can declare dup() before info is defined.
+
+class info;
+
 // ─── info_accessors CRTP mixin ────────────────────────────────────────────────
 //
 // Shared accessors for `info` (owning) and `info_view` (non-owning).
@@ -359,6 +364,13 @@ public:
         return std::ranges::subrange(begin(), end());
     }
 
+    // ── dup ──────────────────────────────────────────────────────────────────
+
+    /// @brief Duplicate this info object into a new, independently owned copy.
+    /// @return A new `info` with the same key–value pairs.
+    /// @throws mpi_error if `MPI_Info_dup` fails.
+    [[nodiscard]] info dup() const; // defined out-of-line after info
+
     // ── escape hatch ─────────────────────────────────────────────────────────
 
     /// @return The underlying `MPI_Info` handle.
@@ -424,15 +436,27 @@ public:
         free_if_valid();
     }
 
-    /// @brief Duplicate this info object into a new, independently owned copy.
-    /// @return A new `info` with the same key–value pairs.
-    /// @throws mpi_error if `MPI_Info_dup` fails.
-    [[nodiscard]] info dup() const {
-        MPI_Info copy = MPI_INFO_NULL;
-        auto     err  = MPI_Info_dup(_info, &copy);
-        if (err != MPI_SUCCESS) throw mpi_error(err);
-        return info(copy, adopt_t{});
+    /// @brief Adopt an already-created `MPI_Info` handle (takes ownership).
+    ///
+    /// Do not pass predefined info objects (`MPI_INFO_NULL`, `MPI_INFO_ENV`).
+    [[nodiscard]] static info from_native(MPI_Info h) noexcept {
+        return info(h, adopt_t{});
     }
+
+    /// @brief Relinquish ownership; returns the raw `MPI_Info` handle.
+    ///
+    /// Leaves `*this` as `MPI_INFO_NULL`. The caller is responsible for calling
+    /// `MPI_Info_free` on the returned handle.
+    /// Must be called as: `std::move(i).disown()`
+    [[nodiscard]] MPI_Info disown() && noexcept {
+        return std::exchange(_info, MPI_INFO_NULL);
+    }
+
+    /// @brief Implicit conversion to a non-owning view.
+    ///
+    /// Allows passing an `info` wherever an `info_view` is expected without
+    /// an explicit cast. The view borrows; it does not extend lifetime.
+    operator info_view() const noexcept { return info_view{_info}; }
 
     /// @return The underlying `MPI_Info` (for `mpi::experimental::handle()` dispatch).
     [[nodiscard]] MPI_Info mpi_handle() const noexcept { return _info; }
@@ -440,7 +464,6 @@ public:
 private:
     struct adopt_t {};
 
-    /// @brief Adopt an already-created handle (used by `dup()`).
     info(MPI_Info h, adopt_t) noexcept : _info(h) {}
 
     void free_if_valid() noexcept {
@@ -452,5 +475,15 @@ private:
 
     MPI_Info _info = MPI_INFO_NULL;
 };
+
+// ─── info_accessors::dup (out-of-line — info must be complete) ───────────────
+
+template <typename Derived>
+inline info info_accessors<Derived>::dup() const {
+    MPI_Info copy = MPI_INFO_NULL;
+    auto     err  = MPI_Info_dup(h(), &copy);
+    if (err != MPI_SUCCESS) throw mpi_error(err);
+    return info::from_native(copy);
+}
 
 } // namespace mpi::experimental
