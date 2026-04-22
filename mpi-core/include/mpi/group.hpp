@@ -68,6 +68,11 @@ public:
 
     /// @return The underlying `MPI_Group` (escape hatch).
     [[nodiscard]] MPI_Group native() const noexcept { return grp(); }
+
+    /// @return `true` if the group is not `MPI_GROUP_EMPTY`.
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return grp() != MPI_GROUP_EMPTY;
+    }
 };
 
 // ── group_view ────────────────────────────────────────────────────────────────
@@ -98,6 +103,9 @@ private:
 /// Satisfies `convertible_to_mpi_handle<MPI_Group>`.
 class group : public group_accessors<group> {
 public:
+    /// @brief Default-construct (holds `MPI_GROUP_EMPTY`).
+    group() noexcept = default;
+
     group(group const&)            = delete;
     group& operator=(group const&) = delete;
 
@@ -123,6 +131,15 @@ public:
     /// The predefined empty group is never freed — `free_if_valid` skips it.
     [[nodiscard]] static group empty() noexcept {
         return group(MPI_GROUP_EMPTY, adopt_t{});
+    }
+
+    /// @brief Relinquish ownership; returns the raw `MPI_Group` handle.
+    ///
+    /// Leaves `*this` as `MPI_GROUP_EMPTY`. The caller is responsible for calling
+    /// `MPI_Group_free` on the returned handle.
+    /// Must be called as: `std::move(g).disown()`
+    [[nodiscard]] MPI_Group disown() && noexcept {
+        return std::exchange(_group, MPI_GROUP_EMPTY);
     }
 
     /// @brief Adopt an already-created `MPI_Group` handle (takes ownership).

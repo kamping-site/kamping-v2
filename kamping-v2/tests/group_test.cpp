@@ -167,10 +167,71 @@ TEST(CommTest, GroupFromCommView) {
 TEST(CommTest, CommFromGroup) {
     comm_view world(MPI_COMM_WORLD);
     group     g        = world.group();
-    comm      from_grp = comm(g, "test-tag");
+    comm      from_grp = comm::from_group(g, "test-tag");
 
     EXPECT_EQ(from_grp.rank(), world.rank());
     EXPECT_EQ(from_grp.size(), world.size());
+}
+
+TEST(CommTest, FromGroupWithGroupView) {
+    comm_view world(MPI_COMM_WORLD);
+    group     g  = world.group();
+    group_view gv = g;
+    comm       c  = comm::from_group(gv, "view-tag");
+    EXPECT_EQ(c.size(), world.size());
+}
+
+TEST(CommTest, FromGroupWithRawHandle) {
+    MPI_Group raw_g = MPI_GROUP_EMPTY;
+    MPI_Comm_group(MPI_COMM_WORLD, &raw_g);
+    comm c = comm::from_group(raw_g, "raw-tag");
+    EXPECT_EQ(c.size(), static_cast<int>(comm_view(MPI_COMM_WORLD).size()));
+    MPI_Group_free(&raw_g);
+}
+
+TEST(CommTest, DisownRelinquishesOwnership) {
+    comm_view world(MPI_COMM_WORLD);
+    comm      a;
+    dup(world, a);
+    MPI_Comm raw      = a.mpi_handle();
+    MPI_Comm disowned = std::move(a).disown();
+    EXPECT_EQ(disowned, raw);
+    EXPECT_EQ(a.mpi_handle(), MPI_COMM_NULL);
+    MPI_Comm_free(&disowned);
+}
+
+TEST(CommTest, OperatorBoolNonNull) {
+    comm_view world(MPI_COMM_WORLD);
+    comm      a;
+    dup(world, a);
+    EXPECT_TRUE(static_cast<bool>(a));
+}
+
+TEST(CommTest, OperatorBoolNull) {
+    comm a;
+    EXPECT_FALSE(static_cast<bool>(a));
+}
+
+TEST(CommViewTest, DupViaAccessorBase) {
+    comm_view world(MPI_COMM_WORLD);
+    comm      d = world.dup();
+    EXPECT_EQ(d.rank(), world.rank());
+    EXPECT_EQ(d.size(), world.size());
+    EXPECT_NE(d.mpi_handle(), MPI_COMM_WORLD);
+}
+
+TEST(CommViewTest, SplitViaAccessorBase) {
+    comm_view world(MPI_COMM_WORLD);
+    int       color = world.rank() % 2;
+    comm      sub   = world.split(color, world.rank());
+    EXPECT_NE(sub.mpi_handle(), MPI_COMM_NULL);
+}
+
+TEST(CommViewTest, OperatorBool) {
+    comm_view world(MPI_COMM_WORLD);
+    EXPECT_TRUE(static_cast<bool>(world));
+    comm_view null_view(MPI_COMM_NULL);
+    EXPECT_FALSE(static_cast<bool>(null_view));
 }
 
 TEST(CommTest, FromNative) {
@@ -179,4 +240,37 @@ TEST(CommTest, FromNative) {
     comm c = comm::from_native(raw);
     EXPECT_EQ(c.mpi_handle(), raw);
     // freed by c's destructor
+}
+
+// ── group new tests ───────────────────────────────────────────────────────────
+
+TEST(GroupTest, DisownRelinquishesOwnership) {
+    MPI_Group raw = MPI_GROUP_EMPTY;
+    MPI_Comm_group(MPI_COMM_WORLD, &raw);
+    group    g        = group::from_native(raw);
+    MPI_Group disowned = std::move(g).disown();
+    EXPECT_EQ(disowned, raw);
+    EXPECT_EQ(g.mpi_handle(), MPI_GROUP_EMPTY);
+    MPI_Group_free(&disowned);
+}
+
+TEST(GroupTest, OperatorBoolNonEmpty) {
+    comm_view world(MPI_COMM_WORLD);
+    group     g = world.group();
+    EXPECT_TRUE(static_cast<bool>(g));
+}
+
+TEST(GroupTest, OperatorBoolEmpty) {
+    group g = group::empty();
+    EXPECT_FALSE(static_cast<bool>(g));
+}
+
+TEST(GroupViewTest, OperatorBool) {
+    MPI_Group raw = MPI_GROUP_EMPTY;
+    MPI_Comm_group(MPI_COMM_WORLD, &raw);
+    group_view gv(raw);
+    EXPECT_TRUE(static_cast<bool>(gv));
+    group_view empty_view(MPI_GROUP_EMPTY);
+    EXPECT_FALSE(static_cast<bool>(empty_view));
+    MPI_Group_free(&raw);
 }

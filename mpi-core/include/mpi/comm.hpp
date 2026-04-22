@@ -11,9 +11,15 @@
 
 namespace mpi::experimental {
 
+// ── Forward declaration ───────────────────────────────────────────────────────
+// Needed so comm_accessors can declare dup() / split() before comm is defined.
+
+class comm;
+
 // ── CRTP mixin ──────────────────────────────────────────────────────────────
-// Provides read-only accessors for any communicator wrapper:
-// `.rank()`, `.size()`, `.native()`, `.group()`.
+// Provides read-only accessors and collective operations for any communicator
+// wrapper: `.rank()`, `.size()`, `.native()`, `.group()`, `.dup()`, `.split()`,
+// `operator bool`.
 // Derived must implement `mpi_handle() const → MPI_Comm`.
 
 template <typename Derived>
@@ -52,6 +58,26 @@ public:
 
     /// @return The underlying `MPI_Comm` (escape hatch).
     [[nodiscard]] MPI_Comm native() const noexcept { return underlying(); }
+
+    /// @return `true` if the communicator is not `MPI_COMM_NULL`.
+    [[nodiscard]] explicit operator bool() const noexcept {
+        return underlying() != MPI_COMM_NULL;
+    }
+
+    /// @brief Collective: duplicate this communicator (MPI_Comm_dup).
+    ///
+    /// All processes in the communicator must call this collectively.
+    /// Delegates to the free function `mpi::experimental::dup`.
+    /// @throws mpi_error if `MPI_Comm_dup` fails.
+    [[nodiscard]] comm dup() const; // defined out-of-line after comm
+
+    /// @brief Collective: split this communicator by color and key (MPI_Comm_split).
+    ///
+    /// Processes with the same `color` form a sub-communicator ordered by `key`.
+    /// Pass `MPI_UNDEFINED` as `color` to opt out — result is `MPI_COMM_NULL`.
+    /// Delegates to the free function `mpi::experimental::split`.
+    /// @throws mpi_error if `MPI_Comm_split` fails.
+    [[nodiscard]] comm split(int color, int key = 0) const; // defined out-of-line after comm
 };
 
 // ── comm_view ────────────────────────────────────────────────────────────────
@@ -60,8 +86,7 @@ public:
 ///
 /// Satisfies `convertible_to_mpi_handle<MPI_Comm>`. Does not free the
 /// communicator on destruction — use the owning `comm` for that.
-/// Provides read-only accessors only; use the free functions `dup()` /
-/// `split()` or the owning `comm` methods to create sub-communicators.
+/// Provides read-only accessors and `.dup()` / `.split()` via `comm_accessors`.
 class comm_view : public comm_accessors<comm_view> {
 public:
     /// @brief Construct from a raw `MPI_Comm`. The communicator must outlive this view.
@@ -129,37 +154,37 @@ public:
     /// Calls `MPI_Comm_create_from_group`. All processes in `g` must call this
     /// collectively with the same `tag`.
     ///
+    /// @tparam Group Any type satisfying `convertible_to_mpi_handle<MPI_Group>`:
+    ///               raw `MPI_Group`, `group`, `group_view`, or any third-party wrapper.
+    /// @tparam Info  Any type satisfying `convertible_to_mpi_handle<MPI_Info>`.
     /// @param g    Group defining the new communicator's process set.
     /// @param tag  Application-defined string tag (must match across all callers).
-    /// @param info MPI info hints (`MPI_INFO_NULL` for defaults).
+    /// @param info MPI info hints (defaults to `MPI_INFO_NULL`).
     /// @throws mpi_error if the MPI call fails.
-    explicit comm(
-        mpi::experimental::group const& g,
-        std::string_view                tag  = "",
-        MPI_Info                        info = MPI_INFO_NULL
+    template <
+        convertible_to_mpi_handle<MPI_Group> Group,
+        convertible_to_mpi_handle<MPI_Info>  Info = MPI_Info>
+    [[nodiscard]] static comm from_group(
+        Group const&     g,
+        std::string_view tag  = "",
+        Info             info = MPI_INFO_NULL
     ) {
         MPI_Comm c   = MPI_COMM_NULL;
-        int      err = MPI_Comm_create_from_group(g.mpi_handle(), tag.data(), info, MPI_ERRORS_RETURN, &c);
+        int      err = MPI_Comm_create_from_group(handle(g), tag.data(), handle(info), MPI_ERRORS_RETURN, &c);
         if (err != MPI_SUCCESS) {
             throw mpi_error(err);
         }
-        _comm = c;
+        return comm::from_native(c);
     }
 
-    /// @brief Collective: duplicate this communicator (MPI_Comm_dup).
+    /// @brief Relinquish ownership; returns the raw `MPI_Comm` handle.
     ///
-    /// All processes in the communicator must call this collectively.
-    /// Delegates to the free function `mpi::experimental::dup(*this)`.
-    /// @throws mpi_error if `MPI_Comm_dup` fails.
-    [[nodiscard]] comm dup() const;
-
-    /// @brief Collective: split this communicator by color and key (MPI_Comm_split).
-    ///
-    /// Processes with the same `color` form a sub-communicator ordered by `key`.
-    /// Pass `MPI_UNDEFINED` as `color` to opt out — result `.native() == MPI_COMM_NULL`.
-    /// Delegates to the free function `mpi::experimental::split(*this, color, key)`.
-    /// @throws mpi_error if `MPI_Comm_split` fails.
-    [[nodiscard]] comm split(int color, int key = 0) const;
+    /// Leaves `*this` as `MPI_COMM_NULL`. The caller is responsible for calling
+    /// `MPI_Comm_free` on the returned handle.
+    /// Must be called as: `std::move(c).disown()`
+    [[nodiscard]] MPI_Comm disown() && noexcept {
+        return std::exchange(_comm, MPI_COMM_NULL);
+    }
 
     /// @brief Implicit conversion to a non-owning view.
     ///
@@ -192,10 +217,11 @@ private:
 };
 
 // ── Free functions: dup / split ───────────────────────────────────────────────
-// Mirror the C API closely: one input argument (convertible to MPI_Comm value)
-// and one output argument (convertible to MPI_Comm*). Return void — the caller
-// decides the type of the output handle. The owning `comm` member methods layer
-// RAII on top by passing a local MPI_Comm and adopting the result.
+// Three levels:
+//   Level 1 (two-arg): mirrors the C API; no ownership opinion; the caller
+//     decides the type of the output handle.
+//   Level 2 (one-arg): RAII convenience; returns an owning `comm`.
+//   Level 3 (member): via comm_accessors, so both comm and comm_view get them.
 
 /// @brief Collective: duplicate a communicator (MPI_Comm_dup).
 ///
@@ -235,18 +261,40 @@ void split(Comm const& c, int color, int key, NewComm& new_comm) {
     }
 }
 
-// ── comm member definitions (out-of-line; layer RAII on top of free functions) ─
-
-inline comm comm::dup() const {
+/// @brief Collective: duplicate a communicator, returning an owning `comm`.
+///
+/// @tparam Comm Any type satisfying `convertible_to_mpi_handle<MPI_Comm>`.
+/// @param c    Input communicator.
+/// @throws mpi_error if `MPI_Comm_dup` fails.
+template <convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+[[nodiscard]] comm dup(Comm const& c) {
     MPI_Comm out = MPI_COMM_NULL;
-    mpi::experimental::dup(*this, out);
+    dup(c, out);
     return comm::from_native(out);
 }
 
-inline comm comm::split(int color, int key) const {
+/// @brief Collective: split a communicator, returning an owning `comm`.
+///
+/// @tparam Comm Any type satisfying `convertible_to_mpi_handle<MPI_Comm>`.
+/// @param c    Input communicator.
+/// @throws mpi_error if `MPI_Comm_split` fails.
+template <convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+[[nodiscard]] comm split(Comm const& c, int color, int key = 0) {
     MPI_Comm out = MPI_COMM_NULL;
-    mpi::experimental::split(*this, color, key, out);
+    split(c, color, key, out);
     return comm::from_native(out);
+}
+
+// ── comm_accessors member definitions (out-of-line; comm must be complete) ───
+
+template <typename Derived>
+inline comm comm_accessors<Derived>::dup() const {
+    return mpi::experimental::dup(underlying());
+}
+
+template <typename Derived>
+inline comm comm_accessors<Derived>::split(int color, int key) const {
+    return mpi::experimental::split(underlying(), color, key);
 }
 
 } // namespace mpi::experimental
