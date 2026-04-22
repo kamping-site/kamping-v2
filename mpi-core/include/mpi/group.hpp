@@ -69,10 +69,7 @@ public:
     /// @return The underlying `MPI_Group` (escape hatch).
     [[nodiscard]] MPI_Group native() const noexcept { return grp(); }
 
-    /// @return `true` if the group is not `MPI_GROUP_EMPTY`.
-    [[nodiscard]] explicit operator bool() const noexcept {
-        return grp() != MPI_GROUP_EMPTY;
-    }
+
 };
 
 // ── group_view ────────────────────────────────────────────────────────────────

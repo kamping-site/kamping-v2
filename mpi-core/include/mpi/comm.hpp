@@ -59,11 +59,6 @@ public:
     /// @return The underlying `MPI_Comm` (escape hatch).
     [[nodiscard]] MPI_Comm native() const noexcept { return underlying(); }
 
-    /// @return `true` if the communicator is not `MPI_COMM_NULL`.
-    [[nodiscard]] explicit operator bool() const noexcept {
-        return underlying() != MPI_COMM_NULL;
-    }
-
     /// @brief Collective: duplicate this communicator (MPI_Comm_dup).
     ///
     /// All processes in the communicator must call this collectively.

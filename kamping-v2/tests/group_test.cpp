@@ -200,18 +200,6 @@ TEST(CommTest, DisownRelinquishesOwnership) {
     MPI_Comm_free(&disowned);
 }
 
-TEST(CommTest, OperatorBoolNonNull) {
-    comm_view world(MPI_COMM_WORLD);
-    comm      a;
-    dup(world, a);
-    EXPECT_TRUE(static_cast<bool>(a));
-}
-
-TEST(CommTest, OperatorBoolNull) {
-    comm a;
-    EXPECT_FALSE(static_cast<bool>(a));
-}
-
 TEST(CommViewTest, DupViaAccessorBase) {
     comm_view world(MPI_COMM_WORLD);
     comm      d = world.dup();
@@ -225,13 +213,6 @@ TEST(CommViewTest, SplitViaAccessorBase) {
     int       color = world.rank() % 2;
     comm      sub   = world.split(color, world.rank());
     EXPECT_NE(sub.mpi_handle(), MPI_COMM_NULL);
-}
-
-TEST(CommViewTest, OperatorBool) {
-    comm_view world(MPI_COMM_WORLD);
-    EXPECT_TRUE(static_cast<bool>(world));
-    comm_view null_view(MPI_COMM_NULL);
-    EXPECT_FALSE(static_cast<bool>(null_view));
 }
 
 TEST(CommTest, FromNative) {
@@ -254,23 +235,3 @@ TEST(GroupTest, DisownRelinquishesOwnership) {
     MPI_Group_free(&disowned);
 }
 
-TEST(GroupTest, OperatorBoolNonEmpty) {
-    comm_view world(MPI_COMM_WORLD);
-    group     g = world.group();
-    EXPECT_TRUE(static_cast<bool>(g));
-}
-
-TEST(GroupTest, OperatorBoolEmpty) {
-    group g = group::empty();
-    EXPECT_FALSE(static_cast<bool>(g));
-}
-
-TEST(GroupViewTest, OperatorBool) {
-    MPI_Group raw = MPI_GROUP_EMPTY;
-    MPI_Comm_group(MPI_COMM_WORLD, &raw);
-    group_view gv(raw);
-    EXPECT_TRUE(static_cast<bool>(gv));
-    group_view empty_view(MPI_GROUP_EMPTY);
-    EXPECT_FALSE(static_cast<bool>(empty_view));
-    MPI_Group_free(&raw);
-}
