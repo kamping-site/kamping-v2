@@ -104,6 +104,12 @@ public:
         return _status;
     }
 
+    /// @brief Implicit conversion to a non-owning view.
+    ///
+    /// Allows passing a `status` wherever a `status_view` is expected without
+    /// an explicit cast. The view borrows; it does not extend lifetime.
+    operator status_view() noexcept { return status_view{&_status}; }
+
     /// @return The underlying `MPI_Status` by value (for `handle`).
     [[nodiscard]] MPI_Status mpi_handle() const {
         return _status;
