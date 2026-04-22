@@ -89,23 +89,23 @@ v2 is organized into four explicit layers. Each layer depends only on the layers
 
 ```
 ┌─────────────────────────────────────────────────┐
-│  Ecosystem bridges                               │
+│  Ecosystem bridges                              │
 │  Bindings to external libraries (Cereal, …)     │
-│  ecosystem/                                      │
+│  ecosystem/                                     │
 ├─────────────────────────────────────────────────┤
-│  Language bindings  (kamping-v2)                 │
-│  Ownership, infer, deferred buffers,             │
-│  auto-counts/displs, resize-on-receive           │
-│  kamping-v2/include/kamping/v2/                  │
+│  Language bindings  (kamping-v2)                │
+│  Ownership, infer, deferred buffers,            │
+│  auto-counts/displs, resize-on-receive          │
+│  kamping-v2/include/kamping/v2/                 │
 ├─────────────────────────────────────────────────┤
-│  Language bridge  (mpi-core)                     │
-│  Buffer concepts and accessor dispatch,          │
-│  core view adaptors, MPI wrappers,               │
-│  native-handle bridge                            │
-│  mpi-core/include/mpi/                           │
+│  Language bridge  (mpi-core)                    │
+│  Buffer concepts and accessor dispatch,         │
+│  core view adaptors, MPI wrappers,              │
+│  native-handle bridge                           │
+│  mpi-core/include/mpi/                          │
 ├─────────────────────────────────────────────────┤
-│  Contract  (language-agnostic)                   │
-│  Buffer and native-handle concepts               │
+│  Contract  (language-agnostic)                  │
+│  Buffer and native-handle concepts              │
 └─────────────────────────────────────────────────┘
 ```
 
