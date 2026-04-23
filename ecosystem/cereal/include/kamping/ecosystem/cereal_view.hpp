@@ -38,6 +38,7 @@ class serialization_view {
     mutable std::basic_string<char, std::char_traits<char>, Alloc> buffer_;
     mutable bool                                                   serialized_            = false;
     mutable bool                                                   needs_deserialization_ = false;
+    mutable bool                                                   needs_resize_          = false;
     std::ptrdiff_t                                                 recv_count_            = 0;
 
     // base_ is mutable, so this is safe from const methods.
@@ -103,6 +104,11 @@ public:
         return base_ref();
     }
 
+    void unwrap() const {
+        if (needs_deserialization_)
+            do_deserialize();
+    }
+
     value_type* operator->() {
         return std::addressof(**this);
     }
@@ -120,7 +126,7 @@ public:
         recv_count_            = n;
         serialized_            = false;
         needs_deserialization_ = true;
-        buffer_.resize(static_cast<std::size_t>(n));
+        needs_resize_          = true;
     }
 
     // ---- MPI protocol methods --------------------------------------------
@@ -140,6 +146,10 @@ public:
     /// Returns a mutable pointer: satisfies send_buffer (void const* accepted) and
     /// recv_buffer (void* required). Serializes lazily on the send side.
     void* mpi_ptr() const {
+        if (needs_resize_) {
+            buffer_.resize(static_cast<std::size_t>(recv_count_));
+            needs_resize_ = false;
+        }
         if (!needs_deserialization_ && !serialized_)
             do_serialize();
         return buffer_.data();
