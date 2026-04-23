@@ -172,12 +172,31 @@ public:
         return comm::from_native(c);
     }
 
+    /// @brief Explicitly free the communicator.
+    ///
+    /// After this call `*this` holds `MPI_COMM_NULL` — the destructor becomes a
+    /// no-op. Use this instead of relying on the destructor when you need to
+    /// handle errors from `MPI_Comm_free`.
+    ///
+    /// The handle is exchanged to `MPI_COMM_NULL` before the MPI call so the
+    /// destructor cannot double-free even if this throws.
+    ///
+    /// @throws mpi_error if `MPI_Comm_free` fails.
+    void free() {
+        if (_comm != MPI_COMM_NULL) {
+            MPI_Comm tmp = std::exchange(_comm, MPI_COMM_NULL);
+            int      err = MPI_Comm_free(&tmp);
+            if (err != MPI_SUCCESS) {
+                throw mpi_error(err);
+            }
+        }
+    }
+
     /// @brief Relinquish ownership; returns the raw `MPI_Comm` handle.
     ///
     /// Leaves `*this` as `MPI_COMM_NULL`. The caller is responsible for calling
     /// `MPI_Comm_free` on the returned handle.
-    /// Must be called as: `std::move(c).disown()`
-    [[nodiscard]] MPI_Comm disown() && noexcept {
+    [[nodiscard]] MPI_Comm release() noexcept {
         return std::exchange(_comm, MPI_COMM_NULL);
     }
 

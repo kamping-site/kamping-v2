@@ -75,13 +75,13 @@ TEST(InfoTest, FromNativeAdoptsHandle) {
     // freed by i's destructor
 }
 
-TEST(InfoTest, DisownRelinquishesOwnership) {
+TEST(InfoTest, ReleaseRelinquishesOwnership) {
     info     i;
-    MPI_Info raw     = i.mpi_handle();
-    MPI_Info disowned = std::move(i).disown();
-    EXPECT_EQ(disowned, raw);
+    MPI_Info raw      = i.mpi_handle();
+    MPI_Info released = i.release();
+    EXPECT_EQ(released, raw);
     EXPECT_EQ(i.mpi_handle(), MPI_INFO_NULL);
-    MPI_Info_free(&disowned);
+    MPI_Info_free(&released);
 }
 
 TEST(InfoTest, ImplicitConversionToView) {
