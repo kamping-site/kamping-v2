@@ -47,7 +47,7 @@ public:
     ///
     /// The returned `group` is owned by the caller.
     /// @throws mpi_error if `MPI_Comm_group` fails.
-    [[nodiscard]] group group() const {
+    [[nodiscard]] mpi::experimental::group group() const {
         MPI_Group g = MPI_GROUP_EMPTY;
         int       err = MPI_Comm_group(underlying(), &g);
         if (err != MPI_SUCCESS) {
