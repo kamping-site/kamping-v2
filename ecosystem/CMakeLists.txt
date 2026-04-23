@@ -11,6 +11,9 @@ endif ()
 if (KAMPING_ENABLE_THRUST)
     add_subdirectory(thrust)
 endif ()
-# Future ecosystem adapters:
-# option(KAMPING_ENABLE_KOKKOS "Enable the Kokkos adapter for kamping-v2." OFF)
-# if (KAMPING_ENABLE_KOKKOS) add_subdirectory(kokkos) endif ()
+
+option(KAMPING_ENABLE_KOKKOS "Enable the Kokkos adapter for kamping-v2." ON)
+
+if (KAMPING_ENABLE_KOKKOS)
+    add_subdirectory(kokkos)
+endif ()
