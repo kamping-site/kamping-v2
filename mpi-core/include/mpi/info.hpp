@@ -443,12 +443,31 @@ public:
         return info(h, adopt_t{});
     }
 
+    /// @brief Explicitly free the info object.
+    ///
+    /// After this call `*this` holds `MPI_INFO_NULL` — the destructor becomes a
+    /// no-op. Use this instead of relying on the destructor when you need to
+    /// handle errors from `MPI_Info_free`.
+    ///
+    /// The handle is exchanged to `MPI_INFO_NULL` before the MPI call so the
+    /// destructor cannot double-free even if this throws.
+    ///
+    /// @throws mpi_error if `MPI_Info_free` fails.
+    void free() {
+        if (_info != MPI_INFO_NULL) {
+            MPI_Info tmp = std::exchange(_info, MPI_INFO_NULL);
+            int      err = MPI_Info_free(&tmp);
+            if (err != MPI_SUCCESS) {
+                throw mpi_error(err);
+            }
+        }
+    }
+
     /// @brief Relinquish ownership; returns the raw `MPI_Info` handle.
     ///
     /// Leaves `*this` as `MPI_INFO_NULL`. The caller is responsible for calling
     /// `MPI_Info_free` on the returned handle.
-    /// Must be called as: `std::move(i).disown()`
-    [[nodiscard]] MPI_Info disown() && noexcept {
+    [[nodiscard]] MPI_Info release() noexcept {
         return std::exchange(_info, MPI_INFO_NULL);
     }
 

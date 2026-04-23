@@ -189,15 +189,15 @@ TEST(CommTest, FromGroupWithRawHandle) {
     MPI_Group_free(&raw_g);
 }
 
-TEST(CommTest, DisownRelinquishesOwnership) {
+TEST(CommTest, ReleaseRelinquishesOwnership) {
     comm_view world(MPI_COMM_WORLD);
     comm      a;
     dup(world, a);
     MPI_Comm raw      = a.mpi_handle();
-    MPI_Comm disowned = std::move(a).disown();
-    EXPECT_EQ(disowned, raw);
+    MPI_Comm released = a.release();
+    EXPECT_EQ(released, raw);
     EXPECT_EQ(a.mpi_handle(), MPI_COMM_NULL);
-    MPI_Comm_free(&disowned);
+    MPI_Comm_free(&released);
 }
 
 TEST(CommViewTest, DupViaAccessorBase) {
@@ -225,13 +225,13 @@ TEST(CommTest, FromNative) {
 
 // ── group new tests ───────────────────────────────────────────────────────────
 
-TEST(GroupTest, DisownRelinquishesOwnership) {
+TEST(GroupTest, ReleaseRelinquishesOwnership) {
     MPI_Group raw = MPI_GROUP_EMPTY;
     MPI_Comm_group(MPI_COMM_WORLD, &raw);
-    group    g        = group::from_native(raw);
-    MPI_Group disowned = std::move(g).disown();
-    EXPECT_EQ(disowned, raw);
+    group     g        = group::from_native(raw);
+    MPI_Group released = g.release();
+    EXPECT_EQ(released, raw);
     EXPECT_EQ(g.mpi_handle(), MPI_GROUP_EMPTY);
-    MPI_Group_free(&disowned);
+    MPI_Group_free(&released);
 }
 

@@ -134,8 +134,7 @@ public:
     ///
     /// Leaves `*this` as `MPI_GROUP_EMPTY`. The caller is responsible for calling
     /// `MPI_Group_free` on the returned handle.
-    /// Must be called as: `std::move(g).disown()`
-    [[nodiscard]] MPI_Group disown() && noexcept {
+    [[nodiscard]] MPI_Group release() noexcept {
         return std::exchange(_group, MPI_GROUP_EMPTY);
     }
 
