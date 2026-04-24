@@ -1,0 +1,67 @@
+/// CUDA-aware MPI send/recv with thrust::device_vector via kamping::v2::views::thrust_device.
+///
+/// Requires an MPI implementation built with CUDA support (OpenMPI with `--with-cuda`,
+/// MPICH with GPU-aware build, etc.). The MPI pointer passed in is a raw device pointer
+/// obtained from `thrust::device_vector::data().get()`.
+
+#include <cstddef>
+#include <iostream>
+
+#include <thrust/copy.h>
+#include <thrust/device_vector.h>
+#include <thrust/host_vector.h>
+#include <thrust/sequence.h>
+
+#include "kamping/ecosystem/thrust_device_view.hpp"
+#include "kamping/v2/environment.hpp"
+#include "kamping/v2/p2p/recv.hpp"
+#include "kamping/v2/p2p/send.hpp"
+#include "mpi/comm.hpp"
+
+template <typename HostVec>
+void print_vec(HostVec const& v) {
+    std::cout << "[";
+    for (std::size_t i = 0; i < v.size(); ++i) {
+        std::cout << v[i] << ((i + 1 < v.size()) ? ", " : "");
+    }
+    std::cout << "]\n";
+}
+
+int main(int argc, char* argv[]) {
+    kamping::v2::environment           env(argc, argv);
+    mpi::experimental::comm_view const world{MPI_COMM_WORLD};
+
+    KAMPING_ASSERT(world.size() == 2uz, "This example must be run with exactly 2 ranks.");
+
+    constexpr std::size_t N = 8;
+
+    // Example 1: send a thrust::device_vector; receive into a preallocated one.
+    if (world.rank() == 0) {
+        thrust::device_vector<int> d_send(N);
+        thrust::sequence(d_send.begin(), d_send.end(), 100);
+        kamping::v2::send(d_send | kamping::v2::views::thrust_device, 1, 0, world);
+    } else {
+        thrust::device_vector<int> d_recv(N);
+        kamping::v2::recv(d_recv | kamping::v2::views::thrust_device, 0, 0, world);
+
+        thrust::host_vector<int> h(d_recv.size());
+        thrust::copy(d_recv.begin(), d_recv.end(), h.begin());
+        print_vec(h);
+    }
+
+    // Example 2: receive into an auto-allocated device_vector (size probed via MPI_Mprobe).
+    if (world.rank() == 0) {
+        thrust::device_vector<int> d_send(N);
+        thrust::sequence(d_send.begin(), d_send.end(), 200);
+        kamping::v2::send(d_send | kamping::v2::views::thrust_device, 1, 0, world);
+    } else {
+        auto  received = kamping::v2::recv(kamping::v2::views::auto_thrust_device_view<int>(), 0, 0, world);
+        auto& d_recv   = *received;
+
+        thrust::host_vector<int> h(d_recv.size());
+        thrust::copy(d_recv.begin(), d_recv.end(), h.begin());
+        print_vec(h);
+    }
+
+    return 0;
+}
