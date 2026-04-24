@@ -22,7 +22,6 @@ TEST(InfoViewTest, ConceptSatisfied) {
 TEST(InfoViewTest, NullInfo) {
     info_view iv(MPI_INFO_NULL);
     EXPECT_EQ(iv.mpi_handle(), MPI_INFO_NULL);
-    EXPECT_EQ(iv.native(), MPI_INFO_NULL);
 }
 
 // ── info construction / move ─────────────────────────────────────────────────

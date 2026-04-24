@@ -23,7 +23,7 @@ TEST(GroupViewTest, WrapsHandle) {
 
     group_view gv(world_group);
     EXPECT_EQ(gv.mpi_handle(), world_group);
-    EXPECT_EQ(gv.native(), world_group);
+    EXPECT_EQ(gv.mpi_handle(), world_group);
 
     MPI_Group_free(&world_group);
 }

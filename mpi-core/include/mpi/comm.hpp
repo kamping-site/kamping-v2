@@ -18,8 +18,7 @@ class comm;
 
 // ── CRTP mixin ──────────────────────────────────────────────────────────────
 // Provides read-only accessors and collective operations for any communicator
-// wrapper: `.rank()`, `.size()`, `.native()`, `.group()`, `.dup()`, `.split()`,
-// `operator bool`.
+// wrapper: `.rank()`, `.size()`, `.group()`, `.dup()`, `.split()`.
 // Derived must implement `mpi_handle() const → MPI_Comm`.
 
 template <typename Derived>
@@ -55,9 +54,6 @@ public:
         }
         return mpi::experimental::group::from_native(g);
     }
-
-    /// @return The underlying `MPI_Comm` (escape hatch).
-    [[nodiscard]] MPI_Comm native() const noexcept { return underlying(); }
 
     /// @brief Collective: duplicate this communicator (MPI_Comm_dup).
     ///
