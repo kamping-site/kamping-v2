@@ -27,11 +27,13 @@
 #include "kamping/v2/views/resize_view.hpp"
 #include "mpi/comm.hpp"
 
-// Intel MPI does not support GPU-aware matched receives (MPI_Mrecv on device memory).
-// Opt out so kamping falls back to plain MPI_Probe + MPI_Recv for deferred recvs.
+// Intel MPI does not support GPU-aware matched receives (MPI_Mrecv on device
+// memory). Opt out so kamping falls back to plain MPI_Probe + MPI_Recv for
+// deferred recvs.
 template <typename T, typename Alloc>
 inline constexpr bool
-    kamping::v2::supports_matched_probe<thrust::device_vector<T, Alloc>> = false;
+    kamping::v2::supports_matched_probe<thrust::device_vector<T, Alloc>> =
+        false;
 
 template <typename HostVec>
 void print_vec(HostVec const& v) {
@@ -72,8 +74,9 @@ int main(int argc, char* argv[]) {
     thrust::sequence(d_send.begin(), d_send.end(), 200);
     kamping::v2::send(d_send, 1, 0, world);
   } else {
-    thrust::device_vector<int> d_recv;
-    kamping::v2::recv(d_recv | kamping::v2::views::resize, 0, 0, world);
+    // thrust::device_vector<int> d_recv;
+    auto d_recv = kamping::v2::recv(
+        thrust::device_vector<int>{} | kamping::v2::views::resize, 0, 0, world);
 
     thrust::host_vector<int> h(d_recv.size());
     thrust::copy(d_recv.begin(), d_recv.end(), h.begin());
