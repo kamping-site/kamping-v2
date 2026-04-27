@@ -66,7 +66,7 @@ public:
 
     /// Mutable access — used by infer() to write per-rank counts directly.
     std::span<int> mpi_counts() {
-        return {std::ranges::data(counts_), std::ranges::size(counts_)};
+        return {counts_};
     }
 
     /// Read-only access — used by MPI wrappers after counts are committed.
@@ -93,11 +93,11 @@ namespace kamping::v2::views {
 /// 0-arg: owned Container (default std::vector<int>) auto-resized by infer() via set_comm_size().
 template <typename Container = std::vector<int>>
 constexpr auto auto_counts() {
-    return kamping::v2::adaptor<1, decltype([](auto&& r, auto&& counts) {
+    return kamping::v2::adaptor<1, decltype([](auto&& r, auto&& _counts) {
                                     return kamping::v2::auto_counts_view(
                                         kamping::v2::resize,
                                         std::forward<decltype(r)>(r),
-                                        std::forward<decltype(counts)>(counts)
+                                        std::forward<decltype(_counts)>(_counts)
                                     );
                                 })>{}(Container{});
 }
@@ -106,10 +106,10 @@ constexpr auto auto_counts() {
 template <typename C>
     requires std::ranges::range<std::remove_cvref_t<C>>
 constexpr auto auto_counts(C&& counts) {
-    return kamping::v2::adaptor<1, decltype([](auto&& r, auto&& counts) {
+    return kamping::v2::adaptor<1, decltype([](auto&& r, auto&& _counts) {
                                     return kamping::v2::auto_counts_view(
                                         std::forward<decltype(r)>(r),
-                                        std::forward<decltype(counts)>(counts)
+                                        std::forward<decltype(_counts)>(_counts)
                                     );
                                 })>{}(std::forward<C>(counts));
 }
@@ -118,11 +118,11 @@ constexpr auto auto_counts(C&& counts) {
 template <typename C>
     requires std::ranges::range<std::remove_cvref_t<C>>
 constexpr auto auto_counts(kamping::v2::resize_t, C&& counts) {
-    return kamping::v2::adaptor<1, decltype([](auto&& r, auto&& counts) {
+    return kamping::v2::adaptor<1, decltype([](auto&& r, auto&& _counts) {
                                     return kamping::v2::auto_counts_view(
                                         kamping::v2::resize,
                                         std::forward<decltype(r)>(r),
-                                        std::forward<decltype(counts)>(counts)
+                                        std::forward<decltype(_counts)>(_counts)
                                     );
                                 })>{}(std::forward<C>(counts));
 }
