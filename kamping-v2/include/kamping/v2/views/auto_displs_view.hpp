@@ -69,7 +69,8 @@ public:
         if (needs_to_compute_displs_) {
             auto&& counts = mpi::experimental::counts(base());
             if constexpr (resize) {
-                if (std::ranges::size(displs_) < std::ranges::size(counts)) {
+                if (static_cast<std::ptrdiff_t>(std::ranges::size(displs_))
+                    < static_cast<std::ptrdiff_t>(std::ranges::size(counts))) {
                     kamping::v2::resize_for_receive(displs_, static_cast<std::ptrdiff_t>(std::ranges::size(counts)));
                 }
             }

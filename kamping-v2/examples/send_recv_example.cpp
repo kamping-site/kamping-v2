@@ -63,8 +63,7 @@ int main(int argc, char* argv[]) {
         int const        peer      = 1 - static_cast<int>(world.rank());
         std::vector<int> send_data = (world.rank() == 0) ? std::vector<int>{1, 2, 3} : std::vector<int>{4, 5, 6};
         std::vector<int> recv_data;
-        auto&& [_, recvd] =
-            kamping::v2::sendrecv(send_data, peer, recv_data | kamping::v2::views::resize, peer, world);
+        auto [_, recvd] = kamping::v2::sendrecv(send_data, peer, recv_data | kamping::v2::views::resize, peer, world);
         std::println("rank {} recvd = {}", world.rank(), recvd);
     }
 
@@ -73,7 +72,7 @@ int main(int argc, char* argv[]) {
         int const        peer      = 1 - static_cast<int>(world.rank());
         std::vector<int> send_data = (world.rank() == 0) ? std::vector<int>{7, 8, 9} : std::vector<int>{10, 11, 12};
         std::vector<int> recv_data;
-        auto&& [_2, recvd2] =
+        auto [_2, recvd2] =
             kamping::v2::isendrecv(send_data, peer, recv_data | kamping::v2::views::resize, peer, world).wait();
         std::println("rank {} isendrecv recvd = {}", world.rank(), recvd2);
     }
