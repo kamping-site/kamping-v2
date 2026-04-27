@@ -35,13 +35,13 @@ struct no_probe_buf {
 };
 
 template <>
-inline constexpr bool kamping::v2::supports_matched_probe<no_probe_buf> = false;
+inline constexpr bool kamping::v2::use_matched_probe<no_probe_buf> = false;
 
 // ── Compile-time trait checks ─────────────────────────────────────────────────
 
-static_assert(kamping::v2::supports_matched_probe<std::vector<int>>);
-static_assert(!kamping::v2::supports_matched_probe<no_probe_buf>);
-static_assert(!kamping::v2::supports_matched_probe<
+static_assert(kamping::v2::use_matched_probe<std::vector<int>>);
+static_assert(!kamping::v2::use_matched_probe<no_probe_buf>);
+static_assert(!kamping::v2::use_matched_probe<
               kamping::v2::resize_view<kamping::v2::ref_view<no_probe_buf>>>);
 
 // ── MPI functional tests ──────────────────────────────────────────────────────
