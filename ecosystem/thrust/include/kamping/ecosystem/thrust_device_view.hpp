@@ -1,132 +1,84 @@
 #pragma once
 
-#include <cstddef>
-#include <type_traits>
-#include <utility>
-
-#include <mpi.h>
 #include <thrust/device_vector.h>
 
-#include <kamping/types/builtin_types.hpp>
-
 #include "kamping/v2/views/adaptor.hpp"
+#include "kamping/v2/views/all.hpp"
+#include "kamping/v2/views/concepts.hpp"
+#include "kamping/v2/views/view_interface.hpp"
 
 namespace kamping::v2 {
 
-/// Wraps a `thrust::device_vector<T>` and presents it through the MPI buffer protocol.
+/// View adaptor that redirects mpi_ptr() to the raw device pointer of the wrapped
+/// Thrust buffer. All other MPI buffer protocol methods (count, type, resize) pass
+/// through unchanged via view_interface, so this view composes freely with
+/// views::resize, views::with_type, etc.
 ///
-/// The pointer returned by `mpi_ptr()` is the raw device pointer, so CUDA-aware MPI can
-/// DMA directly into/out of device memory. No host staging happens in this wrapper.
+/// Intended use: pipe a thrust::device_vector through this adaptor so CUDA-aware
+/// MPI can DMA directly into/out of device memory without host staging.
 ///
-/// V is the wrapped vector type: a (possibly const) lvalue reference for non-owning
-/// wrappers, or a value type for owning wrappers — matching the ownership pattern used
-/// by the kokkos_view adapter.
+/// @code
+///   // send from device
+///   kamping::v2::send(d_vec | kamping::v2::views::thrust::device_ptr, 1, comm);
 ///
-/// The `is_resizable` template flag enables `set_recv_count(n)` for the recv path.
-/// The resize happens lazily inside `mpi_ptr()` so the pointer captured by MPI reflects
-/// the resized buffer.
-template <typename V, bool is_resizable = false>
-class thrust_device_view {
-    static constexpr bool is_owning = !std::is_lvalue_reference_v<V>;
-    using vector_type               = std::remove_reference_t<V>;
-    using value_type                = typename vector_type::value_type;
-    using size_type                 = typename vector_type::size_type;
-    using stored_t                  = std::conditional_t<is_owning, vector_type, vector_type*>;
-
-    mutable stored_t _base;
-    mutable bool     _needs_resize = false;
-    std::ptrdiff_t   _recv_count   = 0;
-
-    vector_type& base_ref() const noexcept {
-        if constexpr (is_owning)
-            return _base;
-        else
-            return *_base;
-    }
+///   // receive into pre-sized device buffer
+///   kamping::v2::recv(d_recv | kamping::v2::views::thrust::device_ptr, 0, comm);
+///
+///   // receive with automatic resize (size probed via MPI_Probe)
+///   kamping::v2::recv(d_recv | kamping::v2::views::thrust::device_ptr | kamping::v2::views::resize, 0, comm);
+/// @endcode
+template <typename Base>
+class device_ptr_view : public view_interface<device_ptr_view<Base>> {
+    Base base_;
 
 public:
-    explicit thrust_device_view(vector_type& vec)
-        requires(!is_owning)
-        : _base(&vec) {}
+    template <typename R>
+    explicit device_ptr_view(R&& base) : base_(kamping::v2::all(std::forward<R>(base))) {}
 
-    explicit thrust_device_view(vector_type&& vec)
-        requires(is_owning)
-        : _base(std::move(vec)) {}
-
-    vector_type& operator*() {
-        return base_ref();
+    constexpr Base& base() & noexcept {
+        return base_;
     }
-    vector_type const& operator*() const {
-        return base_ref();
-    }
-    vector_type* operator->() {
-        return std::addressof(base_ref());
-    }
-    vector_type const* operator->() const {
-        return std::addressof(base_ref());
+    constexpr Base const& base() const& noexcept {
+        return base_;
     }
 
-    /// Late-bound recv count for deferred recv buffers. Commits on the next `mpi_ptr()` call.
-    void set_recv_count(std::ptrdiff_t n)
-        requires(is_resizable)
-    {
-        if (n == static_cast<std::ptrdiff_t>(base_ref().size())) {
-            return;
-        }
-        _recv_count   = n;
-        _needs_resize = true;
+    /// Returns the raw device pointer via thrust::device_ptr::get().
+    /// Overrides view_interface::mpi_ptr(); count, type, and resize propagate
+    /// from base() as usual.
+    auto mpi_ptr() {
+        return this->underlying().data().get();
     }
 
-    std::ptrdiff_t mpi_count() const {
-        if (_needs_resize) {
-            return _recv_count;
-        }
-        return static_cast<std::ptrdiff_t>(base_ref().size());
-    }
-
-    MPI_Datatype mpi_type() const
-        requires kamping::types::is_builtin_type_v<value_type>
-    {
-        return kamping::types::builtin_type<value_type>::data_type();
-    }
-
-    void* mpi_ptr() const {
-        if constexpr (is_resizable) {
-            if (_needs_resize) {
-                base_ref().resize(static_cast<size_type>(_recv_count));
-                _needs_resize = false;
-            }
-        }
-        // thrust::device_vector::data() returns a thrust::device_ptr; .get() extracts the raw
-        // device pointer. This is the pointer CUDA-aware MPI expects.
-        return static_cast<void*>(base_ref().data().get());
+    auto mpi_ptr() const {
+        return this->underlying().data().get();
     }
 };
 
-template <typename V>
-thrust_device_view(V&) -> thrust_device_view<V&>;
+template <typename R>
+device_ptr_view(R&&) -> device_ptr_view<kamping::v2::all_t<R>>;
 
-template <typename V>
-    requires(!std::is_lvalue_reference_v<V>)
-thrust_device_view(V&&) -> thrust_device_view<V>;
+template <typename Base>
+inline constexpr bool enable_borrowed_buffer<device_ptr_view<Base>> = enable_borrowed_buffer<Base>;
+
+// use_matched_probe propagates from Base via view_interface. If your MPI implementation
+// does not support GPU-aware matched receives (e.g. Intel MPI with MPI_Mrecv on device
+// memory), opt out by specializing for your buffer type before including this header:
+//
+//   template <typename T, typename Alloc>
+//   inline constexpr bool kamping::v2::use_matched_probe<thrust::device_vector<T, Alloc>> = false;
 
 } // namespace kamping::v2
 
-namespace kamping::v2::views {
+namespace kamping::v2::views::thrust {
 
-inline constexpr struct thrust_device_fn : kamping::v2::adaptor_closure<thrust_device_fn> {
+/// Pipe adaptor: redirects mpi_ptr() to the raw Thrust device pointer.
+///
+///   d_vec | kamping::v2::views::thrust::device_ptr
+inline constexpr struct device_ptr_fn : kamping::v2::adaptor_closure<device_ptr_fn> {
     template <typename R>
     constexpr auto operator()(R&& r) const {
-        return kamping::v2::thrust_device_view(std::forward<R>(r));
+        return kamping::v2::device_ptr_view(std::forward<R>(r));
     }
-} thrust_device{};
+} device_ptr{};
 
-/// Returns an owning, resizable thrust_device_view suitable for receive operations with
-/// an unknown size. The element type is the template parameter.
-template <typename T>
-auto auto_thrust_device_view() {
-    using vector_t = thrust::device_vector<T>;
-    return kamping::v2::thrust_device_view<vector_t, true>(vector_t{});
-}
-
-} // namespace kamping::v2::views
+} // namespace kamping::v2::views::thrust
