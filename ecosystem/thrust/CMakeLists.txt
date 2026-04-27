@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(kamping-ecosystem-thrust LANGUAGES CXX CUDA)
+project(kamping-ecosystem-thrust LANGUAGES CXX)
 
 include(FetchContent)
 

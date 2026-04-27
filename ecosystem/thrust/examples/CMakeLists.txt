@@ -1,3 +1,4 @@
+enable_language(CUDA)
 add_executable(example_thrust_send_recv thrust_send_recv_example.cu)
 target_link_libraries(example_thrust_send_recv PRIVATE kamping_ecosystem_thrust)
 set_target_properties(example_thrust_send_recv PROPERTIES

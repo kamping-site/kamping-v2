@@ -32,7 +32,6 @@ endif ()
 
 option(KAMPING_BUILD_EXAMPLES_AND_TESTS "Build tests and examples for all components." OFF)
 option(KAMPING_WARNINGS_ARE_ERRORS "Treat compiler warnings as errors." OFF)
-option(KAMPING_ENABLE_SERIALIZATION "Build the Cereal ecosystem adapter." ON)
 option(KAMPING_ENABLE_REFLECTION "Enable Boost.PFR struct reflection in kamping-types." ON)
 option(
     KAMPING_REFLECTION_USE_SYSTEM_BOOST_FOR_PFR
