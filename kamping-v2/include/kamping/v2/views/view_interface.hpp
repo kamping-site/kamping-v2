@@ -227,13 +227,13 @@ struct view_interface : public view_interface_base, public std::ranges::view_int
     }
 };
 
-// Propagate use_matched_probe through kamping view layers one step at a time via base().
+// Propagate supports_matched_probe through kamping view layers one step at a time via base().
 // Using base() rather than underlying() ensures intermediate views (e.g. device_ptr_view
-// with use_matched_probe=false) are not skipped. Explicit per-type specializations
+// with supports_matched_probe=false) are not skipped. Explicit per-type specializations
 // (e.g. device_ptr_view) take priority over this partial specialization.
 template <typename T>
     requires std::derived_from<T, view_interface_base> && detail::has_base<T>
-inline constexpr bool use_matched_probe<T> =
-    use_matched_probe<std::remove_cvref_t<decltype(std::declval<T&>().base())>>;
+inline constexpr bool supports_matched_probe<T> =
+    supports_matched_probe<std::remove_cvref_t<decltype(std::declval<T&>().base())>>;
 
 } // namespace kamping::v2

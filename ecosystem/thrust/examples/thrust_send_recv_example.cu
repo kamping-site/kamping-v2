@@ -29,7 +29,7 @@
 
 template <typename T, typename Alloc>
 inline constexpr bool
-    kamping::v2::use_matched_probe<thrust::device_vector<T, Alloc>> = false;
+    kamping::v2::supports_matched_probe<thrust::device_vector<T, Alloc>> = false;
 
 template <typename HostVec>
 void print_vec(HostVec const& v) {

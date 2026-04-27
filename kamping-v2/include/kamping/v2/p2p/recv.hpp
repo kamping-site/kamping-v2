@@ -42,7 +42,7 @@ auto recv(
         mpi::experimental::mrecv(rbuf, &msg, std::forward<Status>(status));
         return std::forward<RBuf>(rbuf);
     } else if constexpr (std::is_same_v<infer_result_t, std::pair<int, int>>) {
-        // use_matched_probe is false: plain MPI_Probe was used; use resolved source/tag
+        // supports_matched_probe is false: plain MPI_Probe was used; use resolved source/tag
         // for MPI_Recv to avoid a race with a wildcard receive.
         auto [src, tg] = infer(
             comm_op::recv{},

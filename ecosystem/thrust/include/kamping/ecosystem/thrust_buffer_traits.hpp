@@ -28,7 +28,7 @@
 ///       probing before including this header:
 /// @code
 ///   template <typename T>
-///   inline constexpr bool kamping::v2::use_matched_probe<thrust::device_vector<T>> = false;
+///   inline constexpr bool kamping::v2::supports_matched_probe<thrust::device_vector<T>> = false;
 /// @endcode
 
 namespace mpi::experimental {

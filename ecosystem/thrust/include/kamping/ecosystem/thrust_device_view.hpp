@@ -60,12 +60,12 @@ device_ptr_view(R&&) -> device_ptr_view<kamping::v2::all_t<R>>;
 template <typename Base>
 inline constexpr bool enable_borrowed_buffer<device_ptr_view<Base>> = enable_borrowed_buffer<Base>;
 
-// use_matched_probe propagates from Base via view_interface. If your MPI implementation
+// supports_matched_probe propagates from Base via view_interface. If your MPI implementation
 // does not support GPU-aware matched receives (e.g. Intel MPI with MPI_Mrecv on device
 // memory), opt out by specializing for your buffer type before including this header:
 //
 //   template <typename T, typename Alloc>
-//   inline constexpr bool kamping::v2::use_matched_probe<thrust::device_vector<T, Alloc>> = false;
+//   inline constexpr bool kamping::v2::supports_matched_probe<thrust::device_vector<T, Alloc>> = false;
 
 } // namespace kamping::v2
 
