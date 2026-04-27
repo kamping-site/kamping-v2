@@ -95,96 +95,110 @@ struct view_interface : public view_interface_base, public std::ranges::view_int
         return static_cast<Derived const&>(*this);
     }
 
+    template <typename Self = Derived>
     constexpr auto begin()
-        requires detail::has_base_range<Derived>
+        requires detail::has_base_range<Self>
     {
         return std::ranges::begin(derived().base());
     }
 
+    template <typename Self = Derived>
     constexpr auto end()
-        requires detail::has_base_range<Derived>
+        requires detail::has_base_range<Self>
     {
         return std::ranges::end(derived().base());
     }
 
+    template <typename Self = Derived>
     constexpr auto begin() const
-        requires detail::has_const_base_range<Derived>
+        requires detail::has_const_base_range<Self>
     {
         return std::ranges::begin(derived().base());
     }
 
+    template <typename Self = Derived>
     constexpr auto end() const
-        requires detail::has_const_base_range<Derived>
+        requires detail::has_const_base_range<Self>
     {
         return std::ranges::end(derived().base());
     }
 
-    template <typename _Derived = Derived>
+    template <typename Self = Derived>
     auto mpi_type() const
-        requires mpi::experimental::has_mpi_type<decltype(derived().base())>
+        requires mpi::experimental::has_mpi_type<decltype(std::declval<Self const&>().base())>
     {
         return mpi::experimental::type(derived().base());
     }
 
+    template <typename Self = Derived>
     constexpr auto mpi_count() const
-        requires mpi::experimental::has_mpi_count<decltype(derived().base())>
+        requires mpi::experimental::has_mpi_count<decltype(std::declval<Self const&>().base())>
     {
         return mpi::experimental::count(derived().base());
     }
 
+    template <typename Self = Derived>
     constexpr auto mpi_ptr()
-        requires mpi::experimental::has_mpi_ptr<decltype(derived().base())>
+        requires mpi::experimental::has_mpi_ptr<decltype(std::declval<Self&>().base())>
     {
         return mpi::experimental::ptr(derived().base());
     }
 
+    template <typename Self = Derived>
     constexpr auto mpi_ptr() const
-        requires mpi::experimental::has_mpi_ptr<decltype(derived().base())>
+        requires mpi::experimental::has_mpi_ptr<decltype(std::declval<Self const&>().base())>
     {
         return mpi::experimental::ptr(derived().base());
     }
 
+    template <typename Self = Derived>
     constexpr auto mpi_counts()
-        requires mpi::experimental::has_mpi_counts_mutable<decltype(derived().base())>
+        requires mpi::experimental::has_mpi_counts_mutable<decltype(std::declval<Self&>().base())>
     {
         return mpi::experimental::counts(derived().base());
     }
 
+    template <typename Self = Derived>
     constexpr auto mpi_counts() const
-        requires mpi::experimental::has_mpi_counts<decltype(derived().base())>
+        requires mpi::experimental::has_mpi_counts<decltype(std::declval<Self const&>().base())>
     {
         return mpi::experimental::counts(derived().base());
     }
 
+    template <typename Self = Derived>
     constexpr auto mpi_displs() const
-        requires mpi::experimental::has_mpi_displs<decltype(derived().base())>
+        requires mpi::experimental::has_mpi_displs<decltype(std::declval<Self const&>().base())>
     {
         return mpi::experimental::displs(derived().base());
     }
 
+    template <typename Self = Derived>
     void mpi_resize_for_receive(std::ptrdiff_t n)
         requires(
-            kamping::v2::has_mpi_resize_for_receive<decltype(derived().base())>
-            || kamping::v2::has_resize<decltype(derived().base())>
+            kamping::v2::has_mpi_resize_for_receive<decltype(std::declval<Self&>().base())>
+            || kamping::v2::has_resize<decltype(std::declval<Self&>().base())>
         )
     {
         kamping::v2::resize_for_receive(derived().base(), n);
     }
 
+    template <typename Self = Derived>
     void commit_counts()
-        requires kamping::v2::has_commit_counts<decltype(derived().base())>
+        requires kamping::v2::has_commit_counts<decltype(std::declval<Self&>().base())>
     {
         derived().base().commit_counts();
     }
 
+    template <typename Self = Derived>
     void set_comm_size(int n)
-        requires kamping::v2::has_set_comm_size<decltype(derived().base())>
+        requires kamping::v2::has_set_comm_size<decltype(std::declval<Self&>().base())>
     {
         derived().base().set_comm_size(n);
     }
 
+    template <typename Self = Derived>
     constexpr bool displs_monotonic() const
-        requires kamping::v2::has_monotonic_displs<decltype(derived().base())>
+        requires kamping::v2::has_monotonic_displs<decltype(std::declval<Self const&>().base())>
     {
         return derived().base().displs_monotonic();
     }
