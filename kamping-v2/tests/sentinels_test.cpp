@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
 #include "kamping/v2/sentinels.hpp"
-#include "kamping/v2/views/with_size_view.hpp"
+#include "kamping/v2/views/with_count_view.hpp"
 #include "kamping/v2/views/with_type_view.hpp"
 
 using namespace kamping;
