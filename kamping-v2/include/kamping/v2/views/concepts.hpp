@@ -62,4 +62,21 @@ inline constexpr bool enable_borrowed_buffer = std::ranges::borrowed_range<T>;
 template <typename T>
 concept borrowed_buffer = enable_borrowed_buffer<std::remove_cvref_t<T>>;
 
+// ── use_matched_probe ─────────────────────────────────────────────────────────
+/// Trait controlling whether infer() uses matched probing (MPI_Mprobe / MPI_Mrecv)
+/// for a deferred recv buffer.  Defaults to `true`.  Set to `false` for buffer
+/// types whose MPI implementation does not support GPU-aware matched receives
+/// (e.g. `thrust::device_vector` with Intel MPI); infer() then falls back to a
+/// plain MPI_Probe followed by a regular MPI_Recv.
+///
+/// Propagates automatically through kamping view layers — see view_interface.hpp.
+///
+/// To opt out a custom buffer type:
+/// @code
+///   template <>
+///   inline constexpr bool kamping::v2::use_matched_probe<MyGpuBuffer> = false;
+/// @endcode
+template <typename T>
+inline constexpr bool use_matched_probe = true;
+
 } // namespace kamping::v2

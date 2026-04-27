@@ -77,3 +77,7 @@ katestrophe_add_mpi_test(test_v2_scan CORES 1 2 4)
 add_executable(test_v2_exscan v2_exscan_test.cpp)
 target_link_libraries(test_v2_exscan PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
 katestrophe_add_mpi_test(test_v2_exscan CORES 1 2 4)
+
+add_executable(test_v2_recv v2_recv_test.cpp)
+target_link_libraries(test_v2_recv PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
+katestrophe_add_mpi_test(test_v2_recv CORES 2 4)

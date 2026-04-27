@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <utility>
 
 #include <mpi.h>
 
@@ -15,6 +16,7 @@
 #include "mpi/collectives/scatter.hpp"
 #include "mpi/comm.hpp"
 #include "mpi/p2p/mprobe.hpp"
+#include "mpi/p2p/probe.hpp"
 #include "mpi/p2p/sendrecv.hpp"
 
 /// @file
@@ -33,11 +35,22 @@ namespace kamping {
 template <mpi::experimental::recv_buffer RBuf>
 auto infer(comm_op::recv, RBuf& rbuf, int source, int tag, MPI_Comm comm) {
     if constexpr (kamping::v2::deferred_recv_buf<RBuf>) {
-        v2::status  status;
-        MPI_Message message = MPI_MESSAGE_NULL;
-        mpi::experimental::mprobe(source, tag, comm, message, status);
-        rbuf.set_recv_count(static_cast<std::ptrdiff_t>(status.count(mpi::experimental::type(rbuf))));
-        return message;
+        if constexpr (!kamping::v2::use_matched_probe<RBuf>) {
+            // Matched recv is disabled for this buffer type (e.g. GPU buffers with
+            // MPI implementations that don't support GPU-aware MPI_Mrecv).
+            // Use a plain MPI_Probe and return the resolved {source, tag} so recv.hpp
+            // can issue a targeted MPI_Recv rather than a wildcard one.
+            v2::status status;
+            mpi::experimental::probe(source, tag, comm, status);
+            rbuf.set_recv_count(static_cast<std::ptrdiff_t>(status.count(mpi::experimental::type(rbuf))));
+            return std::pair{status.source(), status.tag()};
+        } else {
+            v2::status  status;
+            MPI_Message message = MPI_MESSAGE_NULL;
+            mpi::experimental::mprobe(source, tag, comm, message, status);
+            rbuf.set_recv_count(static_cast<std::ptrdiff_t>(status.count(mpi::experimental::type(rbuf))));
+            return message;
+        }
     }
 }
 

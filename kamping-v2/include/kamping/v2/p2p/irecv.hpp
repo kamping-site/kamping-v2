@@ -1,5 +1,8 @@
 #pragma once
 
+#include <type_traits>
+#include <utility>
+
 #include <mpi.h>
 
 #include "kamping/v2/infer.hpp"
@@ -22,18 +25,14 @@ auto irecv(
     Tag         tag    = MPI_ANY_TAG,
     Comm const& comm   = MPI_COMM_WORLD
 ) -> RBuf {
-    constexpr bool infer_returns_mpi_message = requires(RBuf&& rbuf_, Source source_, Tag tag_, Comm const& comm_) {
-        {
-            infer(
-                comm_op::recv{},
-                rbuf_,
-                mpi::experimental::to_rank(source_),
-                mpi::experimental::to_tag(tag_),
-                mpi::experimental::handle(comm_)
-            )
-        } -> std::same_as<MPI_Message>;
-    };
-    if constexpr (infer_returns_mpi_message) {
+    using infer_result_t = decltype(infer(
+        comm_op::recv{},
+        std::declval<RBuf&>(),
+        mpi::experimental::to_rank(std::declval<Source>()),
+        mpi::experimental::to_tag(std::declval<Tag>()),
+        mpi::experimental::handle(std::declval<Comm const&>())
+    ));
+    if constexpr (std::is_same_v<infer_result_t, MPI_Message>) {
         MPI_Message msg = infer(
             comm_op::recv{},
             rbuf,
@@ -42,6 +41,16 @@ auto irecv(
             mpi::experimental::handle(comm)
         );
         mpi::experimental::imrecv(rbuf, &msg, std::forward<Request>(request));
+        return std::forward<RBuf>(rbuf);
+    } else if constexpr (std::is_same_v<infer_result_t, std::pair<int, int>>) {
+        auto [src, tg] = infer(
+            comm_op::recv{},
+            rbuf,
+            mpi::experimental::to_rank(source),
+            mpi::experimental::to_tag(tag),
+            mpi::experimental::handle(comm)
+        );
+        mpi::experimental::irecv(rbuf, src, tg, comm, std::forward<Request>(request));
         return std::forward<RBuf>(rbuf);
     } else {
         infer(
@@ -77,19 +86,15 @@ template <
 auto irecv(RBuf&& rbuf, Source source = MPI_ANY_SOURCE, Tag tag = MPI_ANY_TAG, Comm const& comm = MPI_COMM_WORLD)
     -> iresult<RBuf> {
     iresult<RBuf> res{std::forward<RBuf>(rbuf)};
-    using view_t                             = kamping::v2::all_t<RBuf>;
-    constexpr bool infer_returns_mpi_message = requires(view_t& v, Source source_, Tag tag_, Comm const& comm_) {
-        {
-            infer(
-                comm_op::recv{},
-                v,
-                mpi::experimental::to_rank(source_),
-                mpi::experimental::to_tag(tag_),
-                mpi::experimental::handle(comm_)
-            )
-        } -> std::same_as<MPI_Message>;
-    };
-    if constexpr (infer_returns_mpi_message) {
+    using view_t         = kamping::v2::all_t<RBuf>;
+    using infer_result_t = decltype(infer(
+        comm_op::recv{},
+        std::declval<view_t&>(),
+        mpi::experimental::to_rank(std::declval<Source>()),
+        mpi::experimental::to_tag(std::declval<Tag>()),
+        mpi::experimental::handle(std::declval<Comm const&>())
+    ));
+    if constexpr (std::is_same_v<infer_result_t, MPI_Message>) {
         MPI_Message msg = infer(
             comm_op::recv{},
             res.view(),
@@ -98,6 +103,15 @@ auto irecv(RBuf&& rbuf, Source source = MPI_ANY_SOURCE, Tag tag = MPI_ANY_TAG, C
             mpi::experimental::handle(comm)
         );
         mpi::experimental::imrecv(res.view(), &msg, res.mpi_native_handle_ptr());
+    } else if constexpr (std::is_same_v<infer_result_t, std::pair<int, int>>) {
+        auto [src, tg] = infer(
+            comm_op::recv{},
+            res.view(),
+            mpi::experimental::to_rank(source),
+            mpi::experimental::to_tag(tag),
+            mpi::experimental::handle(comm)
+        );
+        mpi::experimental::irecv(res.view(), src, tg, comm, res.mpi_native_handle_ptr());
     } else {
         infer(
             comm_op::recv{},
