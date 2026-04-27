@@ -74,7 +74,6 @@ int main(int argc, char* argv[]) {
     thrust::sequence(d_send.begin(), d_send.end(), 200);
     kamping::v2::send(d_send, 1, 0, world);
   } else {
-    // thrust::device_vector<int> d_recv;
     auto d_recv = kamping::v2::recv(
         thrust::device_vector<int>{} | kamping::v2::views::resize, 0, 0, world);
 
