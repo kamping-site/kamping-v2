@@ -227,4 +227,12 @@ struct view_interface : public view_interface_base, public std::ranges::view_int
     }
 };
 
+// Propagate use_matched_probe through kamping view layers.
+// A view wrapping a base for which use_matched_probe is false will also report false,
+// so users only need to specialize the trait for the concrete buffer type.
+template <typename T>
+    requires std::derived_from<T, view_interface_base> && requires(T& t) { t.underlying(); }
+inline constexpr bool use_matched_probe<T> =
+    use_matched_probe<std::remove_cvref_t<decltype(std::declval<T&>().underlying())>>;
+
 } // namespace kamping::v2

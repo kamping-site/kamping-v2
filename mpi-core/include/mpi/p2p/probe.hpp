@@ -8,8 +8,8 @@
 namespace mpi::experimental {
 
 template <
-    mpi_rank                                  Source = int,
-    mpi_tag                                   Tag    = int,
+    rank                                      Source = int,
+    tag                                       Tag    = int,
     convertible_to_mpi_handle<MPI_Comm>       Comm   = MPI_Comm,
     convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>
 void probe(
@@ -21,8 +21,8 @@ void probe(
     int err = MPI_Probe(
         to_rank(source),
         to_tag(tag),
-        native_handle(comm),
-        native_handle_ptr(status)
+        handle(comm),
+        handle_ptr(status)
     );
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);
