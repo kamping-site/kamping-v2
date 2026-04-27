@@ -27,6 +27,8 @@
 #include "kamping/v2/views/resize_view.hpp"
 #include "mpi/comm.hpp"
 
+// Intel MPI does not support GPU-aware matched receives (MPI_Mrecv on device memory).
+// Opt out so kamping falls back to plain MPI_Probe + MPI_Recv for deferred recvs.
 template <typename T, typename Alloc>
 inline constexpr bool
     kamping::v2::supports_matched_probe<thrust::device_vector<T, Alloc>> = false;
