@@ -35,7 +35,7 @@ namespace kamping {
 template <mpi::experimental::recv_buffer RBuf>
 auto infer(comm_op::recv, RBuf& rbuf, int source, int tag, MPI_Comm comm) {
     if constexpr (kamping::v2::deferred_recv_buf<RBuf>) {
-        if constexpr (!kamping::v2::use_matched_probe<RBuf>) {
+        if constexpr (!kamping::v2::supports_matched_probe<RBuf>) {
             // Matched recv is disabled for this buffer type (e.g. GPU buffers with
             // MPI implementations that don't support GPU-aware MPI_Mrecv).
             // Use a plain MPI_Probe and return the resolved {source, tag} so recv.hpp
