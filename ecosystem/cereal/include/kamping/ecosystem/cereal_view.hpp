@@ -14,17 +14,23 @@ namespace kamping::v2 {
 
 /// Wraps an object and serializes/deserializes it with cereal for MPI transport.
 ///
-/// T is the wrapped type: a (possibly const) lvalue reference for non-owning views, or
-/// a value type for owning views. Use `obj | kamping::views::serialize` to construct.
+/// @tparam T       The wrapped type: a (possibly const) lvalue reference for non-owning
+///                 views, or a value type for owning views.
+/// @tparam Alloc   Allocator for the internal byte buffer (default: `std::allocator<char>`).
 ///
-/// Send path: mpi_count()/mpi_data() lazily serialize the wrapped object into buffer_ on first
-///            access; the ostringstream result is moved (no copy) into buffer_.
-/// Recv path: set_recv_count(n) sizes buffer_ for MPI to write into directly; operator*
-///            triggers lazy deserialization via a zero-copy membuf streambuf, then
-///            clears buffer_ to leave a deterministic empty state. Requires non-const T.
+/// Construct via `obj | kamping::views::serialize` (non-owning, lvalue) or
+/// `kamping::v2::views::deserialize<T>()` (owning, default-constructed recv target).
 ///
-/// Range semantics are intentionally omitted. Access the wrapped object via operator* or
-/// operator->; for ranges, dereference first: `for (auto& x : *view) { ... }`.
+/// **Send path** — `mpi_count()` / `mpi_ptr()` lazily serialize the wrapped object into
+/// `buffer_` on first access; the `ostringstream` result is moved (no copy) into `buffer_`.
+///
+/// **Recv path** — `set_recv_count(n)` records the incoming byte count; `mpi_ptr()`
+/// lazily resizes `buffer_` to that size so MPI can write into it directly; `operator*` /
+/// `unwrap()` then trigger lazy deserialization via a zero-copy `membuf` streambuf and
+/// clear `buffer_` to leave a deterministic empty state. Requires non-const `T`.
+///
+/// Range semantics are intentionally omitted. Access the wrapped object via `operator*` or
+/// `operator->`; for ranges, dereference first: `for (auto& x : *view) { … }`.
 template <typename T, typename Alloc = std::allocator<char>>
 class serialization_view {
     static constexpr bool is_owning = !std::is_lvalue_reference_v<T>;
@@ -98,20 +104,27 @@ public:
         return base_ref();
     }
 
+    /// \overload
     value_type const& operator*() const {
         if (needs_deserialization_)
             do_deserialize();
         return base_ref();
     }
 
+    /// Triggers deserialization if needed without returning a reference.
+    /// Equivalent to `(void)**this` but expresses intent at call sites that only care
+    /// about the side effect (e.g. immediately followed by `operator->`).
     void unwrap() const {
         if (needs_deserialization_)
             do_deserialize();
     }
 
+    /// Arrow operator; triggers deserialization if needed.
     value_type* operator->() {
         return std::addressof(**this);
     }
+
+    /// \overload
     value_type const* operator->() const {
         return std::addressof(**this);
     }
@@ -131,6 +144,9 @@ public:
 
     // ---- MPI protocol methods --------------------------------------------
 
+    /// Returns the number of `MPI_BYTE` elements to send or receive.
+    /// On the recv side returns the count recorded by `set_recv_count()` without
+    /// serializing. On the send side serializes lazily on the first call.
     std::ptrdiff_t mpi_count() const {
         if (needs_deserialization_)
             return recv_count_;
@@ -139,6 +155,7 @@ public:
         return static_cast<std::ptrdiff_t>(buffer_.size());
     }
 
+    /// Returns `MPI_BYTE` (`char`). Serialized payloads are always transported as raw bytes.
     MPI_Datatype mpi_type() const {
         return kamping::types::builtin_type<char>::data_type();
     }
@@ -169,6 +186,9 @@ serialization_view(T&&) -> serialization_view<T>;
 } // namespace kamping::v2
 
 namespace kamping::v2::views {
+/// Range adaptor that wraps any object in a `serialization_view` for MPI transport.
+/// Pipe an lvalue or rvalue through it: `obj | kamping::views::serialize`.
+/// Lvalues produce a non-owning view; rvalues produce an owning view.
 inline constexpr struct serialize_fn : kamping::v2::adaptor_closure<serialize_fn> {
     template <typename R>
     constexpr auto operator()(R&& r) const {
