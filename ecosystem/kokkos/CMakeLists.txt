@@ -34,6 +34,7 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(Kokkos)
 
 add_library(kamping_ecosystem_kokkos INTERFACE)
+target_include_directories(kamping_ecosystem_kokkos INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(kamping_ecosystem_kokkos INTERFACE kamping::v2 Kokkos::kokkos)
 
 if (NOT KAMPING_DISABLE_KOKKOS_COMM)
@@ -45,11 +46,8 @@ if (NOT KAMPING_DISABLE_KOKKOS_COMM)
     )
     FetchContent_MakeAvailable(KokkosComm)
 
-    target_include_directories(kamping_ecosystem_kokkos INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include/with_comm)
+    target_compile_definitions(kamping_ecosystem_kokkos INTERFACE KAMPING_HAS_KOKKOS_COMM)
     target_link_libraries(kamping_ecosystem_kokkos INTERFACE KokkosComm::KokkosComm)
-else()
-    target_include_directories(kamping_ecosystem_kokkos INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include/without_comm)
-
 endif ()
 
 add_library(kamping::ecosystem_kokkos ALIAS kamping_ecosystem_kokkos)
