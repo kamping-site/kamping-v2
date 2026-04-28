@@ -41,7 +41,7 @@ class kokkos_view {
 
     mutable bool   packed_        = false;
     mutable bool   needs_unpack_  = false;
-    mutable bool   needs_resize_  = false;
+    bool           needs_resize_  = false;
     bool           is_contiguous_ = false;
     std::ptrdiff_t recv_count_    = 0;
 
@@ -84,24 +84,20 @@ public:
     explicit kokkos_view(view_type&& view)
         requires(is_owning)
         : base_(std::move(view)),
-          is_contiguous_(view.span_is_contiguous()) {}
+          is_contiguous_(base_.span_is_contiguous()) {}
 
-    view_type& operator*() {
+    void unwrap() const {
         if (!is_contiguous_ && needs_unpack_)
             unpack();
-        return base_ref();
     }
 
     view_type const& operator*() const {
-        if (!is_contiguous_ && needs_unpack_)
-            unpack();
+        unwrap();
         return base_ref();
     }
 
-    void unwrap() const {
-        if (!is_contiguous_ && needs_unpack_) {
-            unpack();
-        }
+    view_type& operator*() {
+        return const_cast<view_type&>(std::as_const(*this).operator*());
     }
 
     view_type* operator->() {
@@ -117,49 +113,46 @@ public:
             && requires(view_type& v, typename view_type::size_type m) { Kokkos::resize(v, m); }
         )
     {
-        auto const current_size = static_cast<std::ptrdiff_t>(base_ref().size());
-        if (n == current_size) {
-            return;
-        }
-
-        recv_count_ = n;
-
-        KAMPING_ASSERT(current_size == 0, "Wrapped kokkos_view size must be zero for resizing");
-
         packed_       = false;
         needs_unpack_ = false;
+
+        auto const current_size = static_cast<std::ptrdiff_t>(base_ref().size());
+        if (n == current_size)
+            return;
+
+        recv_count_ = n;
+        KAMPING_ASSERT(current_size == 0, "Wrapped kokkos_view size must be zero for resizing");
         needs_resize_ = true;
     }
 
     std::ptrdiff_t mpi_count() const {
-        if (needs_resize_) {
+        if (needs_resize_)
             return recv_count_;
-        }
         return static_cast<std::ptrdiff_t>(base_ref().size());
     }
 
-    MPI_Datatype mpi_type() const
+    MPI_Datatype mpi_type() const noexcept
         requires kamping::types::is_builtin_type_v<scalar_type>
     {
         return kamping::types::builtin_type<scalar_type>().data_type();
     }
 
-    void* mpi_ptr() const {
-        // lazy resize if possible
+    void const* mpi_ptr() const {
+        if (is_contiguous_)
+            return base_ref().data();
+        if (!needs_unpack_ && !packed_)
+            pack();
+        return packed_storage_.data();
+    }
+
+    void* mpi_ptr() {
         if constexpr (requires(view_type& v, typename view_type::size_type m) { Kokkos::resize(v, m); }) {
             if (needs_resize_) {
-                Kokkos::resize(base_ref(), static_cast<view_type::size_type>(recv_count_));
+                Kokkos::resize(base_ref(), static_cast<typename view_type::size_type>(recv_count_));
                 needs_resize_ = false;
             }
         }
-
-        if (is_contiguous_) {
-            return base_ref().data();
-        }
-        if (!needs_unpack_ && !packed_) {
-            pack();
-        }
-        return packed_storage_.data();
+        return const_cast<void*>(std::as_const(*this).mpi_ptr());
     }
 };
 
