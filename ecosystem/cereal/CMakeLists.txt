@@ -40,4 +40,5 @@ add_library(kamping::ecosystem::cereal ALIAS kamping_ecosystem_cereal)
 
 if (PROJECT_IS_TOP_LEVEL OR KAMPING_BUILD_EXAMPLES_AND_TESTS)
     add_subdirectory(examples)
+    add_subdirectory(tests)
 endif ()
