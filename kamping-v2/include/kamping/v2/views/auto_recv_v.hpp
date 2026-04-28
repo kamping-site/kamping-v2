@@ -47,6 +47,16 @@ auto auto_recv_v() {
     return Cont{} | kamping::v2::views::auto_recv_v;
 }
 
+/// @brief Convenience factory for a fully-managed variadic receive buffer with automatic type registration.
+///
+/// Like the zero-argument overload but additionally attaches the MPI datatype for `T`
+/// by calling `pool.register_type<T>()`, making it suitable for non-builtin types.
+///
+///   v2::allgatherv(send_data, v2::auto_recv_v<MyStruct>(pool), comm);
+///
+/// @tparam T    Element type satisfying `has_static_type_v`.
+/// @tparam Cont Container type (must support `resize(n)` and `data()`).
+/// @param pool  Type pool used to commit and cache the MPI datatype for `T`.
 template <typename T, typename Cont = std::vector<T>>
 auto auto_recv_v(type_pool& pool) {
     return Cont{} | views::with_auto_pool(pool) | kamping::v2::views::auto_recv_v;
