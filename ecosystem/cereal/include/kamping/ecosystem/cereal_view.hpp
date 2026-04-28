@@ -21,13 +21,15 @@ namespace kamping::v2 {
 /// Construct via `obj | kamping::views::serialize` (non-owning, lvalue) or
 /// `kamping::v2::views::deserialize<T>()` (owning, default-constructed recv target).
 ///
-/// **Send path** — `mpi_count()` / `mpi_ptr()` lazily serialize the wrapped object into
-/// `buffer_` on first access; the `ostringstream` result is moved (no copy) into `buffer_`.
+/// **Send path** — `mpi_count()` / `mpi_ptr() const` lazily serialize the wrapped object
+/// into `buffer_` on first access; the `ostringstream` result is moved (no copy) into
+/// `buffer_`. A const view satisfies `send_buffer` but not `recv_buffer`.
 ///
 /// **Recv path** — `set_recv_count(n)` records the incoming byte count; `mpi_ptr()`
-/// lazily resizes `buffer_` to that size so MPI can write into it directly; `operator*` /
-/// `unwrap()` then trigger lazy deserialization via a zero-copy `membuf` streambuf and
-/// clear `buffer_` to leave a deterministic empty state. Requires non-const `T`.
+/// (non-const) lazily resizes `buffer_` to that size so MPI can write into it directly;
+/// `operator*` / `unwrap()` then trigger lazy deserialization via a zero-copy `membuf`
+/// streambuf and clear `buffer_` to leave a deterministic empty state. Requires
+/// non-const `T`; a non-const view satisfies both `send_buffer` and `recv_buffer`.
 ///
 /// Range semantics are intentionally omitted. Access the wrapped object via `operator*` or
 /// `operator->`; for ranges, dereference first: `for (auto& x : *view) { … }`.
@@ -44,7 +46,7 @@ class serialization_view {
     mutable std::basic_string<char, std::char_traits<char>, Alloc> buffer_;
     mutable bool                                                   serialized_            = false;
     mutable bool                                                   needs_deserialization_ = false;
-    mutable bool                                                   needs_resize_          = false;
+    bool                                                           needs_resize_          = false;
     std::ptrdiff_t                                                 recv_count_            = 0;
 
     // base_ is mutable, so this is safe from const methods.
@@ -58,12 +60,12 @@ class serialization_view {
     }
 
     void do_serialize() const {
-        std::basic_ostringstream<char> oss;
+        std::basic_ostringstream<char, std::char_traits<char>, Alloc> oss;
         {
             cereal::BinaryOutputArchive ar(oss);
             ar(base_ref());
         }
-        buffer_     = std::move(oss).str(); // move — no copy
+        buffer_     = std::move(oss).str(); // move when allocators compare equal
         serialized_ = true;
     }
 
@@ -97,26 +99,23 @@ public:
         requires(is_owning)
         : base_(std::move(obj)) {}
 
-    /// Dereference to the wrapped object, triggering deserialization if needed.
-    value_type& operator*() {
-        if (needs_deserialization_)
-            do_deserialize();
-        return base_ref();
-    }
-
-    /// \overload
-    value_type const& operator*() const {
-        if (needs_deserialization_)
-            do_deserialize();
-        return base_ref();
-    }
-
     /// Triggers deserialization if needed without returning a reference.
     /// Equivalent to `(void)**this` but expresses intent at call sites that only care
     /// about the side effect (e.g. immediately followed by `operator->`).
     void unwrap() const {
         if (needs_deserialization_)
             do_deserialize();
+    }
+
+    /// Dereference to the wrapped object, triggering deserialization if needed.
+    value_type const& operator*() const {
+        unwrap();
+        return base_ref();
+    }
+
+    /// \overload
+    value_type& operator*() {
+        return const_cast<value_type&>(std::as_const(*this).operator*());
     }
 
     /// Arrow operator; triggers deserialization if needed.
@@ -156,20 +155,27 @@ public:
     }
 
     /// Returns `MPI_BYTE` (`char`). Serialized payloads are always transported as raw bytes.
-    MPI_Datatype mpi_type() const {
+    MPI_Datatype mpi_type() const noexcept {
         return kamping::types::builtin_type<char>::data_type();
     }
 
-    /// Returns a mutable pointer: satisfies send_buffer (void const* accepted) and
-    /// recv_buffer (void* required). Serializes lazily on the send side.
-    void* mpi_ptr() const {
+    /// Send-side pointer. Serializes lazily on first call; returns `void const*` so that
+    /// a const view satisfies `send_buffer` but not `recv_buffer`.
+    void const* mpi_ptr() const {
+        if (!needs_deserialization_ && !serialized_)
+            do_serialize();
+        return buffer_.data();
+    }
+
+    /// Recv-side pointer. Resizes `buffer_` to `recv_count_` bytes on the first call
+    /// after `set_recv_count()`, then returns `void*` so MPI can write directly into it.
+    /// A non-const view satisfies both `send_buffer` and `recv_buffer`.
+    void* mpi_ptr() {
         if (needs_resize_) {
             buffer_.resize(static_cast<std::size_t>(recv_count_));
             needs_resize_ = false;
         }
-        if (!needs_deserialization_ && !serialized_)
-            do_serialize();
-        return buffer_.data();
+        return const_cast<void*>(std::as_const(*this).mpi_ptr());
     }
 };
 
