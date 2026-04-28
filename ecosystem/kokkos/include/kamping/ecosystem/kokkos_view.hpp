@@ -159,8 +159,10 @@ public:
     }
 
     void const* mpi_ptr() const {
-        if (is_contiguous_)
+        if (is_contiguous_) {
+            execution_space{}.fence();
             return base_.data();
+        }
         if (!needs_unpack_ && !packed_)
             pack();
         return packed_storage_.data();
@@ -173,7 +175,16 @@ public:
                 needs_resize_ = false;
             }
         }
-        return const_cast<void*>(std::as_const(*this).mpi_ptr());
+        if (is_contiguous_) {
+            execution_space{}.fence();
+            return base_.data();
+        }
+        if (!packed_) {
+            packed_storage_ = make_packed(base_);
+            packed_         = true;
+            needs_unpack_   = true;
+        }
+        return packed_storage_.data();
     }
 };
 
