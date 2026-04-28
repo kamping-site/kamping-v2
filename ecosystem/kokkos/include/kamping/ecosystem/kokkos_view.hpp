@@ -18,9 +18,8 @@ namespace kamping::v2 {
 
 /// Wraps a Kokkos::View and packs it into a contiguous Kokkos::View.
 ///
-/// T is the wrapped Kokkos::View type: a (possibly const) lvalue reference for non-owning
-/// wrappers, or a value type for owning wrappers. If the wrapped Kokkos::View is contiguous
-/// this wrapper does nothing.
+/// Always stores an owned copy of the Kokkos::View handle (cheap: ref-counted pointer).
+/// If the wrapped view is already contiguous this wrapper does nothing.
 ///
 /// Send path: mpi_count()/mpi_ptr() const lazily pack the wrapped view into a contiguous
 ///            buffer on first access via deep_copy().
@@ -38,12 +37,10 @@ template <typename T, bool is_resizable = false>
     requires Kokkos::is_view_v<std::remove_reference_t<T>>
 #endif
 class kokkos_view {
-    static constexpr bool is_owning = !std::is_lvalue_reference_v<T>;
-    using view_type                 = std::remove_reference_t<T>;
+    using view_type = std::remove_reference_t<T>;
 
     using scalar_type     = std::remove_const_t<typename view_type::value_type>;
     using execution_space = view_type::execution_space;
-    using stored_t        = std::conditional_t<is_owning, view_type, view_type*>;
 
 #ifdef KAMPING_HAS_KOKKOS_COMM
     using packed_view_t = KokkosComm::Impl::contiguous_view_t<view_type>;
@@ -54,7 +51,7 @@ class kokkos_view {
         typename view_type::memory_space>;
 #endif
 
-    mutable stored_t      base_;
+    mutable view_type      base_;
     mutable packed_view_t packed_storage_;
 
     mutable bool   packed_        = false;
@@ -62,13 +59,6 @@ class kokkos_view {
     bool           needs_resize_  = false;
     bool           is_contiguous_ = false;
     std::ptrdiff_t recv_count_    = 0;
-
-    view_type& base_ref() const noexcept {
-        if constexpr (is_owning)
-            return base_;
-        else
-            return *base_;
-    }
 
     static packed_view_t make_packed(view_type const& v) {
         execution_space   exec;
@@ -88,8 +78,8 @@ class kokkos_view {
     void pack() const
         requires requires(view_type from, packed_view_t to) { Kokkos::deep_copy(to, from); }
     {
-        packed_storage_ = make_packed(base_ref());
-        Kokkos::deep_copy(packed_storage_, base_ref());
+        packed_storage_ = make_packed(base_);
+        Kokkos::deep_copy(packed_storage_, base_);
         packed_       = true;
         needs_unpack_ = true;
     }
@@ -97,19 +87,17 @@ class kokkos_view {
     void unpack() const
         requires requires(view_type to, packed_view_t from) { Kokkos::deep_copy(to, from); }
     {
-        Kokkos::deep_copy(base_ref(), packed_storage_);
+        Kokkos::deep_copy(base_, packed_storage_);
         needs_unpack_ = false;
-        packed_       = false; // packed_storage_ no longer reflects base_ref()
+        packed_       = false;
     }
 
 public:
-    explicit kokkos_view(view_type& view)
-        requires(!is_owning)
-        : base_(&view),
+    explicit kokkos_view(view_type const& view)
+        : base_(view),
           is_contiguous_(view.span_is_contiguous()) {}
 
     explicit kokkos_view(view_type&& view)
-        requires(is_owning)
         : base_(std::move(view)),
           is_contiguous_(base_.span_is_contiguous()) {}
 
@@ -120,7 +108,7 @@ public:
 
     view_type const& operator*() const {
         unwrap();
-        return base_ref();
+        return base_;
     }
 
     view_type& operator*() {
@@ -144,7 +132,7 @@ public:
         packed_       = false;
         needs_unpack_ = false;
 
-        auto const current_size = static_cast<std::ptrdiff_t>(base_ref().size());
+        auto const current_size = static_cast<std::ptrdiff_t>(base_.size());
         if (n == current_size)
             return;
 
@@ -156,7 +144,7 @@ public:
     std::ptrdiff_t mpi_count() const {
         if (needs_resize_)
             return recv_count_;
-        return static_cast<std::ptrdiff_t>(base_ref().size());
+        return static_cast<std::ptrdiff_t>(base_.size());
     }
 
     MPI_Datatype mpi_type() const noexcept
@@ -167,7 +155,7 @@ public:
 
     void const* mpi_ptr() const {
         if (is_contiguous_)
-            return base_ref().data();
+            return base_.data();
         if (!needs_unpack_ && !packed_)
             pack();
         return packed_storage_.data();
@@ -176,7 +164,7 @@ public:
     void* mpi_ptr() {
         if constexpr (requires(view_type& v, typename view_type::size_type m) { Kokkos::resize(v, m); }) {
             if (needs_resize_) {
-                Kokkos::resize(base_ref(), static_cast<typename view_type::size_type>(recv_count_));
+                Kokkos::resize(base_, static_cast<typename view_type::size_type>(recv_count_));
                 needs_resize_ = false;
             }
         }
@@ -185,7 +173,7 @@ public:
 };
 
 template <typename T>
-kokkos_view(T&) -> kokkos_view<T&>;
+kokkos_view(T const&) -> kokkos_view<T>;
 
 template <typename T>
     requires(!std::is_lvalue_reference_v<T>)
