@@ -33,8 +33,16 @@ namespace kamping::v2 {
 template <typename T, bool is_resizable = false>
 #ifdef KAMPING_HAS_KOKKOS_COMM
     requires KokkosComm::KokkosView<std::remove_reference_t<T>>
+          && (!is_resizable
+              || requires(
+                     std::remove_reference_t<T>& v, typename std::remove_reference_t<T>::size_type m
+                 ) { Kokkos::resize(v, m); })
 #else
     requires Kokkos::is_view_v<std::remove_reference_t<T>>
+          && (!is_resizable
+              || requires(
+                     std::remove_reference_t<T>& v, typename std::remove_reference_t<T>::size_type m
+                 ) { Kokkos::resize(v, m); })
 #endif
 class kokkos_view {
     using view_type = std::remove_reference_t<T>;
@@ -124,10 +132,7 @@ public:
     }
 
     void set_recv_count(std::ptrdiff_t n)
-        requires(
-            is_resizable && view_type::rank == 1
-            && requires(view_type& v, typename view_type::size_type m) { Kokkos::resize(v, m); }
-        )
+        requires(is_resizable && view_type::rank == 1)
     {
         packed_       = false;
         needs_unpack_ = false;
@@ -162,7 +167,7 @@ public:
     }
 
     void* mpi_ptr() {
-        if constexpr (requires(view_type& v, typename view_type::size_type m) { Kokkos::resize(v, m); }) {
+        if constexpr (is_resizable) {
             if (needs_resize_) {
                 Kokkos::resize(base_, static_cast<typename view_type::size_type>(recv_count_));
                 needs_resize_ = false;
