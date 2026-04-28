@@ -2,6 +2,7 @@
 
 #include <vector>
 
+#include "kamping/v2/type_pool.hpp"
 #include "kamping/v2/views/adaptor.hpp"
 #include "kamping/v2/views/auto_counts_view.hpp"
 #include "kamping/v2/views/auto_displs_view.hpp"
@@ -44,6 +45,11 @@ namespace kamping::v2 {
 template <typename T, typename Cont = std::vector<T>>
 auto auto_recv_v() {
     return Cont{} | kamping::v2::views::auto_recv_v;
+}
+
+template <typename T, typename Cont = std::vector<T>>
+auto auto_recv_v(type_pool& pool) {
+    return Cont{} | views::with_auto_pool(pool) | kamping::v2::views::auto_recv_v;
 }
 
 } // namespace kamping::v2
