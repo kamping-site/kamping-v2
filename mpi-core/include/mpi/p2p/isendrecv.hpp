@@ -6,6 +6,8 @@
 #include "mpi/error.hpp"
 #include "mpi/handle.hpp"
 
+#if MPI_VERSION >= 4
+
 namespace mpi::experimental {
 
 template <
@@ -47,3 +49,5 @@ void isendrecv(
 }
 
 } // namespace mpi::experimental
+
+#endif // MPI_VERSION >= 4
