@@ -1,5 +1,5 @@
 #include <cstddef>
-#include <print>
+#include <iostream>
 #include <string>
 #include <utility>
 #include <vector>
@@ -27,7 +27,7 @@ void print_matrix(int rank, int size, matrix_t const& matrix, int cols_to_print)
         out += "]\n";
     }
     out += "\n";
-    std::print("{}", out);
+    std::cout << out;
 }
 
 int main(int argc, char* argv[]) {

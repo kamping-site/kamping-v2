@@ -1,5 +1,5 @@
 #include <cstddef>
-#include <print>
+#include <iostream>
 #include <vector>
 
 #include <mpi.h>
@@ -46,7 +46,9 @@ int main(int argc, char* argv[]) {
     } else if (world.rank() == 1) {
         std::vector<int> v;
         kamping::v2::recv(v | kamping::v2::views::resize);
-        std::println("result = {}", v);
+        std::cout << "result = [";
+        for (std::size_t i = 0; i < v.size(); ++i) { if (i) std::cout << ", "; std::cout << v[i]; }
+        std::cout << "]\n";
     }
 
     if (world.rank() == 0) {
@@ -55,7 +57,9 @@ int main(int argc, char* argv[]) {
     } else if (world.rank() == 1) {
         MPI_Status status;
         auto       v = kamping::v2::irecv(std::vector<int>{10} | kamping::v2::views::resize).wait(&status);
-        std::println("v = {}", v);
+        std::cout << "v = [";
+        for (std::size_t i = 0; i < v.size(); ++i) { if (i) std::cout << ", "; std::cout << v[i]; }
+        std::cout << "]\n";
     }
 
     // sendrecv: each rank simultaneously sends to the other and receives from the other
@@ -64,7 +68,9 @@ int main(int argc, char* argv[]) {
         std::vector<int> send_data = (world.rank() == 0) ? std::vector<int>{1, 2, 3} : std::vector<int>{4, 5, 6};
         std::vector<int> recv_data;
         auto [_, recvd] = kamping::v2::sendrecv(send_data, peer, recv_data | kamping::v2::views::resize, peer, world);
-        std::println("rank {} recvd = {}", world.rank(), recvd);
+        std::cout << "rank " << world.rank() << " recvd = [";
+        for (std::size_t i = 0; i < recvd.size(); ++i) { if (i) std::cout << ", "; std::cout << recvd[i]; }
+        std::cout << "]\n";
     }
 
     // isendrecv: non-blocking sendrecv, wait() to retrieve the result
@@ -74,7 +80,9 @@ int main(int argc, char* argv[]) {
         std::vector<int> recv_data;
         auto [_2, recvd2] =
             kamping::v2::isendrecv(send_data, peer, recv_data | kamping::v2::views::resize, peer, world).wait();
-        std::println("rank {} isendrecv recvd = {}", world.rank(), recvd2);
+        std::cout << "rank " << world.rank() << " isendrecv recvd = [";
+        for (std::size_t i = 0; i < recvd2.size(); ++i) { if (i) std::cout << ", "; std::cout << recvd2[i]; }
+        std::cout << "]\n";
     }
     return 0;
 }

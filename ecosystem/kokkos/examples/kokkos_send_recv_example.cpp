@@ -1,4 +1,4 @@
-#include <print>
+#include <iostream>
 
 #include <Kokkos_Core.hpp>
 #include <mpi.h>
@@ -12,11 +12,11 @@
 
 template<typename view>
 void print_row(view& to_print) {
-    std::print("[");
+    std::cout << '[';
     for (std::size_t j = 0; j < to_print.extent(0); ++j) {
-        std::print("{}{}", to_print(j), (j + 1 < to_print.extent(0)) ? ", " : "");
+        std::cout << to_print(j) << ((j + 1 < to_print.extent(0)) ? ", " : "");
     }
-    std::print("]\n");
+    std::cout << "]\n";
 }
 
 

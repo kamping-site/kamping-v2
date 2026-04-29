@@ -1,4 +1,4 @@
-#include <print>
+#include <iostream>
 #include <string>
 #include <unordered_map>
 
@@ -24,7 +24,9 @@ int main(int argc, char* argv[]) {
     } else if (world.rank() == 1) {
         auto result =
             kamping::v2::recv(kamping::v2::views::deserialize<std::unordered_map<std::string, int>>(), world);
-        std::println("result = {}", *result);
+        std::cout << "result = {";
+        for (auto const& [k, v] : *result) std::cout << k << ": " << v << ", ";
+        std::cout << "}\n";
     }
 
     // Non-blocking serialized send
@@ -33,7 +35,9 @@ int main(int argc, char* argv[]) {
         kamping::v2::isend(map | kamping::v2::views::serialize, 1, world).wait();
     } else if (world.rank() == 1) {
         auto result = kamping::v2::recv(kamping::v2::views::deserialize<std::unordered_map<std::string, int>>(), world);
-        std::println("result = {}", *result);
+        std::cout << "result = {";
+        for (auto const& [k, v] : *result) std::cout << k << ": " << v << ", ";
+        std::cout << "}\n";
     }
 
     return 0;
