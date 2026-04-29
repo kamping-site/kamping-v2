@@ -12,11 +12,18 @@
 
 template <typename View>
 void print_row(View const& to_print) {
-    auto h = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{}, to_print);
+    using non_const_t = std::remove_const_t<typename View::value_type>;
+    // Non-contiguous device views cannot be copied directly to host; pack into
+    // a contiguous device buffer first (same pattern as kokkos_view::pack).
+    Kokkos::View<non_const_t*, typename View::memory_space> buf(
+        Kokkos::view_alloc(typename View::execution_space{}, Kokkos::WithoutInitializing, "print_row_tmp"),
+        to_print.extent(0)
+    );
+    Kokkos::deep_copy(buf, to_print);
+    auto h = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{}, buf);
     std::cout << '[';
-    for (std::size_t j = 0; j < h.extent(0); ++j) {
+    for (std::size_t j = 0; j < h.extent(0); ++j)
         std::cout << h(j) << ((j + 1 < h.extent(0)) ? ", " : "");
-    }
     std::cout << "]\n";
 }
 
