@@ -10,14 +10,16 @@
 #include "kamping/v2/p2p/send.hpp"
 #include "mpi/comm.hpp"
 
-// Disable matched probing for any Kokkos::View whose memory space is not
+// Disable matched probing for Kokkos::View types whose memory space is not
 // directly accessible from the host (e.g. CudaSpace, HIPSpace). Those
 // implementations do not support MPI_Mrecv on device memory; infer() falls
 // back to plain MPI_Probe + MPI_Recv.
-template <typename V>
-    requires(Kokkos::is_view_v<V>
-             && !Kokkos::SpaceAccessibility<Kokkos::HostSpace, typename V::memory_space>::accessible)
-inline constexpr bool kamping::v2::supports_matched_probe<V> = false;
+namespace kamping::v2 {
+template <typename DataType, typename... Properties>
+inline constexpr bool supports_matched_probe<Kokkos::View<DataType, Properties...>> =
+    Kokkos::SpaceAccessibility<Kokkos::HostSpace,
+                               typename Kokkos::View<DataType, Properties...>::memory_space>::accessible;
+} // namespace kamping::v2
 
 template <typename View>
 void print_row(View const& to_print) {
