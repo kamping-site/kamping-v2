@@ -14,15 +14,17 @@
 #include "kamping/v2/views/with_counts_view.hpp"
 #include "mpi/comm.hpp"
 
-using matrix_t = Kokkos::View<int**, Kokkos::LayoutRight, Kokkos::HostSpace>;
+using matrix_t = Kokkos::View<int**, Kokkos::LayoutRight>;
 
-void print_matrix(int rank, int size, matrix_t const& matrix, int cols_to_print) {
+template <typename MatrixT>
+void print_matrix(int rank, int size, MatrixT const& matrix, int cols_to_print) {
+    auto h = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{}, matrix);
     std::string out = "rank " + std::to_string(rank) + "\n";
     for (int row = 0; row < size; ++row) {
         out += "  row " + std::to_string(row) + ": [";
         for (int col = 0; col < cols_to_print; ++col) {
             if (col > 0) out += ", ";
-            out += std::to_string(matrix(row, col));
+            out += std::to_string(h(row, col));
         }
         out += "]\n";
     }
@@ -40,11 +42,7 @@ int main(int argc, char* argv[]) {
         int const size = world.size();
 
         matrix_t send_matrix("send_matrix", static_cast<std::size_t>(size), static_cast<std::size_t>(size));
-        for (std::size_t i = 0; i < send_matrix.extent(0); ++i) {
-            for (std::size_t j = 0; j < send_matrix.extent(1); ++j) {
-                send_matrix(i, j) = rank;
-            }
-        }
+        Kokkos::deep_copy(send_matrix, rank);
 
         std::vector<int> send_counts(static_cast<std::size_t>(size));
         for (int dst = 0; dst < size; ++dst) {
@@ -71,11 +69,7 @@ int main(int argc, char* argv[]) {
                 static_cast<std::size_t>(size),
                 static_cast<std::size_t>(size)
             );
-            for (std::size_t i = 0; i < recv_matrix_full.extent(0); ++i) {
-                for (std::size_t j = 0; j < recv_matrix_full.extent(1); ++j) {
-                    recv_matrix_full(i, j) = -1;
-                }
-            }
+            Kokkos::deep_copy(recv_matrix_full, -1);
 
             auto recv_subview = Kokkos::subview(
                 recv_matrix_full,
@@ -99,11 +93,7 @@ int main(int argc, char* argv[]) {
                 static_cast<std::size_t>(size),
                 static_cast<std::size_t>(size)
             );
-            for (std::size_t i = 0; i < recv_matrix_full.extent(0); ++i) {
-                for (std::size_t j = 0; j < recv_matrix_full.extent(1); ++j) {
-                    recv_matrix_full(i, j) = -1;
-                }
-            }
+            Kokkos::deep_copy(recv_matrix_full, -1);
 
             auto recv_subview = Kokkos::subview(
                 recv_matrix_full,

@@ -190,7 +190,7 @@ inline constexpr struct kokkos_fn : kamping::v2::adaptor_closure<kokkos_fn> {
 /// The underlying Kokkos::View is accessible via .underlying() on the result.
 template <typename T>
 auto auto_kokkos_view(std::string const& label) {
-    using view_t = Kokkos::View<T*, Kokkos::LayoutRight, Kokkos::HostSpace>;
+    using view_t = Kokkos::View<T*, Kokkos::LayoutRight>;
     return kamping::v2::resize_view(kamping::v2::kokkos_view<view_t>(view_t(label, 0)));
 }
 
