@@ -13,36 +13,29 @@
 #include <kamping/kassert/kassert.hpp>
 
 #include "kamping/v2/views/adaptor.hpp"
+#include "kamping/v2/views/resize_view.hpp"
 
 namespace kamping::v2 {
 
-/// Wraps a Kokkos::View and packs it into a contiguous Kokkos::View.
+/// Wraps a Kokkos::View and presents it as an MPI data buffer.
 ///
 /// Always stores an owned copy of the Kokkos::View handle (cheap: ref-counted pointer).
-/// If the wrapped view is already contiguous this wrapper does nothing.
+/// If the wrapped view is already contiguous this wrapper does nothing extra.
 ///
 /// Send path: mpi_count()/mpi_ptr() const lazily pack the wrapped view into a contiguous
 ///            buffer on first access via deep_copy().
-/// Recv path: set_recv_count(n) only works if the template parameter is_resizable is set and
-///            the wrapped Kokkos::View has rank == 1. mpi_ptr() lazily resizes and returns
-///            a mutable pointer; unwrap()/operator* trigger the deep_copy back.
+/// Recv path: mpi_resize_for_receive(n) resizes the wrapped rank-1 view and resets pack
+///            state; compose with | resize for automatic sizing via infer().
+///            mpi_ptr() returns a mutable pointer; unwrap()/operator* trigger deep_copy back.
 ///
 /// When built with KokkosComm (KAMPING_HAS_KOKKOS_COMM defined), the concept constraint
 /// and contiguous-buffer type are delegated to KokkosComm::Impl; otherwise a plain
 /// Kokkos::View with the same layout and memory space is used.
-template <typename T, bool is_resizable = false>
+template <typename T>
 #ifdef KAMPING_HAS_KOKKOS_COMM
     requires KokkosComm::KokkosView<std::remove_reference_t<T>>
-          && (!is_resizable
-              || requires(
-                     std::remove_reference_t<T>& v, typename std::remove_reference_t<T>::size_type m
-                 ) { Kokkos::resize(v, m); })
 #else
     requires Kokkos::is_view_v<std::remove_reference_t<T>>
-          && (!is_resizable
-              || requires(
-                     std::remove_reference_t<T>& v, typename std::remove_reference_t<T>::size_type m
-                 ) { Kokkos::resize(v, m); })
 #endif
 class kokkos_view {
     using view_type = std::remove_reference_t<T>;
@@ -59,14 +52,12 @@ class kokkos_view {
         typename view_type::memory_space>;
 #endif
 
-    mutable view_type      base_;
+    mutable view_type     base_;
     mutable packed_view_t packed_storage_;
 
-    mutable bool   packed_        = false;
-    mutable bool   needs_unpack_  = false;
-    bool           needs_resize_  = false;
-    bool           is_contiguous_ = false;
-    std::ptrdiff_t recv_count_    = 0;
+    mutable bool packed_        = false;
+    mutable bool needs_unpack_  = false;
+    bool         is_contiguous_ = false;
 
     static packed_view_t make_packed(view_type const& v) {
         execution_space   exec;
@@ -131,24 +122,19 @@ public:
         return std::addressof(**this);
     }
 
-    void set_recv_count(std::ptrdiff_t n)
-        requires(is_resizable && view_type::rank == 1)
+    /// Resize the wrapped view to hold n elements and reset pack state.
+    /// Only available for rank-1 views that support Kokkos::resize.
+    /// Used by resize_for_receive() to implement the | resize protocol.
+    void mpi_resize_for_receive(std::ptrdiff_t n)
+        requires(view_type::rank == 1
+                 && requires(view_type& v, typename view_type::size_type m) { Kokkos::resize(v, m); })
     {
+        Kokkos::resize(base_, static_cast<typename view_type::size_type>(n));
         packed_       = false;
         needs_unpack_ = false;
-
-        auto const current_size = static_cast<std::ptrdiff_t>(base_.size());
-        if (n == current_size)
-            return;
-
-        recv_count_ = n;
-        KAMPING_ASSERT(current_size == 0, "Wrapped kokkos_view size must be zero for resizing");
-        needs_resize_ = true;
     }
 
     std::ptrdiff_t mpi_count() const {
-        if (needs_resize_)
-            return recv_count_;
         return static_cast<std::ptrdiff_t>(base_.size());
     }
 
@@ -169,12 +155,6 @@ public:
     }
 
     void* mpi_ptr() {
-        if constexpr (is_resizable) {
-            if (needs_resize_) {
-                Kokkos::resize(base_, static_cast<typename view_type::size_type>(recv_count_));
-                needs_resize_ = false;
-            }
-        }
         if (is_contiguous_) {
             execution_space{}.fence();
             return base_.data();
@@ -198,6 +178,7 @@ kokkos_view(T&&) -> kokkos_view<T>;
 } // namespace kamping::v2
 
 namespace kamping::v2::views {
+
 inline constexpr struct kokkos_fn : kamping::v2::adaptor_closure<kokkos_fn> {
     template <typename R>
     constexpr auto operator()(R&& r) const {
@@ -205,14 +186,15 @@ inline constexpr struct kokkos_fn : kamping::v2::adaptor_closure<kokkos_fn> {
     }
 } kokkos{};
 
-/// Returns an owning rank-1 kokkos_view for receive with a custom label.
+/// Returns a resize_view wrapping an owning rank-1 kokkos_view for automatic-size receive.
+/// The underlying Kokkos::View is accessible via .underlying() on the result.
 template <typename T>
 auto auto_kokkos_view(std::string const& label) {
     using view_t = Kokkos::View<T*, Kokkos::LayoutRight, Kokkos::HostSpace>;
-    return kamping::v2::kokkos_view<view_t, true>(view_t(label, 0));
+    return kamping::v2::resize_view(kamping::v2::kokkos_view<view_t>(view_t(label, 0)));
 }
 
-/// Returns an owning rank-1 kokkos_view for receive.
+/// Returns a resize_view wrapping an owning rank-1 kokkos_view for automatic-size receive.
 /// Template parameter is the element type, e.g. auto_kokkos_view<int>().
 template <typename T>
 auto auto_kokkos_view() {

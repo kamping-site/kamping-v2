@@ -54,7 +54,10 @@ concept recv_buffer {
     type(t) → MPI_Datatype
 };
 
-concept data_buffer = send_buffer || recv_buffer;
+// data_buffer requires count + ptr (any pointer) + type
+// send_buffer and recv_buffer both extend data_buffer,
+// distinguished by ptr() constness (void const* vs void*)
+concept data_buffer = /* count + ptr + type */;
 
 // Variadic operations (allgatherv, alltoallv, etc.)
 concept send_buffer_v = send_buffer + {
@@ -90,7 +93,7 @@ struct mpi::experimental::buffer_traits<MyBuffer> {
 
 All MPI handles (`MPI_Comm`, `MPI_Request`, `MPI_Datatype`, `MPI_Status`, `MPI_Message`) are extracted via `mpi::experimental::handle(x)` and `mpi::experimental::handle_ptr(x)`, with the same 3-tier dispatch:
 
-1. **`native_handle_traits<T>` specialization**
+1. **`handle_traits<T>` specialization**
 2. **Member functions** — `t.mpi_handle()`, `t.mpi_handle_ptr()`
 3. **Builtin passthrough** — raw `MPI_Comm`, `MPI_Request`, etc. pass through unchanged
 
@@ -104,7 +107,7 @@ public:
 };
 
 template <>
-struct mpi::experimental::native_handle_traits<MyComm> {
+struct mpi::experimental::handle_traits<MyComm> {
     static MPI_Comm handle(MyComm const& c) { return c.get(); }
 };
 
@@ -427,7 +430,7 @@ struct mpi::experimental::buffer_traits<MyBuffer> { /* ... */ };
 
 ### Custom MPI Handles
 
-Implement `mpi_handle()` or specialize `native_handle_traits`:
+Implement `mpi_handle()` or specialize `handle_traits`:
 
 ```cpp
 class CommWrapper {
@@ -438,7 +441,7 @@ public:
 
 // Or non-intrusively:
 template <>
-struct mpi::experimental::native_handle_traits<CommWrapper> {
+struct mpi::experimental::handle_traits<CommWrapper> {
     static MPI_Comm handle(CommWrapper const& c) { return c.get_comm(); }
 };
 ```
@@ -522,7 +525,7 @@ ctest --test-dir build -R test_v2_allgather  # Runs with 1, 2, 4, 8 ranks
 | New collective | `include/mpi/collectives/*.hpp` (core), `include/kamping/v2/collectives/*.hpp` (v2), `include/kamping/v2/infer.hpp` (infer tag + overload) | `mpi::experimental::foo()`, `comm_op::foo`, `infer(comm_op::foo, ...)` |
 | New view adaptor | `include/kamping/v2/views/*.hpp` | Derive from `view_interface<Derived>`, implement `base()` |
 | Custom buffer | User code | Specialize `buffer_traits<T>` or provide `mpi_count()`, `mpi_ptr()`, `mpi_type()` |
-| Custom handle | User code | Specialize `native_handle_traits<T>` or provide `mpi_handle()` |
+| Custom handle | User code | Specialize `handle_traits<T>` or provide `mpi_handle()` |
 | Non-blocking variant | Same files as blocking | Return `iresult<Buf>` instead of `void` |
 
 ---

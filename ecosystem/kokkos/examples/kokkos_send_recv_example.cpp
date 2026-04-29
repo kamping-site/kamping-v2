@@ -6,6 +6,7 @@
 #include "kamping/v2/environment.hpp"
 #include "kamping/ecosystem/kokkos_view.hpp"
 #include "kamping/v2/p2p/recv.hpp"
+#include "kamping/v2/p2p/irecv.hpp"
 #include "kamping/v2/p2p/send.hpp"
 #include "mpi/comm.hpp"
 
@@ -42,10 +43,11 @@ int main(int argc, char* argv[]) {
     } else if (world.rank() == 1) {
         matrix_t matrix("recv_matrix", 4, 5);
         auto    row      = Kokkos::subview(matrix, 2, Kokkos::ALL());
-        auto    received = kamping::v2::recv(row | kamping::v2::views::kokkos, 0, 0, world);
+        auto    req = kamping::v2::irecv(row | kamping::v2::views::kokkos, 0, 0, world);
+      
+	// Trigger deep copy back to the row view using unwrap()
+	req.wait().unwrap();
 
-        // Trigger deep copy back to the row view using unwrap()
-        received.unwrap();
         print_row(row);
 
     }
@@ -61,7 +63,7 @@ int main(int argc, char* argv[]) {
         auto  received = kamping::v2::recv(kamping::v2::views::auto_kokkos_view<int>(), 0, 0, world);
 
         // Get the Kokkos::View, this won't trigger a deep copy, because auto_kokkos_view is contiguous
-        auto& data     = *received;
+        auto& data     = *received.underlying();
         print_row(data);
     }
 
@@ -79,7 +81,7 @@ int main(int argc, char* argv[]) {
         auto  received = kamping::v2::recv(kamping::v2::views::auto_kokkos_view<int>(), 0, 0, world);
 
         // Get the Kokkos::View, this won't trigger a deep copy, because auto_kokkos_view is contiguous
-        auto& data     = *received;
+        auto& data     = *received.underlying();
         print_row(data);
     }
 

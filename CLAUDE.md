@@ -67,8 +67,8 @@ v2 is organized into four explicit layers. Each layer depends only on the layers
 ```
 ┌─────────────────────────────────────────────────────────┐
 │  Ecosystem bridges                                       │
-│  Bindings to external libraries (Cereal, …)             │
-│  kamping/v2/contrib/                                     │
+│  Bindings to external libraries (Kokkos, Thrust, …)     │
+│  ecosystem/                                              │
 ├─────────────────────────────────────────────────────────┤
 │  Language bindings  (kamping-v2)                         │
 │  C++ ergonomics: ownership, infer, deferred buffers,     │
@@ -93,12 +93,12 @@ v2 is organized into four explicit layers. Each layer depends only on the layers
 
 **Language bridge** — the minimal C++ wiring that makes the contract work:
 - Accessor dispatch functions (`mpi::experimental::count/ptr/type/counts/displs`) with three-tier priority: `buffer_traits<T>` specialization → member functions (`mpi_count()`, `mpi_ptr()`, etc.) → `std::ranges` / builtin-type fallbacks.
-- `mpi::experimental::buffer_traits<T>` and `native_handle_traits<T>` — non-intrusive customization points for third-party types.
+- `mpi::experimental::buffer_traits<T>` and `handle_traits<T>` — non-intrusive customization points for third-party types.
 - Ownership infrastructure: `ref_view<T>` (non-owning, wraps lvalue), `owning_view<T>` (owning, wraps rvalue), and `all(r)` / `all_t<R>` which select between them.
 - View adaptor machinery: `view_interface_base`, `adaptor_closure`, `adaptor`, `composed_closure` — the pipe `|` operator infrastructure.
 - Core view adaptors: `with_type`, `with_size`, `with_counts`, `with_displs`.
 - `mpi::experimental::` MPI wrappers — one MPI call each, no inference, no resizing, throw `mpi_error` on failure. Concrete buffer types `mpi_span` and `mpi_span_v`.
-- `mpi::experimental::native_handle` / `to_rank` / `to_tag` — extract raw MPI handles from any wrapper.
+- `mpi::experimental::handle` / `handle_ptr` / `to_rank` / `to_tag` — extract raw MPI handles from any wrapper.
 
 **Language bindings (kamping-v2)** — C++ ergonomics and MPI convenience on top of the bridge:
 - `infer()` protocol: operation-tagged ADL hook that resolves unknown recv sizes (via `MPI_Mprobe`) or variadic counts before the MPI call is issued.
@@ -108,7 +108,7 @@ v2 is organized into four explicit layers. Each layer depends only on the layers
 - Sentinel buffers (`inplace`, `null_buf`, `bottom`) — zero-overhead special buffer values for collective shortcuts.
 - `kamping::v2::` wrappers (send, recv, bcast, …) that call `infer()` then delegate to `mpi::experimental::`.
 
-**Ecosystem bridges** — bindings to external C++ libraries, living in `kamping/v2/contrib/`. Currently: Cereal serialization via `views::serialize` / `views::deserialize<T>()`.
+**Ecosystem bridges** — bindings to external C++ libraries, living in `ecosystem/`. Currently: Kokkos adapter, GPU (Thrust/SYCL) adapters, and Cereal serialization via `views::serialize` / `views::deserialize<T>()`.
 
 ### Core Idea: Buffer Protocol + View Pipeline
 
@@ -185,12 +185,12 @@ Non-blocking operations return `iresult<Buf>` (single buffer) or `iresult<SBuf, 
 - `.test([status])` — polls; borrowed buffers return `bool`, owned buffers return `std::optional<T>`.
 - Destructor calls `MPI_Wait` if the request was not already completed, preventing silent data corruption.
 
-### Native Handle Bridge (`include/kamping/v2/native_handle.hpp`)
+### Native Handle Bridge (`mpi-core/include/mpi/handle.hpp`)
 
-Free functions `mpi::experimental::native_handle(x)` and `native_handle_ptr(x)` extract `MPI_Comm`, `MPI_Request`, etc. from arbitrary wrapper types. Dispatch priority:
+Free functions `mpi::experimental::handle(x)` and `handle_ptr(x)` extract `MPI_Comm`, `MPI_Request`, etc. from arbitrary wrapper types. Dispatch priority:
 
-1. `native_handle_traits<T>` specialization
-2. `t.mpi_native_handle()` / `t.mpi_native_handle_ptr()` member functions
+1. `handle_traits<T>` specialization — non-intrusive, for types you don't own
+2. `t.mpi_handle()` / `t.mpi_handle_ptr()` member functions
 3. Passthrough for raw `MPI_Comm` / `MPI_Request` / … values
 
 The same pattern applies to ranks (`to_rank`) and tags (`to_tag`), supporting both plain `int` and strongly-typed wrappers.
