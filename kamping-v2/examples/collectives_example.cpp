@@ -29,7 +29,8 @@ int main(int argc, char* argv[]) {
         std::vector<int> sbuf{static_cast<int>(world.rank()), static_cast<int>(world.rank())};
         auto             v = kamping::v2::allgather(sbuf, std::vector<int>{} | kamping::v2::views::resize, world).recv;
         std::cout << "allgather v=[";
-        for (std::size_t i = 0; i < v.size(); ++i) { if (i) std::cout << ", "; std::cout << v[i]; }
+        bool first = true;
+        for (auto const& x : v) { if (!first) std::cout << ", "; first = false; std::cout << x; }
         std::cout << "]\n";
     }
     {
@@ -43,7 +44,8 @@ int main(int argc, char* argv[]) {
             )
                 .recv;
         std::cout << "allgatherv v=[";
-        for (std::size_t i = 0; i < v.size(); ++i) { if (i) std::cout << ", "; std::cout << v[i]; }
+        bool first = true;
+        for (auto const& x : v) { if (!first) std::cout << ", "; first = false; std::cout << x; }
         std::cout << "]\n";
     }
     return 0;
