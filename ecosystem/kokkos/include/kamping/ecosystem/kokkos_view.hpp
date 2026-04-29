@@ -175,6 +175,13 @@ template <typename T>
     requires(!std::is_lvalue_reference_v<T>)
 kokkos_view(T&&) -> kokkos_view<T>;
 
+/// Propagate supports_matched_probe from the underlying Kokkos::View type.
+/// Specialize supports_matched_probe for your Kokkos::View type to control
+/// whether infer() uses MPI_Mprobe or falls back to MPI_Probe + MPI_Recv.
+template <typename T>
+inline constexpr bool supports_matched_probe<kokkos_view<T>> =
+    supports_matched_probe<std::remove_reference_t<T>>;
+
 } // namespace kamping::v2
 
 namespace kamping::v2::views {
