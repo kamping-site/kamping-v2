@@ -96,6 +96,8 @@ class kokkos_view {
     }
 
 public:
+    using value_type = scalar_type;
+
     explicit kokkos_view(view_type const& view)
         : base_(view),
           is_contiguous_(view.span_is_contiguous()) {}
