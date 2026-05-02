@@ -3,6 +3,7 @@ project(kamping-ecosystem LANGUAGES CXX)
 
 option(KAMPING_ENABLE_SERIALIZATION "Enable the Cereal serialization adapter for kamping-v2." ON)
 option(KAMPING_ENABLE_THRUST "Enable the Thrust device_vector adapter for kamping-v2." OFF)
+option(KAMPING_ENABLE_SYCL "Enable the SYCL buffer adapter for kamping-v2." OFF)
 
 if (KAMPING_ENABLE_SERIALIZATION)
     add_subdirectory(cereal)
@@ -17,4 +18,7 @@ option(KAMPING_DISABLE_KOKKOS_COMM "Disable the KokkosComm dependency for the ko
 
 if (KAMPING_ENABLE_KOKKOS)
     add_subdirectory(kokkos)
-endif ()
+  endif ()
+if (KAMPING_ENABLE_SYCL)
+   add_subdirectory(sycl)
+endif()
