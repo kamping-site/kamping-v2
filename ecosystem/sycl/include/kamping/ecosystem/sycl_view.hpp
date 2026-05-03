@@ -194,7 +194,8 @@ inline constexpr struct sycl_fn : kamping::v2::adaptor_closure<sycl_fn> {
 
     /// Device accessor path (partial): returns a pipeable closure that binds ih.
     /// Uses the standard adaptor machinery — same pattern as views::with_type(dt) etc.
-    constexpr auto operator()(sycl::interop_handle const& ih) const {
+    /// Not constexpr: sycl::interop_handle is a runtime-only type.
+    auto operator()(sycl::interop_handle const& ih) const {
         return kamping::v2::adaptor<1, decltype([](auto&& r, sycl::interop_handle const& ih) {
                                         return kamping::v2::sycl_view(std::forward<decltype(r)>(r), ih);
                                     })>{}(ih);
