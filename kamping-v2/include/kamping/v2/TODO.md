@@ -222,3 +222,89 @@ borrows it safely via the existing `store_arg` `std::ref` path.
 - [ ] **`make_struct_view<T>()`** — commits `MPI_Type_create_struct` from field offsets (via
   Boost.PFR reflection or manual specification); alternative to `byte_serialized` that
   respects MPI's struct type rules and avoids transmitting padding bytes.
+
+---
+
+## CMake / Build system
+
+### Target naming convention
+
+| Target | Alias | Notes |
+|--------|-------|-------|
+| `mpi_core` | `mpi::core` | Rename from current `kamping::mpi_core`; anticipates future split into its own repo |
+| `kamping_v2` | `kamping::v2` | Unchanged |
+| `kamping_v2_warnings` | `kamping::v2::warnings` | Unchanged |
+| `kamping_ecosystem_<name>` | `kamping::ecosystem::<name>` | Uniform `::` separator; PR #7 has `kamping::ecosystem_kokkos` which must be fixed |
+
+### Standalone FetchContent usage
+
+Each sublibrary is independently consumable. Downstream projects point `FetchContent_Declare` at
+the monorepo with a `SOURCE_SUBDIR` argument:
+
+```cmake
+FetchContent_Declare(kamping_v2
+    GIT_REPOSITORY https://github.com/kamping-site/kamping-v2
+    GIT_TAG <tag>
+    SOURCE_SUBDIR kamping-v2
+)
+FetchContent_MakeAvailable(kamping_v2)
+target_link_libraries(myapp PRIVATE kamping::v2)
+```
+
+`SOURCE_SUBDIR ecosystem/thrust`, `SOURCE_SUBDIR ecosystem/cereal`, etc. work the same way.
+The whole monorepo is downloaded once; subsequent `FetchContent_Declare` calls for other
+sublibraries reuse the cached download.
+
+### Bootstrapping pattern
+
+When a sublibrary's `CMakeLists.txt` is the CMake entry point (i.e. the monorepo root was not
+processed), it must bootstrap its own dependencies. The pattern used in every sublibrary:
+
+```cmake
+if (NOT TARGET <required-target>)
+    set(_local "${CMAKE_CURRENT_SOURCE_DIR}/<relative-path-to-dep>")
+    if (NOT EXISTS "${_local}/CMakeLists.txt")
+        message(FATAL_ERROR
+            "<component>: <required-target> not found and the sibling directory "
+            "'${_local}' does not exist. Provide <required-target> before including "
+            "this component, or build from the monorepo root.")
+    endif ()
+    FetchContent_Declare(<dep> SOURCE_DIR "${_local}")
+    FetchContent_MakeAvailable(<dep>)
+endif ()
+```
+
+This works because `FetchContent` with `SOURCE_SUBDIR kamping-v2` downloads the whole monorepo,
+so `../mpi-core` resolves correctly inside the fetched tree. When `mpi-core` eventually splits
+into its own repo, only the `FATAL_ERROR` branch changes: replace `SOURCE_DIR` with
+`GIT_REPOSITORY`/`GIT_TAG`.
+
+**No shared bootstrap function.** The pattern is ~8 lines and appears in 4–5 places. Factoring
+it into a shared `.cmake` module requires a reliably-findable path across all consumption modes,
+which is more fragile than the repetition.
+
+### Ecosystem adapter dependencies
+
+GPU adapters (thrust, kokkos, sycl) bundle both buffer traits (`mpi::core` only) and view
+adaptors (need `kamping::v2`). Since the view adaptors include `kamping/v2/views/` headers
+directly, the CMake target must link `kamping::v2` — there is no meaningful split into a
+`::core` sub-target. Users who want only buffer traits still pull in `kamping::v2` transitively,
+but as a header-only target this has no compile cost unless those headers are included.
+
+Cereal likewise depends on `kamping::v2` (serialize/deserialize views are v2-specific).
+
+### Known issues to fix
+
+- [ ] Rename `kamping::mpi_core` alias to `mpi::core` in `mpi-core/CMakeLists.txt`; update all
+  references in `kamping-v2/CMakeLists.txt` and ecosystem files.
+- [ ] `mpi-core/CMakeLists.txt` has no bootstrapping block. If used as a standalone
+  `SOURCE_SUBDIR mpi-core` entry point, `MPI::MPI_CXX`, `kamping::kassert`, and
+  `kamping::types` are undefined. Add the same bootstrapping pattern.
+- [ ] `kamping-v2/CMakeLists.txt` bootstrap uses `FetchContent_Declare(mpi_core SOURCE_DIR ...)`
+  without checking existence first. Add the `FATAL_ERROR` guard matching the cereal/thrust pattern.
+- [ ] `kamping_types` is pinned to `GIT_TAG main` in the root and in the v2 bootstrap — unstable.
+  Pin to a release tag once kamping-types cuts one.
+- [ ] `KAMPING_ENABLE_SERIALIZATION` defaults `ON` in `ecosystem/CMakeLists.txt`. This silently
+  fetches Cereal for every consumer. Change default to `OFF` to match `KAMPING_ENABLE_THRUST`.
+- [ ] PR #7 (Kokkos): fix alias to `kamping::ecosystem::kokkos`, add `option()` declaration with
+  default `OFF`, pin `KokkosComm` `GIT_TAG` away from `develop`.
