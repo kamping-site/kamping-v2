@@ -19,13 +19,13 @@ namespace kamping::v2 {
 ///
 /// @code
 ///   // send from device
-///   kamping::v2::send(d_vec | kamping::v2::views::thrust::device_ptr, 1, comm);
+///   kamping::v2::send(d_vec | kamping::v2::views::thrust, 1, comm);
 ///
 ///   // receive into pre-sized device buffer
-///   kamping::v2::recv(d_recv | kamping::v2::views::thrust::device_ptr, 0, comm);
+///   kamping::v2::recv(d_recv | kamping::v2::views::thrust, 0, comm);
 ///
 ///   // receive with automatic resize (size probed via MPI_Probe)
-///   kamping::v2::recv(d_recv | kamping::v2::views::thrust::device_ptr | kamping::v2::views::resize, 0, comm);
+///   kamping::v2::recv(d_recv | kamping::v2::views::thrust | kamping::v2::views::resize, 0, comm);
 /// @endcode
 template <typename Base>
 class device_ptr_view : public view_interface<device_ptr_view<Base>> {
@@ -69,16 +69,16 @@ inline constexpr bool enable_borrowed_buffer<device_ptr_view<Base>> = enable_bor
 
 } // namespace kamping::v2
 
-namespace kamping::v2::views::thrust {
+namespace kamping::v2::views {
 
 /// Pipe adaptor: redirects mpi_ptr() to the raw Thrust device pointer.
 ///
-///   d_vec | kamping::v2::views::thrust::device_ptr
-inline constexpr struct device_ptr_fn : kamping::v2::adaptor_closure<device_ptr_fn> {
+///   d_vec | kamping::v2::views::thrust
+inline constexpr struct thrust_fn : kamping::v2::adaptor_closure<thrust_fn> {
     template <typename R>
     constexpr auto operator()(R&& r) const {
         return kamping::v2::device_ptr_view(std::forward<R>(r));
     }
-} device_ptr{};
+} thrust{};
 
-} // namespace kamping::v2::views::thrust
+} // namespace kamping::v2::views

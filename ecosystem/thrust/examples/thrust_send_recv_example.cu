@@ -3,7 +3,7 @@
 /// Demonstrates two ways to use thrust::device_vector with kamping:
 ///   1. Include thrust_buffer_traits.hpp — device_vector works directly, no
 ///   piping needed.
-///   2. Pipe through views::thrust::device_ptr — explicit per-call opt-in.
+///   2. Pipe through views::thrust — explicit per-call opt-in.
 ///
 /// Requires an MPI implementation built with CUDA support (OpenMPI with
 /// `--with-cuda`, MPICH with GPU-aware build, etc.). The MPI pointer passed in
@@ -82,17 +82,14 @@ int main(int argc, char* argv[]) {
     print_vec(h);
   }
 
-  // Example 3 (view adaptor): explicit per-call opt-in via
-  // views::thrust::device_ptr.
+  // Example 3 (view adaptor): explicit per-call opt-in via views::thrust.
   if (world.rank() == 0) {
     thrust::device_vector<int> d_send(N);
     thrust::sequence(d_send.begin(), d_send.end(), 300);
-    kamping::v2::send(d_send | kamping::v2::views::thrust::device_ptr, 1, 0,
-                      world);
+    kamping::v2::send(d_send | kamping::v2::views::thrust, 1, 0, world);
   } else {
     thrust::device_vector<int> d_recv(N);
-    kamping::v2::recv(d_recv | kamping::v2::views::thrust::device_ptr, 0, 0,
-                      world);
+    kamping::v2::recv(d_recv | kamping::v2::views::thrust, 0, 0, world);
 
     thrust::host_vector<int> h(d_recv.size());
     thrust::copy(d_recv.begin(), d_recv.end(), h.begin());
