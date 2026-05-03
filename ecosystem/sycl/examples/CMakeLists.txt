@@ -1,4 +1,4 @@
-find_package(AdaptiveCpp REQUIRED)
+find_package(IntelSYCL REQUIRED)
 add_executable(example_sycl_send_recv sycl_send_recv_example.cpp)
 target_link_libraries(example_sycl_send_recv PRIVATE kamping::ecosystem::sycl)
 add_sycl_to_target(TARGET example_sycl_send_recv SOURCES sycl_send_recv_example.cpp)
