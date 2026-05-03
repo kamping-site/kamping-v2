@@ -1,3 +1,3 @@
 add_executable(example_cereal_send_recv cereal_send_recv_example.cpp)
 target_link_libraries(example_cereal_send_recv PRIVATE kamping_ecosystem_cereal kamping_v2_warnings)
-target_compile_features(example_cereal_send_recv PRIVATE cxx_std_23) # for std::println
+target_compile_features(example_cereal_send_recv PRIVATE cxx_std_20)
