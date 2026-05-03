@@ -12,7 +12,7 @@ if (NOT TARGET kamping::v2)
     if (NOT EXISTS "${_kamping_v2_local}/CMakeLists.txt")
         message(
             FATAL_ERROR
-            "kamping-ecosystem-thrust: kamping::v2 target not found and the sibling monorepo "
+            "kamping-ecosystem-sycl: kamping::v2 target not found and the sibling monorepo "
             "directory '${_kamping_v2_local}' does not exist. "
             "Provide kamping::v2 before including this component, or build from the monorepo root."
         )
