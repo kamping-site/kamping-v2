@@ -1,3 +1,16 @@
+/// SYCL ecosystem adapter for KaMPIng v2.
+///
+/// Exposes SYCL accessors as MPI buffers via `sycl_view` and the `views::sycl` pipe adaptor.
+///
+/// **Compiler requirement: Intel oneAPI DPC++ only.**
+/// This header uses `sycl::host_task` and `sycl::interop_handle`, which are standard SYCL 2020
+/// features but are **not implemented by AdaptiveCpp**. AdaptiveCpp's host-task emulation does not
+/// provide an interop handle, so there is no portable way to extract a device pointer for
+/// device-aware MPI through that runtime.
+///
+/// **SYCL USM pointers** (allocated via `sycl::malloc_device` / `sycl::malloc_shared`) are plain
+/// C++ pointers. Wrap them in `std::span` or `mpi_span` and pass directly — no `sycl_view`
+/// adaptor is needed.
 #pragma once
 
 #include <sycl/sycl.hpp>
@@ -5,7 +18,6 @@
 #include <variant>
 
 #include "kamping/v2/views/adaptor.hpp"
-#include "kamping/v2/views/all.hpp"
 #include "kamping/v2/views/concepts.hpp"
 #include "kamping/v2/views/view_interface.hpp"
 
@@ -165,6 +177,13 @@ sycl_view(R&&) -> sycl_view<std::remove_cvref_t<R>>;
 ///   kamping::v2::supports_matched_probe<sycl::accessor<int, 1, sycl::access_mode::read>> = false;
 template <typename Base>
 inline constexpr bool supports_matched_probe<sycl_view<Base>> = supports_matched_probe<Base>;
+
+/// Propagate enable_borrowed_buffer from Base.
+/// A sycl::host_accessor holds a stable host pointer for its lifetime, so borrowing is safe
+/// when the underlying accessor is borrowed. Device accessors store a pointer into the ih,
+/// which is only valid during host_task execution — follow the same convention as Base.
+template <typename Base>
+inline constexpr bool enable_borrowed_buffer<sycl_view<Base>> = enable_borrowed_buffer<Base>;
 
 } // namespace kamping::v2
 
