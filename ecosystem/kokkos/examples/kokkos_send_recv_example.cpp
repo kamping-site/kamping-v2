@@ -44,7 +44,7 @@ int main(int argc, char* argv[]) {
     mpi::experimental::comm_view const world{MPI_COMM_WORLD};
     Kokkos::initialize(argc, argv);
 
-    KAMPING_ASSERT(world.size() == 2uz, "This example must be run with exactly 2 ranks.");
+    KAMPING_ASSERT(world.size() == 2, "This example must be run with exactly 2 ranks.");
     using matrix_t = Kokkos::View<int**, Kokkos::LayoutLeft>;
 
     // Send and recv subview on 4x5 matrix

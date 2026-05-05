@@ -6,8 +6,8 @@
 #include <utility>
 
 #ifdef KAMPING_HAS_KOKKOS_COMM
-#include <KokkosComm/concepts.hpp>
-#include <KokkosComm/impl/contiguous.hpp>
+    #include <KokkosComm/concepts.hpp>
+    #include <KokkosComm/impl/contiguous.hpp>
 #endif
 #include <Kokkos_Core.hpp>
 #include <kamping/kassert/kassert.hpp>
@@ -83,7 +83,6 @@ class kokkos_view {
         packed_storage_ = make_packed(base_);
         Kokkos::deep_copy(packed_storage_, base_);
         packed_       = true;
-        needs_unpack_ = true;
     }
 
     // Copy data from the packed_view_t back to the base view
@@ -92,19 +91,14 @@ class kokkos_view {
     {
         Kokkos::deep_copy(base_, packed_storage_);
         needs_unpack_ = false;
-        packed_       = false;
     }
 
 public:
     using value_type = scalar_type;
 
-    explicit kokkos_view(view_type const& view)
-        : base_(view),
-          is_contiguous_(view.span_is_contiguous()) {}
+    explicit kokkos_view(view_type const& view) : base_(view), is_contiguous_(view.span_is_contiguous()) {}
 
-    explicit kokkos_view(view_type&& view)
-        : base_(std::move(view)),
-          is_contiguous_(base_.span_is_contiguous()) {}
+    explicit kokkos_view(view_type&& view) : base_(std::move(view)), is_contiguous_(base_.span_is_contiguous()) {}
 
     /// Triggers deep copy back to the base view if needed without returning a reference.
     /// Equivalent to `(void)**this` but expresses intent at call sites that only care
@@ -141,8 +135,9 @@ public:
     /// Only available for rank-1 views that support Kokkos::resize.
     /// Used by resize_for_receive() to implement the | resize protocol.
     void mpi_resize_for_receive(std::ptrdiff_t n)
-        requires(view_type::rank == 1
-                 && requires(view_type& v, typename view_type::size_type m) { Kokkos::resize(v, m); })
+        requires(
+            view_type::rank == 1 && requires(view_type& v, typename view_type::size_type m) { Kokkos::resize(v, m); }
+        )
     {
         Kokkos::resize(base_, static_cast<typename view_type::size_type>(n));
         packed_       = false;
@@ -171,8 +166,9 @@ public:
             execution_space{}.fence();
             return base_.data();
         }
-        if (!needs_unpack_ && !packed_)
+        if (!packed_) {
             pack();
+        }
         return packed_storage_.data();
     }
 
@@ -184,10 +180,9 @@ public:
             return base_.data();
         }
         if (!packed_) {
-            packed_storage_ = make_packed(base_);
-            packed_         = true;
-            needs_unpack_   = true;
+          pack();
         }
+      	needs_unpack_ = true;
         return packed_storage_.data();
     }
 };
@@ -203,8 +198,7 @@ kokkos_view(T&&) -> kokkos_view<T>;
 /// Specialize supports_matched_probe for your Kokkos::View type to control
 /// whether infer() uses MPI_Mprobe or falls back to MPI_Probe + MPI_Recv.
 template <typename T>
-inline constexpr bool supports_matched_probe<kokkos_view<T>> =
-    supports_matched_probe<std::remove_reference_t<T>>;
+inline constexpr bool supports_matched_probe<kokkos_view<T>> = supports_matched_probe<std::remove_reference_t<T>>;
 
 } // namespace kamping::v2
 
