@@ -50,8 +50,9 @@ if (NOT KAMPING_DISABLE_KOKKOS_COMM)
     target_link_libraries(kamping_ecosystem_kokkos INTERFACE KokkosComm::KokkosComm)
 endif ()
 
-add_library(kamping::ecosystem_kokkos ALIAS kamping_ecosystem_kokkos)
+add_library(kamping::ecosystem::kokkos ALIAS kamping_ecosystem_kokkos)
 
 if (PROJECT_IS_TOP_LEVEL OR KAMPING_BUILD_EXAMPLES_AND_TESTS)
     add_subdirectory(examples)
+    add_subdirectory(tests)
 endif ()

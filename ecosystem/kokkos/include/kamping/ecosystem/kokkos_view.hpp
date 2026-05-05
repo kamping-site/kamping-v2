@@ -43,6 +43,7 @@ class kokkos_view {
     using scalar_type     = std::remove_const_t<typename view_type::value_type>;
     using execution_space = view_type::execution_space;
 
+    // packed_view_t is the type of the created contiguous Kokkos view
 #ifdef KAMPING_HAS_KOKKOS_COMM
     using packed_view_t = KokkosComm::Impl::contiguous_view_t<view_type>;
 #else
@@ -59,6 +60,7 @@ class kokkos_view {
     mutable bool needs_unpack_  = false;
     bool         is_contiguous_ = false;
 
+    // Create a contiguous kokkos view with type packed_view_t
     static packed_view_t make_packed(view_type const& v) {
         execution_space   exec;
         std::string const label = std::string(v.label()) + "-kamping-kokkos-view";
@@ -74,6 +76,7 @@ class kokkos_view {
 #endif
     }
 
+    // Copy data from the base view to the packed_view_t
     void pack() const
         requires requires(view_type from, packed_view_t to) { Kokkos::deep_copy(to, from); }
     {
@@ -83,6 +86,7 @@ class kokkos_view {
         needs_unpack_ = true;
     }
 
+    // Copy data from the packed_view_t back to the base view
     void unpack() const
         requires requires(view_type to, packed_view_t from) { Kokkos::deep_copy(to, from); }
     {
@@ -100,27 +104,36 @@ public:
         : base_(std::move(view)),
           is_contiguous_(base_.span_is_contiguous()) {}
 
+    /// Triggers deep copy back to the base view if needed without returning a reference.
+    /// Equivalent to `(void)**this` but expresses intent at call sites that only care
+    /// about the side effect (e.g. immediately followed by `operator->`).
     void unwrap() const {
         if (!is_contiguous_ && needs_unpack_)
             unpack();
     }
 
+    /// Dereference to the wrapped object, triggering deep copy back to the base view if needed.
     view_type const& operator*() const {
         unwrap();
         return base_;
     }
 
+    /// \overload
     view_type& operator*() {
         return const_cast<view_type&>(std::as_const(*this).operator*());
     }
 
+    /// Arrow operator; triggers deep copy back to the base view if needed.
     view_type* operator->() {
         return std::addressof(**this);
     }
 
+    /// \overload
     view_type const* operator->() const {
         return std::addressof(**this);
     }
+
+    // ---- Recv-side protocol -----------------------------------------------
 
     /// Resize the wrapped view to hold n elements and reset pack state.
     /// Only available for rank-1 views that support Kokkos::resize.
@@ -134,16 +147,23 @@ public:
         needs_unpack_ = false;
     }
 
+    // ---- MPI protocol methods --------------------------------------------
+
+    /// Returns the number of `MPI_BYTE` elements to send or receive.
     std::ptrdiff_t mpi_count() const {
         return static_cast<std::ptrdiff_t>(base_.size());
     }
 
+    /// Returns the MPI_Datatype corresponding to the view's scalar type.
+    /// Only available for builtin types
     MPI_Datatype mpi_type() const noexcept
         requires kamping::types::is_builtin_type_v<scalar_type>
     {
         return kamping::types::builtin_type<scalar_type>().data_type();
     }
 
+    /// Send-side pointer. Deep copy to intermediate kokkos view lazily on first call;
+    /// Returns `void const*` so that a const view satisfies `send_buffer` but not `recv_buffer`.
     void const* mpi_ptr() const {
         if (is_contiguous_) {
             execution_space{}.fence();
@@ -154,6 +174,8 @@ public:
         return packed_storage_.data();
     }
 
+    /// Recv-side pointer. Returns `void*` so MPI can write directly into it.
+    /// A non-const view satisfies both `send_buffer` and `recv_buffer`.
     void* mpi_ptr() {
         if (is_contiguous_) {
             execution_space{}.fence();
