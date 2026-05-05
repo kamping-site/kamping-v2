@@ -8,6 +8,7 @@
 #include "kamping/v2/p2p/recv.hpp"
 #include "kamping/v2/p2p/irecv.hpp"
 #include "kamping/v2/p2p/send.hpp"
+#include "kamping/v2/collectives/barrier.hpp"
 #include "mpi/comm.hpp"
 
 // Disable matched probing for Kokkos::View types whose memory space is not
@@ -45,7 +46,7 @@ int main(int argc, char* argv[]) {
     Kokkos::initialize(argc, argv);
 
     KAMPING_ASSERT(world.size() == 2, "This example must be run with exactly 2 ranks.");
-    using matrix_t = Kokkos::View<int**, Kokkos::LayoutLeft>;
+    using matrix_t = Kokkos::View<int**>;
 
     // Send and recv subview on 4x5 matrix
     if (world.rank() == 0) {
@@ -55,7 +56,7 @@ int main(int argc, char* argv[]) {
             Kokkos::MDRangePolicy<Kokkos::Rank<2>>({0, 0}, {4, 5}),
             KOKKOS_LAMBDA(int i, int j) { matrix(i, j) = 100 + 10 * i + j; }
         );
-        // Get a non-contiguous row view.
+        // Get a row view (non-contigous when running in HostSpace).
         auto row = Kokkos::subview(matrix, 1, Kokkos::ALL());
         kamping::v2::send(row | kamping::v2::views::kokkos, 1, 0, world);
 
@@ -70,13 +71,14 @@ int main(int argc, char* argv[]) {
         print_row(row);
 
     }
+    kamping::v2::barrier(world);
 
     // Send vector and recv using kamping::views::unpack<int>
     if (world.rank() == 0) {
-        Kokkos::View<int*, Kokkos::LayoutRight> v("send_unpack", 6);
+        Kokkos::View<int*> v("send_unpack", 6);
         Kokkos::parallel_for(
             "init_v", 6, KOKKOS_LAMBDA(int i) { v(i) = 200 + i; }
-        );
+			     );
         kamping::v2::send(v | kamping::v2::views::kokkos, 1, 0, world);
     } else if (world.rank() == 1) {
         auto  received = kamping::v2::recv(kamping::v2::views::auto_kokkos_view<int>(), 0, 0, world);
@@ -85,6 +87,7 @@ int main(int argc, char* argv[]) {
         auto& data     = *received.underlying();
         print_row(data);
     }
+    kamping::v2::barrier(world);
 
     // Send 4x5 matrix and recv using kamping::v2::views::auto_kokkos_view<int>
     if (world.rank() == 0) {
