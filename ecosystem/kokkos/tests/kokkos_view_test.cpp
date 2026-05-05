@@ -29,12 +29,11 @@ TEST(KokkosView, SendRecv) {
 
     if (rank == 0) {
         matrix_t matrix("send_matrix", 4, 5);
-        Kokkos::parallel_for(
-            "init_matrix",
-            Kokkos::MDRangePolicy<Kokkos::Rank<2>>({0, 0}, {4, 5}),
-            KOKKOS_LAMBDA(int i, int j) { matrix(i, j) = 100 + 10 * i + j; }
-        );
-        Kokkos::fence();
+        auto host_matrix = Kokkos::create_mirror_view(matrix);
+        for (int i = 0; i < 4; ++i)
+            for (int j = 0; j < 5; ++j)
+                host_matrix(i, j) = 100 + 10 * i + j;
+        Kokkos::deep_copy(matrix, host_matrix);
 
         auto row = Kokkos::subview(matrix, 1, Kokkos::ALL());
         kamping::v2::send(row | kamping::v2::views::kokkos, 1, 0);
@@ -67,10 +66,10 @@ TEST(KokkosView, SendRecvAutoView) {
 
     if (rank == 0) {
         Kokkos::View<int*, Kokkos::LayoutRight> v("send_auto", 6);
-        Kokkos::parallel_for(
-            "init_v", 6, KOKKOS_LAMBDA(int i) { v(i) = 200 + i; }
-        );
-        Kokkos::fence();
+        auto host_v = Kokkos::create_mirror_view(v);
+        for (int i = 0; i < 6; ++i)
+            host_v(i) = 200 + i;
+        Kokkos::deep_copy(v, host_v);
         kamping::v2::send(v | kamping::v2::views::kokkos, 1, 1);
 
     } else if (rank == 1) {
