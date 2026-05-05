@@ -1,0 +1,7 @@
+add_executable(example_kokkos_send_recv kokkos_send_recv_example.cpp)
+target_link_libraries(example_kokkos_send_recv PRIVATE kamping_ecosystem_kokkos kamping_v2_warnings)
+target_compile_features(example_kokkos_send_recv PRIVATE cxx_std_20)
+
+add_executable(example_kokkos_alltoallv kokkos_alltoallv_example.cpp)
+target_link_libraries(example_kokkos_alltoallv PRIVATE kamping_ecosystem_kokkos kamping_v2_warnings)
+target_compile_features(example_kokkos_alltoallv PRIVATE cxx_std_20)

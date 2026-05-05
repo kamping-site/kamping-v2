@@ -1,4 +1,4 @@
-#include <print>
+#include <iostream>
 #include <vector>
 
 #include <mpi.h>
@@ -23,12 +23,15 @@ int main(int argc, char* argv[]) {
             val = 42;
         }
         kamping::v2::bcast(kamping::v2::views::ref_single(val), 0, world);
-        std::println("[R{}] bcast result={}", world.rank(), val);
+        std::cout << "[R" << world.rank() << "] bcast result=" << val << '\n';
     }
     {
         std::vector<int> sbuf{static_cast<int>(world.rank()), static_cast<int>(world.rank())};
         auto             v = kamping::v2::allgather(sbuf, std::vector<int>{} | kamping::v2::views::resize, world).recv;
-        std::println("allgather v={}", v);
+        std::cout << "allgather v=[";
+        bool first = true;
+        for (auto const& x : v) { if (!first) std::cout << ", "; first = false; std::cout << x; }
+        std::cout << "]\n";
     }
     {
         std::vector<int> sbuf{static_cast<int>(world.rank()), static_cast<int>(world.rank())};
@@ -40,7 +43,10 @@ int main(int argc, char* argv[]) {
                 world
             )
                 .recv;
-        std::println("allgatherv v={}", v);
+        std::cout << "allgatherv v=[";
+        bool first = true;
+        for (auto const& x : v) { if (!first) std::cout << ", "; first = false; std::cout << x; }
+        std::cout << "]\n";
     }
     return 0;
 }

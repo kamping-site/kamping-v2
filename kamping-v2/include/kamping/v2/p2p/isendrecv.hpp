@@ -2,6 +2,8 @@
 
 #include <mpi.h>
 
+#if MPI_VERSION >= 4
+
 #include "kamping/v2/infer.hpp"
 #include "kamping/v2/iresult.hpp"
 #include "kamping/v2/p2p/constants.hpp"
@@ -162,3 +164,5 @@ auto isendrecv(SBuf&& sbuf, Dest dest, RBuf&& rbuf, Source source = MPI_ANY_SOUR
 }
 
 } // namespace kamping::v2
+
+#endif // MPI_VERSION >= 4

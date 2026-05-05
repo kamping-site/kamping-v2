@@ -1,5 +1,5 @@
 #include <cstddef>
-#include <print>
+#include <iostream>
 #include <vector>
 
 #include <mpi.h>
@@ -7,7 +7,9 @@
 #include "kamping/v2/environment.hpp"
 #include "kamping/v2/p2p/irecv.hpp"
 #include "kamping/v2/p2p/isend.hpp"
-#include "kamping/v2/p2p/isendrecv.hpp"
+#if MPI_VERSION >= 4
+#    include "kamping/v2/p2p/isendrecv.hpp"
+#endif
 #include "kamping/v2/p2p/recv.hpp"
 #include "kamping/v2/p2p/send.hpp"
 #include "kamping/v2/p2p/sendrecv.hpp"
@@ -46,7 +48,10 @@ int main(int argc, char* argv[]) {
     } else if (world.rank() == 1) {
         std::vector<int> v;
         kamping::v2::recv(v | kamping::v2::views::resize);
-        std::println("result = {}", v);
+        std::cout << "result = [";
+        bool first = true;
+        for (auto const& x : v) { if (!first) std::cout << ", "; first = false; std::cout << x; }
+        std::cout << "]\n";
     }
 
     if (world.rank() == 0) {
@@ -55,7 +60,10 @@ int main(int argc, char* argv[]) {
     } else if (world.rank() == 1) {
         MPI_Status status;
         auto       v = kamping::v2::irecv(std::vector<int>{10} | kamping::v2::views::resize).wait(&status);
-        std::println("v = {}", v);
+        std::cout << "v = [";
+        bool first = true;
+        for (auto const& x : v) { if (!first) std::cout << ", "; first = false; std::cout << x; }
+        std::cout << "]\n";
     }
 
     // sendrecv: each rank simultaneously sends to the other and receives from the other
@@ -64,9 +72,13 @@ int main(int argc, char* argv[]) {
         std::vector<int> send_data = (world.rank() == 0) ? std::vector<int>{1, 2, 3} : std::vector<int>{4, 5, 6};
         std::vector<int> recv_data;
         auto [_, recvd] = kamping::v2::sendrecv(send_data, peer, recv_data | kamping::v2::views::resize, peer, world);
-        std::println("rank {} recvd = {}", world.rank(), recvd);
+        std::cout << "rank " << world.rank() << " recvd = [";
+        bool first = true;
+        for (auto const& x : recvd) { if (!first) std::cout << ", "; first = false; std::cout << x; }
+        std::cout << "]\n";
     }
 
+#if MPI_VERSION >= 4
     // isendrecv: non-blocking sendrecv, wait() to retrieve the result
     if (world.size() >= 2 && (world.rank() == 0 || world.rank() == 1)) {
         int const        peer      = 1 - static_cast<int>(world.rank());
@@ -74,7 +86,11 @@ int main(int argc, char* argv[]) {
         std::vector<int> recv_data;
         auto [_2, recvd2] =
             kamping::v2::isendrecv(send_data, peer, recv_data | kamping::v2::views::resize, peer, world).wait();
-        std::println("rank {} isendrecv recvd = {}", world.rank(), recvd2);
+        std::cout << "rank " << world.rank() << " isendrecv recvd = [";
+        bool first2 = true;
+        for (auto const& x : recvd2) { if (!first2) std::cout << ", "; first2 = false; std::cout << x; }
+        std::cout << "]\n";
     }
+#endif
     return 0;
 }

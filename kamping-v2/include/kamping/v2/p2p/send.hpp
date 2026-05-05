@@ -44,6 +44,7 @@ template <
     mpi::experimental::send_buffer                         SBuf,
     mpi::experimental::rank                                Dest = int,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
+    requires(!mpi::experimental::tag<Comm>) // On MPICH MPI_Comm is int, which also satisfies tag; exclude to avoid ambiguity with the tag-defaulted overload.
 auto send(SBuf&& sbuf, Dest dest, Comm const& comm) -> SBuf {
     return send(send_mode::standard, std::forward<SBuf>(sbuf), std::move(dest), DEFAULT_SEND_TAG, comm);
 }
