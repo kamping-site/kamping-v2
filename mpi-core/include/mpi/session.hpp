@@ -28,7 +28,13 @@ class session;
 /// Calls `MPI_Session_get_num_psets` once on `begin()`, then fetches each name
 /// on demand via `MPI_Session_get_nth_pset`. No names are stored eagerly.
 ///
-/// The session and info object must outlive the range and its iterators.
+/// @tparam Info Any type satisfying `convertible_to_mpi_handle<MPI_Info>`.
+///              The range stores `Info` by value, so owning wrappers are kept
+///              alive for the range's lifetime and non-owning wrappers / raw
+///              `MPI_Info` handles are stored directly at zero overhead.
+///
+/// The session must outlive the range and its iterators.
+template <convertible_to_mpi_handle<MPI_Info> Info = MPI_Info>
 class pset_range {
 public:
     /// @brief Input iterator over process set names.
@@ -105,9 +111,8 @@ public:
     /// @brief Construct a range over the psets visible to `session`.
     ///
     /// @param session The session whose psets to enumerate (must outlive the range).
-    /// @param info    MPI info hints passed to `MPI_Session_get_num_psets` /
-    ///                `MPI_Session_get_nth_pset` (defaults to `MPI_INFO_NULL`).
-    explicit pset_range(MPI_Session session, MPI_Info info = MPI_INFO_NULL) noexcept : _session(session), _info(info) {}
+    /// @param info    MPI info hints (stored by value; defaults to `MPI_INFO_NULL`).
+    explicit pset_range(MPI_Session session, Info info = MPI_INFO_NULL) : _session(session), _info(std::move(info)) {}
 
     /// @return An input iterator positioned at the first process set name.
     ///
@@ -118,8 +123,8 @@ public:
     [[nodiscard]] iterator begin() const {
         iterator it;
         it._session = _session;
-        it._info    = _info;
-        int err     = MPI_Session_get_num_psets(_session, _info, &it._total);
+        it._info    = handle(_info);
+        int err     = MPI_Session_get_num_psets(_session, it._info, &it._total);
         if (err != MPI_SUCCESS) {
             throw mpi_error(err);
         }
@@ -137,7 +142,7 @@ public:
 
 private:
     MPI_Session _session;
-    MPI_Info    _info;
+    Info        _info;
 };
 
 // ── session_accessors ─────────────────────────────────────────────────────────
@@ -215,14 +220,14 @@ public:
     /// when iteration begins; each increment fetches the next name on demand via
     /// `MPI_Session_get_nth_pset`. No names are loaded until iteration starts.
     ///
-    /// The `info` object (if a wrapper) must outlive the returned range — only
-    /// the raw `MPI_Info` handle is stored, not the wrapper.
+    /// `info` is stored by value inside the returned range, so owning wrappers
+    /// are kept alive for the range's lifetime.
     ///
     /// @tparam Info Any type satisfying `convertible_to_mpi_handle<MPI_Info>`.
     /// @param info Optional MPI info hints (defaults to `MPI_INFO_NULL`).
     template <convertible_to_mpi_handle<MPI_Info> Info = MPI_Info>
-    [[nodiscard]] pset_range psets(Info info = MPI_INFO_NULL) const {
-        return pset_range{sess(), handle(info)};
+    [[nodiscard]] pset_range<Info> psets(Info info = MPI_INFO_NULL) const {
+        return pset_range<Info>{sess(), std::move(info)};
     }
 };
 
