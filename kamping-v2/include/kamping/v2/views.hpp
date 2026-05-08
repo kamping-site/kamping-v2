@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Karlsruhe Institute of Technology
+// SPDX-License-Identifier: BSL-1.0
+
 #include "views/auto_counts_view.hpp" // IWYU pragma: export
 #include "views/auto_displs_view.hpp" // IWYU pragma: export
 #include "views/auto_recv.hpp"        // IWYU pragma: export
