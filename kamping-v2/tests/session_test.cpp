@@ -2,7 +2,6 @@
 
 #if MPI_VERSION >= 4
 
-    #include <algorithm>
     #include <string>
 
     #include <gtest/gtest.h>
@@ -99,7 +98,7 @@ TEST(SessionTest, GroupFromPsetSelfHasSizeOne) {
 
 TEST(SessionTest, GroupFromPsetUnknownThrows) {
     session s;
-    EXPECT_THROW(s.group_from_pset("mpi://DOES_NOT_EXIST"), mpi_error);
+    EXPECT_THROW((void)s.group_from_pset("mpi://DOES_NOT_EXIST"), mpi_error);
 }
 
 // ── comm_from_pset ────────────────────────────────────────────────────────────

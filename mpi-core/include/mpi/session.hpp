@@ -4,15 +4,15 @@
 
 #if defined(MPI_VERSION) && MPI_VERSION >= 4
 
-#include <iterator>
-#include <optional>
-#include <string>
-#include <string_view>
-#include <utility>
+    #include <iterator>
+    #include <optional>
+    #include <string>
+    #include <string_view>
+    #include <utility>
 
-#include "mpi/comm.hpp"
-#include "mpi/error.hpp"
-#include "mpi/group.hpp"
+    #include "mpi/comm.hpp"
+    #include "mpi/error.hpp"
+    #include "mpi/group.hpp"
 
 namespace mpi::experimental {
 
@@ -38,8 +38,12 @@ public:
         using difference_type  = std::ptrdiff_t;
         using iterator_concept = std::input_iterator_tag;
 
-        [[nodiscard]] std::string const& operator*() const noexcept { return _current; }
-        [[nodiscard]] std::string const* operator->() const noexcept { return &_current; }
+        [[nodiscard]] std::string const& operator*() const noexcept {
+            return _current;
+        }
+        [[nodiscard]] std::string const* operator->() const noexcept {
+            return &_current;
+        }
 
         iterator& operator++() {
             ++_index;
@@ -49,7 +53,9 @@ public:
             return *this;
         }
 
-        void operator++(int) { ++(*this); }
+        void operator++(int) {
+            ++(*this);
+        }
 
         [[nodiscard]] bool operator==(std::default_sentinel_t) const noexcept {
             return _index >= _total;
@@ -101,8 +107,7 @@ public:
     /// @param session The session whose psets to enumerate (must outlive the range).
     /// @param info    MPI info hints passed to `MPI_Session_get_num_psets` /
     ///                `MPI_Session_get_nth_pset` (defaults to `MPI_INFO_NULL`).
-    explicit pset_range(MPI_Session session, MPI_Info info = MPI_INFO_NULL) noexcept
-        : _session(session), _info(info) {}
+    explicit pset_range(MPI_Session session, MPI_Info info = MPI_INFO_NULL) noexcept : _session(session), _info(info) {}
 
     /// @return An input iterator positioned at the first process set name.
     ///
@@ -126,7 +131,9 @@ public:
     }
 
     /// @return The sentinel marking the end of the range.
-    [[nodiscard]] std::default_sentinel_t end() const noexcept { return std::default_sentinel; }
+    [[nodiscard]] std::default_sentinel_t end() const noexcept {
+        return std::default_sentinel;
+    }
 
 private:
     MPI_Session _session;
@@ -162,8 +169,8 @@ public:
         char const* cstr = (pset_name.data()[pset_name.size()] == '\0')
                                ? pset_name.data()
                                : (tmp_storage = pset_name, tmp_storage.c_str());
-        MPI_Group g   = MPI_GROUP_EMPTY;
-        int       err = MPI_Group_from_session_pset(sess(), cstr, &g);
+        MPI_Group   g    = MPI_GROUP_EMPTY;
+        int         err  = MPI_Group_from_session_pset(sess(), cstr, &g);
         if (err != MPI_SUCCESS) {
             throw mpi_error(err);
         }
@@ -193,11 +200,8 @@ public:
     /// @return The new communicator, or `std::nullopt` if this process is not a member.
     /// @throws mpi_error if either MPI call fails.
     template <convertible_to_mpi_handle<MPI_Info> Info = MPI_Info>
-    [[nodiscard]] std::optional<comm> comm_from_pset(
-        std::string_view pset_name,
-        std::string_view tag  = "",
-        Info             info = MPI_INFO_NULL
-    ) const {
+    [[nodiscard]] std::optional<comm>
+    comm_from_pset(std::string_view pset_name, std::string_view tag = "", Info info = MPI_INFO_NULL) const {
         auto g = group_from_pset(pset_name);
         if (!g) {
             return std::nullopt;
@@ -211,12 +215,14 @@ public:
     /// when iteration begins; each increment fetches the next name on demand via
     /// `MPI_Session_get_nth_pset`. No names are loaded until iteration starts.
     ///
-    /// Accepts a raw `MPI_Info` handle only — passing an owning wrapper temporary
-    /// would leave the range with a dangling handle after this call returns.
+    /// The `info` object (if a wrapper) must outlive the returned range — only
+    /// the raw `MPI_Info` handle is stored, not the wrapper.
     ///
+    /// @tparam Info Any type satisfying `convertible_to_mpi_handle<MPI_Info>`.
     /// @param info Optional MPI info hints (defaults to `MPI_INFO_NULL`).
-    [[nodiscard]] pset_range psets(MPI_Info info = MPI_INFO_NULL) const {
-        return pset_range{sess(), info};
+    template <convertible_to_mpi_handle<MPI_Info> Info = MPI_Info>
+    [[nodiscard]] pset_range psets(Info info = MPI_INFO_NULL) const {
+        return pset_range{sess(), handle(info)};
     }
 };
 
@@ -231,7 +237,9 @@ public:
     explicit session_view(MPI_Session s) noexcept : _session(s) {}
 
     /// @return The underlying `MPI_Session` (for accessor dispatch).
-    [[nodiscard]] MPI_Session mpi_handle() const noexcept { return _session; }
+    [[nodiscard]] MPI_Session mpi_handle() const noexcept {
+        return _session;
+    }
 
 private:
     MPI_Session _session;
@@ -292,7 +300,9 @@ public:
     }
 
     /// @brief Finalize the session unless already done or MPI is already finalized.
-    ~session() noexcept { free_if_valid(); }
+    ~session() noexcept {
+        free_if_valid();
+    }
 
     /// @brief Adopt an already-initialized `MPI_Session` handle (takes ownership).
     ///
@@ -330,10 +340,14 @@ public:
     }
 
     /// @brief Implicit conversion to a non-owning view.
-    operator session_view() const noexcept { return session_view{_session}; }
+    operator session_view() const noexcept {
+        return session_view{_session};
+    }
 
     /// @return The underlying `MPI_Session` (for accessor dispatch).
-    [[nodiscard]] MPI_Session mpi_handle() const noexcept { return _session; }
+    [[nodiscard]] MPI_Session mpi_handle() const noexcept {
+        return _session;
+    }
 
 private:
     struct adopt_t {};
