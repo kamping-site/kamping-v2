@@ -23,7 +23,7 @@ TEST(SessionTest, DefaultConstructCreatesValidSession) {
 }
 
 TEST(SessionTest, MoveConstructTransfersOwnership) {
-    session a;
+    session     a;
     MPI_Session raw = a.mpi_handle();
     session     b   = std::move(a);
 
@@ -32,8 +32,8 @@ TEST(SessionTest, MoveConstructTransfersOwnership) {
 }
 
 TEST(SessionTest, MoveAssignTransfersOwnership) {
-    session a;
-    session b;
+    session     a;
+    session     b;
     MPI_Session raw = a.mpi_handle();
     b               = std::move(a);
 
@@ -125,7 +125,7 @@ TEST(SessionTest, CommFromPsetSelfHasSizeOne) {
 TEST(SessionTest, PsetsRangeIsNonEmpty) {
     session s;
     int     count = 0;
-    for ([[maybe_unused]] auto const& name : s.psets()) {
+    for ([[maybe_unused]] auto const& name: s.psets()) {
         ++count;
     }
     EXPECT_GT(count, 0);
@@ -135,7 +135,7 @@ TEST(SessionTest, PsetsRangeContainsWorld) {
     session     s;
     bool        found = false;
     std::string world{psets::world};
-    for (auto const& name : s.psets()) {
+    for (auto const& name: s.psets()) {
         if (name == world) {
             found = true;
             break;
@@ -148,7 +148,7 @@ TEST(SessionTest, PsetsRangeContainsSelf) {
     session     s;
     bool        found = false;
     std::string self{psets::self};
-    for (auto const& name : s.psets()) {
+    for (auto const& name: s.psets()) {
         if (name == self) {
             found = true;
             break;

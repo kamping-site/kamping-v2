@@ -47,7 +47,7 @@ public:
     /// The returned `group` is owned by the caller.
     /// @throws mpi_error if `MPI_Comm_group` fails.
     [[nodiscard]] mpi::experimental::group group() const {
-        MPI_Group g = MPI_GROUP_EMPTY;
+        MPI_Group g   = MPI_GROUP_EMPTY;
         int       err = MPI_Comm_group(underlying(), &g);
         if (err != MPI_SUCCESS) {
             throw mpi_error(err);
@@ -84,7 +84,9 @@ public:
     explicit comm_view(MPI_Comm c) noexcept : _comm(c) {}
 
     /// @return The underlying `MPI_Comm` (for `handle()` dispatch).
-    [[nodiscard]] MPI_Comm mpi_handle() const noexcept { return _comm; }
+    [[nodiscard]] MPI_Comm mpi_handle() const noexcept {
+        return _comm;
+    }
 
 private:
     MPI_Comm _comm;
@@ -152,20 +154,12 @@ public:
     /// @param tag  Application-defined string tag (must match across all callers).
     /// @param info MPI info hints (defaults to `MPI_INFO_NULL`).
     /// @throws mpi_error if the MPI call fails.
-    template <
-        convertible_to_mpi_handle<MPI_Group> Group,
-        convertible_to_mpi_handle<MPI_Info>  Info = MPI_Info>
-    [[nodiscard]] static comm from_group(
-        Group const&     g,
-        std::string_view tag  = "",
-        Info             info = MPI_INFO_NULL
-    ) {
+    template <convertible_to_mpi_handle<MPI_Group> Group, convertible_to_mpi_handle<MPI_Info> Info = MPI_Info>
+    [[nodiscard]] static comm from_group(Group const& g, std::string_view tag = "", Info info = MPI_INFO_NULL) {
         std::string tmp_storage;
-        char const* tag_cstr = (tag.data()[tag.size()] == '\0')
-                                   ? tag.data()
-                                   : (tmp_storage = tag, tmp_storage.c_str());
-        MPI_Comm c   = MPI_COMM_NULL;
-        int      err = MPI_Comm_create_from_group(handle(g), tag_cstr, handle(info), MPI_ERRORS_RETURN, &c);
+        char const* tag_cstr = (tag.data()[tag.size()] == '\0') ? tag.data() : (tmp_storage = tag, tmp_storage.c_str());
+        MPI_Comm    c        = MPI_COMM_NULL;
+        int         err      = MPI_Comm_create_from_group(handle(g), tag_cstr, handle(info), MPI_ERRORS_RETURN, &c);
         if (err != MPI_SUCCESS) {
             throw mpi_error(err);
         }
@@ -204,16 +198,22 @@ public:
     ///
     /// Allows passing a `comm` wherever a `comm_view` is expected without
     /// an explicit cast. The view borrows; it does not extend lifetime.
-    operator comm_view() const noexcept { return comm_view{_comm}; }
+    operator comm_view() const noexcept {
+        return comm_view{_comm};
+    }
 
     /// @return The underlying `MPI_Comm` (for `handle()` dispatch).
-    [[nodiscard]] MPI_Comm mpi_handle() const noexcept { return _comm; }
+    [[nodiscard]] MPI_Comm mpi_handle() const noexcept {
+        return _comm;
+    }
 
     /// @brief Pointer to the underlying `MPI_Comm`, for use as an MPI out-parameter.
     ///
     /// **Precondition**: the comm must be null (`MPI_COMM_NULL`). Writing into a
     /// non-null `comm` bypasses `MPI_Comm_free` and leaks the existing handle.
-    MPI_Comm* mpi_handle_ptr() noexcept { return &_comm; }
+    MPI_Comm* mpi_handle_ptr() noexcept {
+        return &_comm;
+    }
 
 private:
     struct adopt_t {};

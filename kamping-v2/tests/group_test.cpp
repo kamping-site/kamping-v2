@@ -73,7 +73,7 @@ TEST(GroupTest, MoveAssignTransfersOwnership) {
 TEST(GroupTest, ImplicitConversionToView) {
     MPI_Group raw = MPI_GROUP_EMPTY;
     MPI_Comm_group(MPI_COMM_WORLD, &raw);
-    group     g   = group::from_native(raw);
+    group      g  = group::from_native(raw);
     group_view gv = g; // implicit conversion
     EXPECT_EQ(gv.mpi_handle(), raw);
 }
@@ -173,8 +173,8 @@ TEST(CommTest, CommFromGroup) {
 }
 
 TEST(CommTest, FromGroupWithGroupView) {
-    comm_view world(MPI_COMM_WORLD);
-    group     g  = world.group();
+    comm_view  world(MPI_COMM_WORLD);
+    group      g  = world.group();
     group_view gv = g;
     comm       c  = comm::from_group(gv, "view-tag");
     EXPECT_EQ(c.size(), world.size());
@@ -233,4 +233,3 @@ TEST(GroupTest, ReleaseRelinquishesOwnership) {
     EXPECT_EQ(g.mpi_handle(), MPI_GROUP_EMPTY);
     MPI_Group_free(&released);
 }
-
