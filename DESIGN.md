@@ -530,6 +530,62 @@ ctest --test-dir build -R test_v2_allgather  # Runs with 1, 2, 4, 8 ranks
 
 ---
 
+## Ecosystem Adapters
+
+Adapters live under `ecosystem/` and connect KaMPIng to external C++ libraries. Each adapter is
+an independent CMake component that depends only on `kamping::v2` and the target library.
+
+### SYCL adapter (`ecosystem/sycl/`)
+
+Exposes SYCL buffer accessors as MPI buffers via two complementary types.
+
+**Compiler requirement: Intel oneAPI DPC++ only.**
+The adapter relies on `sycl::host_task` + `sycl::interop_handle` (standard SYCL 2020) to extract
+raw device pointers. AdaptiveCpp does not implement this feature, so the adapter cannot be used
+with AdaptiveCpp.
+
+**Two access paths:**
+
+| Accessor type | How to get a pointer | Adaptor usage |
+|---|---|---|
+| `sycl::accessor` (inside `host_task`) | `interop_handle::get_native_mem<backend>(acc)` | `acc \| views::sycl(ih)` |
+| `sycl::host_accessor` | `host_accessor::get_pointer()` | `hacc \| views::sycl` |
+
+**`sycl_view<Base>`** wraps either accessor type:
+- For device accessors the constructor takes `(Base, interop_handle const&)` and stores a pointer to the handle. `mpi_ptr()` calls `get_native_mem` for the active SYCL backend (Level Zero, CUDA, HIP).
+- For host accessors the constructor takes `(Base)` and `mpi_ptr()` calls `get_pointer()`. The `ih_` member is eliminated at zero cost via `[[no_unique_address]]` + `std::monostate`.
+- `mpi_count()` and `mpi_type()` propagate from the accessor through `view_interface`.
+
+**`views::sycl`** is a single adaptor object (`sycl_fn`) that covers both paths:
+```cpp
+// Device accessor — partial application binds ih, returns a pipeable closure:
+acc | views::sycl(ih)
+
+// Equivalent full call:
+views::sycl(acc, ih)
+
+// Host accessor — zero-arg closure, no handle needed:
+hacc | views::sycl
+```
+
+`sycl_accessor_traits<T>` is the internal trait struct that provides `mode` and `is_host` for both
+`sycl::accessor` and `sycl::host_accessor`. Concepts `sycl_device_accessor` / `sycl_host_accessor`
+are built on top of it. Path selection in `mpi_ptr()` is `if constexpr` on these concepts.
+
+**SYCL USM pointers** (`sycl::malloc_device`, `sycl::malloc_shared`) are plain C++ pointers.
+Wrap them in `std::span` or `mpi_span` — no `sycl_view` adaptor is needed.
+
+**`supports_matched_probe` and `enable_borrowed_buffer`** are propagated from `Base`, so opt-out
+specializations on the accessor type carry through automatically.
+
+**Example:** `ecosystem/sycl/examples/sycl_send_recv_example.cpp`
+- Rank 0 fills 0..9 on device, sends via device-aware MPI (`acc | views::sycl(ih)`).
+- Rank 1 receives into device memory, squares each element on device.
+- Rank 1 sends back via host accessor (`hacc | views::sycl`).
+- Rank 0 receives via host accessor and prints the result.
+
+---
+
 ## See Also
 
 - `CLAUDE.md` — project structure, build commands, code conventions
