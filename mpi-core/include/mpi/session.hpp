@@ -1,14 +1,14 @@
 #pragma once
 
-#if MPI_VERSION >= 4
+#include <mpi.h>
+
+#if defined(MPI_VERSION) && MPI_VERSION >= 4
 
 #include <iterator>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
-
-#include <mpi.h>
 
 #include "mpi/comm.hpp"
 #include "mpi/error.hpp"
@@ -55,6 +55,10 @@ public:
             return _index >= _total;
         }
 
+        [[nodiscard]] friend bool operator==(std::default_sentinel_t s, iterator const& it) noexcept {
+            return it == s;
+        }
+
     private:
         MPI_Session _session = MPI_SESSION_NULL;
         MPI_Info    _info    = MPI_INFO_NULL;
@@ -70,9 +74,18 @@ public:
         /// we trim any trailing '\0' characters defensively.
         void _load_current() {
             int len = 0;
-            MPI_Session_get_nth_pset(_session, _info, _index, &len, nullptr);
-            _current.assign(static_cast<std::size_t>(len), '\0');
-            MPI_Session_get_nth_pset(_session, _info, _index, &len, _current.data());
+            int err = MPI_Session_get_nth_pset(_session, _info, _index, &len, nullptr);
+            if (err != MPI_SUCCESS) {
+                throw mpi_error(err);
+            }
+            // Allocate len+1 bytes: MPI may or may not include the null terminator
+            // in the reported length; the extra byte ensures we never overflow.
+            _current.assign(static_cast<std::size_t>(len) + 1, '\0');
+            int buf_len = len + 1;
+            err         = MPI_Session_get_nth_pset(_session, _info, _index, &buf_len, _current.data());
+            if (err != MPI_SUCCESS) {
+                throw mpi_error(err);
+            }
             while (!_current.empty() && _current.back() == '\0') {
                 _current.pop_back();
             }
@@ -144,8 +157,13 @@ public:
     /// @return The owned group, or `std::nullopt` if this process is not a member.
     /// @throws mpi_error if the MPI call fails (e.g., unknown pset name).
     [[nodiscard]] std::optional<group> group_from_pset(std::string_view pset_name) const {
+        // string_view is not guaranteed null-terminated; check before using data() directly.
+        std::string tmp_storage;
+        char const* cstr = (pset_name.data()[pset_name.size()] == '\0')
+                               ? pset_name.data()
+                               : (tmp_storage = pset_name, tmp_storage.c_str());
         MPI_Group g   = MPI_GROUP_EMPTY;
-        int       err = MPI_Group_from_session_pset(sess(), pset_name.data(), &g);
+        int       err = MPI_Group_from_session_pset(sess(), cstr, &g);
         if (err != MPI_SUCCESS) {
             throw mpi_error(err);
         }
@@ -193,11 +211,12 @@ public:
     /// when iteration begins; each increment fetches the next name on demand via
     /// `MPI_Session_get_nth_pset`. No names are loaded until iteration starts.
     ///
-    /// @tparam Info Any type satisfying `convertible_to_mpi_handle<MPI_Info>`.
+    /// Accepts a raw `MPI_Info` handle only — passing an owning wrapper temporary
+    /// would leave the range with a dangling handle after this call returns.
+    ///
     /// @param info Optional MPI info hints (defaults to `MPI_INFO_NULL`).
-    template <convertible_to_mpi_handle<MPI_Info> Info = MPI_Info>
-    [[nodiscard]] pset_range psets(Info info = MPI_INFO_NULL) const {
-        return pset_range{sess(), handle(info)};
+    [[nodiscard]] pset_range psets(MPI_Info info = MPI_INFO_NULL) const {
+        return pset_range{sess(), info};
     }
 };
 

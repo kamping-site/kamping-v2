@@ -1,10 +1,10 @@
 #pragma once
 
-#if MPI_VERSION >= 4
+#include <mpi/session.hpp>
+
+#if defined(MPI_VERSION) && MPI_VERSION >= 4
 
 #include <string_view>
-
-#include <mpi/session.hpp>
 
 namespace kamping::v2 {
 

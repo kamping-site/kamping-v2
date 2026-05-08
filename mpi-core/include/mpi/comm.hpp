@@ -160,8 +160,12 @@ public:
         std::string_view tag  = "",
         Info             info = MPI_INFO_NULL
     ) {
+        std::string tmp_storage;
+        char const* tag_cstr = (tag.data()[tag.size()] == '\0')
+                                   ? tag.data()
+                                   : (tmp_storage = tag, tmp_storage.c_str());
         MPI_Comm c   = MPI_COMM_NULL;
-        int      err = MPI_Comm_create_from_group(handle(g), tag.data(), handle(info), MPI_ERRORS_RETURN, &c);
+        int      err = MPI_Comm_create_from_group(handle(g), tag_cstr, handle(info), MPI_ERRORS_RETURN, &c);
         if (err != MPI_SUCCESS) {
             throw mpi_error(err);
         }

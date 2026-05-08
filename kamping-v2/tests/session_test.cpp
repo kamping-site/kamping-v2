@@ -61,7 +61,8 @@ TEST(SessionTest, ReleaseRelinquishesOwnership) {
 
 TEST(SessionTest, FromNativeAdoptsHandle) {
     MPI_Session raw = MPI_SESSION_NULL;
-    MPI_Session_init(MPI_INFO_NULL, MPI_ERRORS_RETURN, &raw);
+    int         err = MPI_Session_init(MPI_INFO_NULL, MPI_ERRORS_RETURN, &raw);
+    ASSERT_EQ(err, MPI_SUCCESS);
     session s = session::from_native(raw);
     EXPECT_EQ(s.mpi_handle(), raw);
     // freed by s's destructor
