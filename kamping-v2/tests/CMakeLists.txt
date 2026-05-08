@@ -34,6 +34,12 @@ add_executable(test_v2_group group_test.cpp)
 target_link_libraries(test_v2_group PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
 katestrophe_add_mpi_test(test_v2_group CORES 1 2 4)
 
+if(MPI_CXX_VERSION VERSION_GREATER_EQUAL "4.0")
+    add_executable(test_v2_session session_test.cpp)
+    target_link_libraries(test_v2_session PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
+    katestrophe_add_mpi_test(test_v2_session CORES 1 2)
+endif()
+
 add_executable(test_v2_allgatherv v2_allgatherv_test.cpp)
 target_link_libraries(test_v2_allgatherv PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
 katestrophe_add_mpi_test(test_v2_allgatherv CORES 1 2 4)

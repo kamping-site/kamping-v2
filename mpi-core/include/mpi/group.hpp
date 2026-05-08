@@ -65,11 +65,6 @@ public:
     /// @return `GroupEquality::Identical` if same object, `Similar` if same
     ///         processes in different order, `Unequal` otherwise.
     [[nodiscard]] GroupEquality compare(group_view other) const;
-
-    /// @return The underlying `MPI_Group` (escape hatch).
-    [[nodiscard]] MPI_Group native() const noexcept { return grp(); }
-
-
 };
 
 // ── group_view ────────────────────────────────────────────────────────────────

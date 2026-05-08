@@ -371,10 +371,6 @@ public:
     /// @throws mpi_error if `MPI_Info_dup` fails.
     [[nodiscard]] info dup() const; // defined out-of-line after info
 
-    // ── escape hatch ─────────────────────────────────────────────────────────
-
-    /// @return The underlying `MPI_Info` handle.
-    [[nodiscard]] MPI_Info native() const noexcept { return h(); }
 };
 
 // ─── info_view ───────────────────────────────────────────────────────────────
