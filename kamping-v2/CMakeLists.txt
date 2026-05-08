@@ -6,7 +6,7 @@ include(FetchContent)
 # When kamping-v2 is used as the FetchContent SOURCE_SUBDIR entry point (i.e. the monorepo
 # root CMakeLists.txt was not processed), bootstrap all required dependencies here.
 # In the monorepo build these are already provided by the root CMakeLists.txt.
-if (NOT TARGET kamping::mpi_core)
+if (NOT TARGET mpi::core)
     set(MPI_DETERMINE_LIBRARY_VERSION TRUE)
     find_package(MPI REQUIRED)
 
@@ -39,14 +39,24 @@ if (NOT TARGET kamping::mpi_core)
     )
     FetchContent_MakeAvailable(kamping_types)
 
-    FetchContent_Declare(mpi_core SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../mpi-core)
+    set(_mpi_core_local "${CMAKE_CURRENT_SOURCE_DIR}/../mpi-core")
+    if (NOT EXISTS "${_mpi_core_local}/CMakeLists.txt")
+        message(
+            FATAL_ERROR
+            "kamping-v2: mpi::core target not found and the sibling directory "
+            "'${_mpi_core_local}' does not exist. Provide mpi::core before including "
+            "this component, or build from the monorepo root."
+        )
+    endif ()
+    FetchContent_Declare(mpi_core SOURCE_DIR "${_mpi_core_local}")
+    unset(_mpi_core_local)
     FetchContent_MakeAvailable(mpi_core)
 endif ()
 
 add_library(kamping_v2 INTERFACE)
 target_include_directories(kamping_v2 INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_compile_features(kamping_v2 INTERFACE cxx_std_20)
-target_link_libraries(kamping_v2 INTERFACE kamping::mpi_core)
+target_link_libraries(kamping_v2 INTERFACE mpi::core)
 add_library(kamping::v2 ALIAS kamping_v2)
 
 # Interface target for warning flags. The monorepo root or any downstream consumer can append

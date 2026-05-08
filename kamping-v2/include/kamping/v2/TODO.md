@@ -295,16 +295,16 @@ Cereal likewise depends on `kamping::v2` (serialize/deserialize views are v2-spe
 
 ### Known issues to fix
 
-- [ ] Rename `kamping::mpi_core` alias to `mpi::core` in `mpi-core/CMakeLists.txt`; update all
+- [x] Rename `kamping::mpi_core` alias to `mpi::core` in `mpi-core/CMakeLists.txt`; update all
   references in `kamping-v2/CMakeLists.txt` and ecosystem files.
-- [ ] `mpi-core/CMakeLists.txt` has no bootstrapping block. If used as a standalone
+- [x] `mpi-core/CMakeLists.txt` has no bootstrapping block. If used as a standalone
   `SOURCE_SUBDIR mpi-core` entry point, `MPI::MPI_CXX`, `kamping::kassert`, and
   `kamping::types` are undefined. Add the same bootstrapping pattern.
-- [ ] `kamping-v2/CMakeLists.txt` bootstrap uses `FetchContent_Declare(mpi_core SOURCE_DIR ...)`
+- [x] `kamping-v2/CMakeLists.txt` bootstrap uses `FetchContent_Declare(mpi_core SOURCE_DIR ...)`
   without checking existence first. Add the `FATAL_ERROR` guard matching the cereal/thrust pattern.
 - [ ] `kamping_types` is pinned to `GIT_TAG main` in the root and in the v2 bootstrap — unstable.
   Pin to a release tag once kamping-types cuts one.
-- [ ] `KAMPING_ENABLE_SERIALIZATION` defaults `ON` in `ecosystem/CMakeLists.txt`. This silently
+- [x] `KAMPING_ENABLE_SERIALIZATION` defaults `ON` in `ecosystem/CMakeLists.txt`. This silently
   fetches Cereal for every consumer. Change default to `OFF` to match `KAMPING_ENABLE_THRUST`.
-- [ ] PR #7 (Kokkos): fix alias to `kamping::ecosystem::kokkos`, add `option()` declaration with
+- [x] PR #7 (Kokkos): fix alias to `kamping::ecosystem::kokkos`, add `option()` declaration with
   default `OFF`, pin `KokkosComm` `GIT_TAG` away from `develop`.
