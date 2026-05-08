@@ -26,7 +26,8 @@ cmake --build build --parallel
 Key CMake options:
 - `KAMPING_BUILD_EXAMPLES_AND_TESTS` — must be ON to build tests (default OFF in library mode)
 - `KAMPING_WARNINGS_ARE_ERRORS` — treat compiler warnings as errors (default OFF)
-- `KAMPING_ENABLE_SERIALIZATION` — Cereal ecosystem adapter (default ON)
+- `KAMPING_ENABLE_SERIALIZATION` — Cereal ecosystem adapter (default OFF)
+- `KAMPING_ENABLE_KOKKOS` — Kokkos ecosystem adapter (default OFF)
 - `KAMPING_ENABLE_REFLECTION` — Boost.PFR struct reflection in kamping-types (default ON)
 
 ## Testing
