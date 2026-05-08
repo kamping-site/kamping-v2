@@ -41,7 +41,7 @@ if (NOT KAMPING_DISABLE_KOKKOS_COMM)
     FetchContent_Declare(
             KokkosComm
             GIT_REPOSITORY https://github.com/kamping-site/kokkos-comm.git
-            GIT_TAG develop
+            GIT_TAG v0.0.2
             SYSTEM
     )
     FetchContent_MakeAvailable(KokkosComm)

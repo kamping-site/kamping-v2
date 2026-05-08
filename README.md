@@ -24,7 +24,7 @@ auto result = req.wait();
 
 | Component | Description | C++ standard | CMake target |
 |-----------|-------------|:---:|---|
-| `mpi-core/` | Low-level MPI wrappers. Buffer concepts and accessor dispatch (`mpi::experimental::`). | C++20 | `kamping::mpi_core` |
+| `mpi-core/` | Low-level MPI wrappers. Buffer concepts and accessor dispatch (`mpi::experimental::`). | C++20 | `mpi::core` |
 | `kamping-v2/` | High-level wrappers with ownership, infer, resize, auto-counts/displs (`kamping::v2::`). | C++20 | `kamping::v2` |
 | `ecosystem/cereal/` | Cereal serialization adapter. | C++20 | `kamping::ecosystem::cereal` |
 | `ecosystem/kokkos/` | Kokkos view adapter (device-aware MPI via `buffer_traits`). | C++20 | `kamping::ecosystem::kokkos` |
@@ -59,7 +59,7 @@ FetchContent_Declare(
     SOURCE_SUBDIR mpi-core
 )
 FetchContent_MakeAvailable(kamping_v2)
-target_link_libraries(myapp PRIVATE kamping::mpi_core)
+target_link_libraries(myapp PRIVATE mpi::core)
 ```
 
 ## Supported Operations
@@ -89,7 +89,8 @@ Key CMake options:
 |--------|---------|-------------|
 | `KAMPING_BUILD_EXAMPLES_AND_TESTS` | `OFF` | Build tests and examples |
 | `KAMPING_WARNINGS_ARE_ERRORS` | `OFF` | Treat warnings as errors |
-| `KAMPING_ENABLE_SERIALIZATION` | `ON` | Build the Cereal ecosystem adapter |
+| `KAMPING_ENABLE_SERIALIZATION` | `OFF` | Build the Cereal ecosystem adapter |
+| `KAMPING_ENABLE_KOKKOS` | `OFF` | Build the Kokkos ecosystem adapter |
 | `KAMPING_ENABLE_REFLECTION` | `ON` | Enable Boost.PFR struct reflection in kamping-types |
 
 ## Buffer Protocol
