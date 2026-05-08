@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Karlsruhe Institute of Technology
+// SPDX-License-Identifier: BSL-1.0
+
 /// SYCL ecosystem adapter for KaMPIng v2.
 ///
 /// Exposes SYCL accessors as MPI buffers via `sycl_view` and the `views::sycl` pipe adaptor.
