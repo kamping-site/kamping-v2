@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Karlsruhe Institute of Technology
+// SPDX-License-Identifier: BSL-1.0
+
 #include <algorithm>
 #include <string>
 #include <vector>
