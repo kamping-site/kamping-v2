@@ -11,7 +11,7 @@ kamping::v2::recv(data | kamping::views::resize, comm);
 
 // Variadic collective with automatic counts/displacements
 kamping::v2::alltoallv(send_buf | kamping::views::with_counts(scounts),
-                       recv_buf | kamping::views::resize_v | kamping::views::auto_counts(),
+                       kamping::v2::auto_recv_v<int>(),
                        comm);
 
 // Non-blocking with automatic resize
@@ -26,7 +26,10 @@ auto result = req.wait();
 |-----------|-------------|:---:|---|
 | `mpi-core/` | Low-level MPI wrappers. Buffer concepts and accessor dispatch (`mpi::experimental::`). | C++20 | `kamping::mpi_core` |
 | `kamping-v2/` | High-level wrappers with ownership, infer, resize, auto-counts/displs (`kamping::v2::`). | C++20 | `kamping::v2` |
-| `ecosystem/cereal/` | Cereal serialization adapter (`kamping::ecosystem::cereal`). | C++20 | `kamping::ecosystem::cereal` |
+| `ecosystem/cereal/` | Cereal serialization adapter. | C++20 | `kamping::ecosystem::cereal` |
+| `ecosystem/kokkos/` | Kokkos view adapter (device-aware MPI via `buffer_traits`). | C++20 | `kamping::ecosystem::kokkos` |
+| `ecosystem/sycl/` | SYCL accessor adapter via `sycl_view` (Intel oneAPI DPC++ only). | C++20 | `kamping::ecosystem::sycl` |
+| `ecosystem/thrust/` | Thrust `device_vector` adapter for CUDA-aware MPI. | C++20 | `kamping::ecosystem::thrust` |
 
 `kamping-types` (MPI datatype registry, `kamping::types`) is consumed from the [kamping-site/kamping](https://github.com/kamping-site/kamping) repository via FetchContent.
 
@@ -59,6 +62,12 @@ FetchContent_MakeAvailable(kamping_v2)
 target_link_libraries(myapp PRIVATE kamping::mpi_core)
 ```
 
+## Supported Operations
+
+**Collectives:** `allgather`, `allgatherv`, `allreduce`, `alltoall`, `alltoallv`, `barrier`, `bcast`, `exscan`, `gather`, `gatherv`, `reduce`, `scan`, `scatter`, `scatterv`
+
+**Point-to-point:** `send`, `recv`, `sendrecv`, `isend`, `irecv`, `isendrecv`
+
 ## Building
 
 Requires CMake 3.25+, a C++20 compiler, and an MPI installation.
@@ -83,33 +92,7 @@ Key CMake options:
 | `KAMPING_ENABLE_SERIALIZATION` | `ON` | Build the Cereal ecosystem adapter |
 | `KAMPING_ENABLE_REFLECTION` | `ON` | Enable Boost.PFR struct reflection in kamping-types |
 
-## Architecture
-
-v2 is organized into four explicit layers. Each layer depends only on the layers below it.
-
-```
-┌─────────────────────────────────────────────────┐
-│  Ecosystem bridges                              │
-│  Bindings to external libraries (Cereal, …)     │
-│  ecosystem/                                     │
-├─────────────────────────────────────────────────┤
-│  Language bindings  (kamping-v2)                │
-│  Ownership, infer, deferred buffers,            │
-│  auto-counts/displs, resize-on-receive          │
-│  kamping-v2/include/kamping/v2/                 │
-├─────────────────────────────────────────────────┤
-│  Language bridge  (mpi-core)                    │
-│  Buffer concepts and accessor dispatch,         │
-│  core view adaptors, MPI wrappers,              │
-│  native-handle bridge                           │
-│  mpi-core/include/mpi/                          │
-├─────────────────────────────────────────────────┤
-│  Contract  (language-agnostic)                  │
-│  Buffer and native-handle concepts              │
-└─────────────────────────────────────────────────┘
-```
-
-### Buffer Protocol
+## Buffer Protocol
 
 Any type satisfying the buffer concepts can be passed to MPI wrappers — no inheritance required. Accessor dispatch follows a three-tier priority:
 
@@ -128,7 +111,7 @@ struct mpi::experimental::buffer_traits<MyType> {
 };
 ```
 
-### View Adaptors
+## View Adaptors
 
 All views are composable with `|` and lazy:
 
@@ -139,12 +122,14 @@ All views are composable with `|` and lazy:
 | `views::with_size(n)` | Overrides element count |
 | `views::with_counts(range)` | Attaches per-rank send/recv counts (variadic operations) |
 | `views::with_displs(range)` | Attaches per-rank displacements |
-| `views::auto_displs([tag])` | Computes displacements via exclusive_scan of counts |
+| `views::auto_displs([resize,] [container])` | Computes displacements via exclusive_scan of counts; pass `resize` tag to auto-resize the displacement buffer, `container` to use custom storage (default `std::vector<int>`) |
 | `views::resize_v` | Variadic recv buffer: resizes from counts+displs before receive |
 | `views::auto_counts([buf])` | Deferred variadic counts buffer |
+| `views::auto_recv_v` | Shorthand for `auto_counts() \| auto_displs() \| resize_v` |
+| `views::ref_single(val)` | Wraps a single scalar as a one-element contiguous buffer |
 | `views::serialize` / `views::deserialize<T>()` | Cereal serialization (ecosystem/cereal) |
 
-### Non-Blocking Operations
+## Non-Blocking Operations
 
 Non-blocking calls return `iresult<Buf>` — a move-only handle that stores the buffer on the heap so the pointer captured by MPI stays stable. The destructor calls `MPI_Wait` if not already completed.
 
@@ -155,6 +140,9 @@ req.wait();
 
 auto req2 = kamping::v2::irecv(buf | kamping::views::resize, comm);
 auto result = req2.wait();  // returns the resized buffer
+
+// Poll without blocking: bool for borrowed buffers, std::optional<T> for owned
+if (auto r = req2.test()) { /* completed */ }
 ```
 
 ## Relation to KaMPIng v1
