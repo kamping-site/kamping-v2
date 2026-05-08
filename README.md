@@ -163,4 +163,4 @@ The original KaMPIng (named-parameter / template-metaprogramming API, C++17) liv
 
 ## License
 
-KaMPIng v2 is released under the MIT License. See [LICENSE](LICENSE) for details.
+KaMPIng-v2 is released under the Boost Software License 1.0. See [LICENSE](LICENSE) for details.
