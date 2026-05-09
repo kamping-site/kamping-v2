@@ -21,7 +21,7 @@ jobs:
     - name: Configure CMake
       run: cmake --preset release
     - name: Build
-      run: cmake --build --preset release
+      run: cmake --build --preset release --parallel
 
     - name: Test
       working-directory: ${{github.workspace}}/build
