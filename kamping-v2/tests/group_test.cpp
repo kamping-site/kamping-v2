@@ -166,6 +166,8 @@ TEST(CommTest, GroupFromCommView) {
     EXPECT_EQ(g.size(), world.size());
 }
 
+#if defined(MPI_VERSION) && MPI_VERSION >= 4
+
 TEST(CommTest, CommFromGroup) {
     comm_view world(MPI_COMM_WORLD);
     group     g        = world.group();
@@ -190,6 +192,8 @@ TEST(CommTest, FromGroupWithRawHandle) {
     EXPECT_EQ(c.size(), static_cast<int>(comm_view(MPI_COMM_WORLD).size()));
     MPI_Group_free(&raw_g);
 }
+
+#endif
 
 TEST(CommTest, ReleaseRelinquishesOwnership) {
     comm_view world(MPI_COMM_WORLD);
