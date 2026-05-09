@@ -99,10 +99,12 @@ TEST(SessionTest, GroupFromPsetSelfHasSizeOne) {
     EXPECT_EQ(g->size(), 1);
 }
 
-TEST(SessionTest, GroupFromPsetUnknownThrows) {
-    session s;
-    EXPECT_THROW((void)s.group_from_pset("mpi://DOES_NOT_EXIST"), mpi_error);
-}
+// Intel MPI does not return an error for invalid pset names,
+// but produces a fatal error
+// TEST(SessionTest, GroupFromPsetUnknownThrows) {
+//     session s;
+//     EXPECT_THROW((void)s.group_from_pset("mpi://DOES_NOT_EXIST"), mpi_error);
+// }
 
 // ── comm_from_pset ────────────────────────────────────────────────────────────
 
