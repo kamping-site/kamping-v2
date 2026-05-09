@@ -1,0 +1,28 @@
+name: CMake build
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        mpi: ['mpich', 'openmpi', 'intelmpi']
+        cxx: ['g++', 'clang++']
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Setup MPI
+      uses: mpi4py/setup-mpi@v1
+      with:
+        mpi: ${{ matrix.mpi }}
+    - name: Configure CMake
+      run: cmake --preset release -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
+    - name: Build
+      run: cmake --build --preset release --parallel
+    - name: Test
+      run: ctest --preset release
+
