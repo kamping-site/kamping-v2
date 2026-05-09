@@ -145,6 +145,7 @@ public:
         return comm(c, adopt_t{});
     }
 
+#if defined(MPI_VERSION) && MPI_VERSION >= 4
     /// @brief Collective: create a new communicator from a group.
     ///
     /// Calls `MPI_Comm_create_from_group`. All processes in `g` must call this
@@ -168,6 +169,7 @@ public:
         }
         return comm::from_native(c);
     }
+#endif
 
     /// @brief Explicitly free the communicator.
     ///
