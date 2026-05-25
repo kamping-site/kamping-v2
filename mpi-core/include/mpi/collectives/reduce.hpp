@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <climits>
+
 #include <mpi.h>
 #include <mpi/buffer.hpp>
 #include <mpi/error.hpp>
@@ -45,6 +47,18 @@ void reduce(SBuf&& sbuf, RBuf&& rbuf, Op const& op, Root root, Comm const& comm 
     if (sbuf_ptr == MPI_IN_PLACE) {
         // Inplace: count and type from rbuf
         KAMPING_ASSERT(rank == root_rank, "inplace reduce only valid on root");
+#if MPI_VERSION >= 4
+        int err = MPI_Reduce_c(
+            sbuf_ptr,
+            ptr(rbuf),
+            count(rbuf),
+            type(rbuf),
+            as_mpi_op(op, sbuf, rbuf),
+            root_rank,
+            handle(comm)
+        );
+#else
+        KAMPING_ASSERT(count(rbuf) <= INT_MAX, "element count exceeds int range; requires MPI-4");
         int err = MPI_Reduce(
             sbuf_ptr,
             ptr(rbuf),
@@ -54,6 +68,7 @@ void reduce(SBuf&& sbuf, RBuf&& rbuf, Op const& op, Root root, Comm const& comm 
             root_rank,
             handle(comm)
         );
+#endif
         if (err != MPI_SUCCESS) {
             throw mpi_error(err);
         }
@@ -68,6 +83,18 @@ void reduce(SBuf&& sbuf, RBuf&& rbuf, Op const& op, Root root, Comm const& comm 
             rank != root_rank || type(sbuf) == type(rbuf),
             "on root: send and receive buffers must have the same type"
         );
+#if MPI_VERSION >= 4
+        int err = MPI_Reduce_c(
+            sbuf_ptr,
+            ptr(rbuf),
+            count(sbuf),
+            type(sbuf),
+            as_mpi_op(op, sbuf, rbuf),
+            root_rank,
+            handle(comm)
+        );
+#else
+        KAMPING_ASSERT(count(sbuf) <= INT_MAX, "element count exceeds int range; requires MPI-4");
         int err = MPI_Reduce(
             sbuf_ptr,
             ptr(rbuf),
@@ -77,6 +104,7 @@ void reduce(SBuf&& sbuf, RBuf&& rbuf, Op const& op, Root root, Comm const& comm 
             root_rank,
             handle(comm)
         );
+#endif
         if (err != MPI_SUCCESS) {
             throw mpi_error(err);
         }

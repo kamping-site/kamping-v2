@@ -3,20 +3,20 @@
 
 #pragma once
 
+#include <climits>
 #include <ranges>
 
 #include <mpi.h>
 
+#include "kamping/kassert/kassert.hpp"
 #include "mpi/buffer.hpp"
 #include "mpi/error.hpp"
 #include "mpi/handle.hpp"
 
 namespace mpi::experimental {
-template <
-    send_buffer                         SBuf,
-    recv_buffer_v                       RBuf,
-    convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+template <send_buffer SBuf, recv_buffer_v RBuf, convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
 void allgatherv(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = MPI_COMM_WORLD) {
+    KAMPING_ASSERT(count(sbuf) <= INT_MAX, "element count exceeds int range; requires MPI-4");
     int err = MPI_Allgatherv(
         ptr(sbuf),
         static_cast<int>(count(sbuf)),

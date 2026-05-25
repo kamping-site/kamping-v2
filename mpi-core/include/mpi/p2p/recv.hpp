@@ -3,8 +3,11 @@
 
 #pragma once
 
+#include <climits>
+
 #include <mpi.h>
 
+#include "kamping/kassert/kassert.hpp"
 #include "mpi/buffer.hpp"
 #include "mpi/error.hpp"
 #include "mpi/handle.hpp"
@@ -23,6 +26,11 @@ void recv(
     Comm const& comm   = MPI_COMM_WORLD,
     Status&&    status = MPI_STATUS_IGNORE
 ) {
+#if MPI_VERSION >= 4
+    int err =
+        MPI_Recv_c(ptr(rbuf), count(rbuf), type(rbuf), to_rank(source), to_tag(tag), handle(comm), handle_ptr(status));
+#else
+    KAMPING_ASSERT(count(rbuf) <= INT_MAX, "element count exceeds int range; requires MPI-4");
     int err = MPI_Recv(
         ptr(rbuf),
         static_cast<int>(count(rbuf)),
@@ -32,6 +40,7 @@ void recv(
         handle(comm),
         handle_ptr(status)
     );
+#endif
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);
     }

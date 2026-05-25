@@ -32,14 +32,14 @@ void isendrecv(
     Comm const& comm,
     Request&&   request
 ) {
-    int err = MPI_Isendrecv(
+    int err = MPI_Isendrecv_c(
         ptr(sbuf),
-        static_cast<int>(count(sbuf)),
+        count(sbuf),
         type(sbuf),
         to_rank(dest),
         to_tag(send_tag),
         ptr(rbuf),
-        static_cast<int>(count(rbuf)),
+        count(rbuf),
         type(rbuf),
         to_rank(source),
         to_tag(recv_tag),

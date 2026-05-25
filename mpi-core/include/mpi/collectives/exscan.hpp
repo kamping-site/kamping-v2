@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <climits>
+
 #include <mpi.h>
 
 #include "mpi/buffer.hpp"
@@ -35,6 +37,10 @@ template <
 void exscan(SBuf&& sbuf, RBuf&& rbuf, Op const& op, Comm const& comm = MPI_COMM_WORLD) {
     auto sbuf_ptr = ptr(sbuf);
     if (sbuf_ptr == MPI_IN_PLACE) {
+#if MPI_VERSION >= 4
+        int err = MPI_Exscan_c(sbuf_ptr, ptr(rbuf), count(rbuf), type(rbuf), as_mpi_op(op, sbuf, rbuf), handle(comm));
+#else
+        KAMPING_ASSERT(count(rbuf) <= INT_MAX, "element count exceeds int range; requires MPI-4");
         int err = MPI_Exscan(
             sbuf_ptr,
             ptr(rbuf),
@@ -43,6 +49,7 @@ void exscan(SBuf&& sbuf, RBuf&& rbuf, Op const& op, Comm const& comm = MPI_COMM_
             as_mpi_op(op, sbuf, rbuf),
             handle(comm)
         );
+#endif
         if (err != MPI_SUCCESS) {
             throw mpi_error(err);
         }
@@ -53,6 +60,10 @@ void exscan(SBuf&& sbuf, RBuf&& rbuf, Op const& op, Comm const& comm = MPI_COMM_
             "send and receive buffer must have the same count"
         );
         KAMPING_ASSERT(type(sbuf) == type(rbuf), "send and receive buffer must have the same type");
+#if MPI_VERSION >= 4
+        int err = MPI_Exscan_c(sbuf_ptr, ptr(rbuf), count(sbuf), type(sbuf), as_mpi_op(op, sbuf, rbuf), handle(comm));
+#else
+        KAMPING_ASSERT(count(sbuf) <= INT_MAX, "element count exceeds int range; requires MPI-4");
         int err = MPI_Exscan(
             sbuf_ptr,
             ptr(rbuf),
@@ -61,6 +72,7 @@ void exscan(SBuf&& sbuf, RBuf&& rbuf, Op const& op, Comm const& comm = MPI_COMM_
             as_mpi_op(op, sbuf, rbuf),
             handle(comm)
         );
+#endif
         if (err != MPI_SUCCESS) {
             throw mpi_error(err);
         }

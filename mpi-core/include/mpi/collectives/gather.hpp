@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <climits>
+
 #include <mpi.h>
 
 #include "kamping/kassert/kassert.hpp"
@@ -18,9 +20,23 @@ void gather(SBuf&& sbuf, RBuf&& rbuf, Root root, Comm const& comm) {
     MPI_Comm_size(handle(comm), &comm_size);
     MPI_Comm_rank(handle(comm), &comm_rank);
     KAMPING_ASSERT(
-        to_rank(root) != comm_rank || static_cast<int>(count(rbuf)) % comm_size == 0,
+        to_rank(root) != comm_rank || count(rbuf) % comm_size == 0,
         "on root: recv buffer size must be divisible by comm size"
     );
+#if MPI_VERSION >= 4
+    int err = MPI_Gather_c(
+        ptr(sbuf),
+        count(sbuf),
+        type(sbuf),
+        ptr(rbuf),
+        count(rbuf) / comm_size,
+        type(rbuf),
+        to_rank(root),
+        handle(comm)
+    );
+#else
+    KAMPING_ASSERT(count(sbuf) <= INT_MAX, "element count exceeds int range; requires MPI-4");
+    KAMPING_ASSERT(count(rbuf) / comm_size <= INT_MAX, "element count exceeds int range; requires MPI-4");
     int err = MPI_Gather(
         ptr(sbuf),
         static_cast<int>(count(sbuf)),
@@ -31,6 +47,7 @@ void gather(SBuf&& sbuf, RBuf&& rbuf, Root root, Comm const& comm) {
         to_rank(root),
         handle(comm)
     );
+#endif
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);
     }

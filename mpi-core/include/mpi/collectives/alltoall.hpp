@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <climits>
+
 #include <mpi.h>
 
 #include "kamping/kassert/kassert.hpp"
@@ -25,6 +27,19 @@ void alltoall(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = MPI_COMM_WORLD) {
         count(rbuf) % static_cast<rcount_t>(comm_size) == rcount_t{0},
         "recv buffer size must be divisible by comm size"
     );
+#if MPI_VERSION >= 4
+    int err = MPI_Alltoall_c(
+        ptr(sbuf),
+        count(sbuf) / comm_size,
+        type(sbuf),
+        ptr(rbuf),
+        count(rbuf) / comm_size,
+        type(rbuf),
+        handle(comm)
+    );
+#else
+    KAMPING_ASSERT(count(sbuf) / comm_size <= INT_MAX, "element count exceeds int range; requires MPI-4");
+    KAMPING_ASSERT(count(rbuf) / comm_size <= INT_MAX, "element count exceeds int range; requires MPI-4");
     int err = MPI_Alltoall(
         ptr(sbuf),
         static_cast<int>(count(sbuf)) / comm_size,
@@ -34,6 +49,7 @@ void alltoall(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = MPI_COMM_WORLD) {
         type(rbuf),
         handle(comm)
     );
+#endif
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);
     }
