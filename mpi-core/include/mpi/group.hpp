@@ -3,8 +3,11 @@
 
 #pragma once
 
+#include <array>
 #include <optional>
+#include <span>
 #include <utility>
+#include <vector>
 
 #include <mpi.h>
 
@@ -68,6 +71,51 @@ public:
     /// @return `GroupEquality::Identical` if same object, `Similar` if same
     ///         processes in different order, `Unequal` otherwise.
     [[nodiscard]] GroupEquality compare(group_view other) const;
+
+    // ── Rank translation ──────────────────────────────────────────────────────
+
+    /// @brief Translate a single rank from this group to `other`.
+    ///
+    /// Calls `MPI_Group_translate_ranks` with n=1.
+    /// @return The corresponding rank in `other`, or `std::nullopt` if the
+    ///         process is not a member of `other` (`MPI_UNDEFINED`).
+    /// @throws mpi_error on failure.
+    [[nodiscard]] std::optional<int> translate_rank(int r, group_view other) const;
+
+    /// @brief Translate multiple ranks from this group to `other`.
+    ///
+    /// Each entry of the returned vector corresponds to the same-indexed rank
+    /// in `ranks`. An entry is `std::nullopt` when the process is not a member
+    /// of `other` (`MPI_UNDEFINED`).
+    /// @throws mpi_error on failure.
+    [[nodiscard]] std::vector<std::optional<int>> translate_ranks(std::span<int const> ranks, group_view other) const;
+
+    // ── Subgroup selection ────────────────────────────────────────────────────
+
+    /// @brief Create a subgroup containing exactly the listed ranks (in order).
+    ///
+    /// Calls `MPI_Group_incl`. The caller owns the returned group.
+    /// @throws mpi_error on failure.
+    [[nodiscard]] group include(std::span<int const> ranks) const;
+
+    /// @brief Create a subgroup that excludes the listed ranks.
+    ///
+    /// Calls `MPI_Group_excl`. The caller owns the returned group.
+    /// @throws mpi_error on failure.
+    [[nodiscard]] group exclude(std::span<int const> ranks) const;
+
+    /// @brief Create a subgroup from a set of (first, last, stride) rank ranges.
+    ///
+    /// Each element of `ranges` is a `{first, last, stride}` triplet.
+    /// Calls `MPI_Group_range_incl`. The caller owns the returned group.
+    /// @throws mpi_error on failure.
+    [[nodiscard]] group include_ranges(std::span<std::array<int, 3>> ranges) const;
+
+    /// @brief Create a subgroup by excluding a set of (first, last, stride) rank ranges.
+    ///
+    /// Calls `MPI_Group_range_excl`. The caller owns the returned group.
+    /// @throws mpi_error on failure.
+    [[nodiscard]] group exclude_ranges(std::span<std::array<int, 3>> ranges) const;
 };
 
 // ── group_view ────────────────────────────────────────────────────────────────
@@ -169,7 +217,7 @@ private:
     MPI_Group _group = MPI_GROUP_EMPTY;
 };
 
-// ── group_accessors::compare (out-of-line — needs group_view definition) ──────
+// ── group_accessors out-of-line definitions (need both group_view and group) ───
 
 template <typename Derived>
 GroupEquality group_accessors<Derived>::compare(group_view other) const {
@@ -180,6 +228,125 @@ GroupEquality group_accessors<Derived>::compare(group_view other) const {
         case MPI_SIMILAR: return GroupEquality::Similar;
         default:          return GroupEquality::Unequal;
     }
+}
+
+template <typename Derived>
+std::optional<int> group_accessors<Derived>::translate_rank(int r, group_view other) const {
+    int out = MPI_UNDEFINED;
+    int err = MPI_Group_translate_ranks(grp(), 1, &r, other.mpi_handle(), &out);
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
+    if (out == MPI_UNDEFINED) {
+        return std::nullopt;
+    }
+    return out;
+}
+
+template <typename Derived>
+std::vector<std::optional<int>> group_accessors<Derived>::translate_ranks(
+    std::span<int const> ranks, group_view other
+) const {
+    std::vector<int> raw(ranks.size(), MPI_UNDEFINED);
+    int              err = MPI_Group_translate_ranks(
+        grp(), static_cast<int>(ranks.size()), ranks.data(), other.mpi_handle(), raw.data()
+    );
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
+    std::vector<std::optional<int>> result;
+    result.reserve(ranks.size());
+    for (int v : raw) {
+        result.push_back(v == MPI_UNDEFINED ? std::nullopt : std::optional<int>{v});
+    }
+    return result;
+}
+
+template <typename Derived>
+group group_accessors<Derived>::include(std::span<int const> ranks) const {
+    MPI_Group g   = MPI_GROUP_EMPTY;
+    int       err = MPI_Group_incl(grp(), static_cast<int>(ranks.size()), ranks.data(), &g);
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
+    return group::from_native(g);
+}
+
+template <typename Derived>
+group group_accessors<Derived>::exclude(std::span<int const> ranks) const {
+    MPI_Group g   = MPI_GROUP_EMPTY;
+    int       err = MPI_Group_excl(grp(), static_cast<int>(ranks.size()), ranks.data(), &g);
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
+    return group::from_native(g);
+}
+
+template <typename Derived>
+group group_accessors<Derived>::include_ranges(std::span<std::array<int, 3>> ranges) const {
+    MPI_Group g   = MPI_GROUP_EMPTY;
+    // std::array<int,3> has the same layout as int[3].
+    int err = MPI_Group_range_incl(
+        grp(), static_cast<int>(ranges.size()), reinterpret_cast<int(*)[3]>(ranges.data()), &g
+    );
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
+    return group::from_native(g);
+}
+
+template <typename Derived>
+group group_accessors<Derived>::exclude_ranges(std::span<std::array<int, 3>> ranges) const {
+    MPI_Group g   = MPI_GROUP_EMPTY;
+    // std::array<int,3> has the same layout as int[3].
+    int err = MPI_Group_range_excl(
+        grp(), static_cast<int>(ranges.size()), reinterpret_cast<int(*)[3]>(ranges.data()), &g
+    );
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
+    return group::from_native(g);
+}
+
+// ── Set algebra free functions ────────────────────────────────────────────────
+
+/// @brief Create a new group containing processes in both `a` and `b`.
+///
+/// Calls `MPI_Group_intersection`.
+/// @throws mpi_error on failure.
+[[nodiscard]] inline group intersection(group_view a, group_view b) {
+    MPI_Group g   = MPI_GROUP_EMPTY;
+    int       err = MPI_Group_intersection(a.mpi_handle(), b.mpi_handle(), &g);
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
+    return group::from_native(g);
+}
+
+/// @brief Create a new group containing processes in `a` that are not in `b`.
+///
+/// Calls `MPI_Group_difference`.
+/// @throws mpi_error on failure.
+[[nodiscard]] inline group difference(group_view a, group_view b) {
+    MPI_Group g   = MPI_GROUP_EMPTY;
+    int       err = MPI_Group_difference(a.mpi_handle(), b.mpi_handle(), &g);
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
+    return group::from_native(g);
+}
+
+/// @brief Create a new group containing all processes in `a` or `b` (or both).
+///
+/// Calls `MPI_Group_union`.
+/// @throws mpi_error on failure.
+[[nodiscard]] inline group set_union(group_view a, group_view b) {
+    MPI_Group g   = MPI_GROUP_EMPTY;
+    int       err = MPI_Group_union(a.mpi_handle(), b.mpi_handle(), &g);
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
+    return group::from_native(g);
 }
 
 } // namespace mpi::experimental
