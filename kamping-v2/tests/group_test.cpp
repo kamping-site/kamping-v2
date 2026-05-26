@@ -1,6 +1,8 @@
 // Copyright (c) 2026 Karlsruhe Institute of Technology
 // SPDX-License-Identifier: BSL-1.0
 
+#include <numeric>
+
 #include <gtest/gtest.h>
 #include <mpi.h>
 
@@ -239,4 +241,185 @@ TEST(GroupTest, ReleaseRelinquishesOwnership) {
     EXPECT_EQ(released, raw);
     EXPECT_EQ(g.mpi_handle(), MPI_GROUP_EMPTY);
     MPI_Group_free(&released);
+}
+
+// ── Rank translation ──────────────────────────────────────────────────────────
+
+TEST(GroupTranslateTest, TranslateRankSelf) {
+    comm_view world(MPI_COMM_WORLD);
+    group     g = world.group();
+    // Every rank in the world group translates to itself.
+    auto result = g.translate_rank(world.rank(), g);
+    ASSERT_TRUE(result.has_value());
+    EXPECT_EQ(*result, world.rank());
+}
+
+TEST(GroupTranslateTest, TranslateRankNotInOther) {
+    comm_view world(MPI_COMM_WORLD);
+    if (world.size() < 2) {
+        GTEST_SKIP() << "need at least 2 ranks";
+    }
+    group world_g = world.group();
+    // Build a subgroup containing only rank 0; then ask where rank 1 maps.
+    group sub = world_g.include(std::array{0});
+    // rank 1 of world_g is not in sub → MPI_UNDEFINED → nullopt
+    auto result = world_g.translate_rank(1, sub);
+    EXPECT_FALSE(result.has_value());
+}
+
+TEST(GroupTranslateTest, TranslateRanksAllPresent) {
+    comm_view world(MPI_COMM_WORLD);
+    group     g   = world.group();
+    auto      sz  = static_cast<size_t>(world.size());
+    std::vector<int> all_ranks(sz);
+    std::iota(all_ranks.begin(), all_ranks.end(), 0);
+
+    auto translated = g.translate_ranks(all_ranks, g);
+    ASSERT_EQ(static_cast<int>(translated.size()), sz);
+    for (size_t i = 0; i < sz; ++i) {
+        ASSERT_TRUE(translated[i].has_value());
+        EXPECT_EQ(*translated[i], i);
+    }
+}
+
+TEST(GroupTranslateTest, TranslateRanksMixed) {
+    comm_view world(MPI_COMM_WORLD);
+    if (world.size() < 2) {
+        GTEST_SKIP() << "need at least 2 ranks";
+    }
+    group world_g = world.group();
+    // sub contains only rank 0
+    group            sub      = world_g.include(std::array{0});
+    std::vector<int> to_xlate = {0, 1};
+    auto             result   = world_g.translate_ranks(to_xlate, sub);
+    ASSERT_EQ(result.size(), 2u);
+    ASSERT_TRUE(result[0].has_value());
+    EXPECT_EQ(*result[0], 0); // rank 0 maps to rank 0 in sub
+    EXPECT_FALSE(result[1].has_value()); // rank 1 not in sub
+}
+
+// ── Subgroup selection ────────────────────────────────────────────────────────
+
+TEST(GroupIncludeTest, IncludeSubsetPreservesOrder) {
+    comm_view world(MPI_COMM_WORLD);
+    if (world.size() < 2) {
+        GTEST_SKIP() << "need at least 2 ranks";
+    }
+    group world_g = world.group();
+    group sub     = world_g.include(std::array{0});
+    EXPECT_EQ(sub.size(), 1);
+}
+
+TEST(GroupIncludeTest, IncludeAllRanks) {
+    comm_view        world(MPI_COMM_WORLD);
+    group            world_g = world.group();
+    auto             sz      = static_cast<size_t>(world.size());
+    std::vector<int> all(sz);
+    std::iota(all.begin(), all.end(), 0);
+    group full = world_g.include(all);
+    EXPECT_EQ(full.size(), sz);
+    EXPECT_EQ(full.compare(world_g), GroupEquality::Identical);
+}
+
+TEST(GroupExcludeTest, ExcludeOneRank) {
+    comm_view world(MPI_COMM_WORLD);
+    if (world.size() < 2) {
+        GTEST_SKIP() << "need at least 2 ranks";
+    }
+    group world_g = world.group();
+    group sub     = world_g.exclude(std::array{0});
+    EXPECT_EQ(sub.size(), world.size() - 1);
+}
+
+TEST(GroupIncludeRangesTest, IncludeRangeAllRanks) {
+    comm_view                      world(MPI_COMM_WORLD);
+    group                          world_g = world.group();
+    std::vector<std::array<int, 3>> all_range{{0, world.size() - 1, 1}};
+    group                          ranged = world_g.include_ranges(all_range);
+    EXPECT_EQ(ranged.size(), world.size());
+    EXPECT_EQ(ranged.compare(world_g), GroupEquality::Identical);
+}
+
+TEST(GroupIncludeRangesTest, IncludeEvenRanks) {
+    comm_view world(MPI_COMM_WORLD);
+    if (world.size() < 2) {
+        GTEST_SKIP() << "need at least 2 ranks";
+    }
+    group                          world_g    = world.group();
+    int                            last_even  = ((world.size() - 1) / 2) * 2;
+    int                            even_count = last_even / 2 + 1;
+    std::vector<std::array<int, 3>> even_range{{0, last_even, 2}};
+    group                          evens = world_g.include_ranges(even_range);
+    EXPECT_EQ(evens.size(), even_count);
+}
+
+TEST(GroupExcludeRangesTest, ExcludeRangeAll) {
+    comm_view                      world(MPI_COMM_WORLD);
+    group                          world_g = world.group();
+    std::vector<std::array<int, 3>> all_range{{0, world.size() - 1, 1}};
+    group                          empty_g = world_g.exclude_ranges(all_range);
+    EXPECT_EQ(empty_g.size(), 0);
+}
+
+// ── Set algebra ───────────────────────────────────────────────────────────────
+
+TEST(GroupSetAlgebraTest, UnionWithSelf) {
+    comm_view world(MPI_COMM_WORLD);
+    group     a = world.group();
+    group     b = world.group();
+    group     u = set_union(a, b);
+    EXPECT_EQ(u.size(), world.size());
+    EXPECT_EQ(u.compare(a), GroupEquality::Identical);
+}
+
+TEST(GroupSetAlgebraTest, IntersectionWithSelf) {
+    comm_view world(MPI_COMM_WORLD);
+    group     a    = world.group();
+    group     b    = world.group();
+    group     isec = intersection(a, b);
+    EXPECT_EQ(isec.size(), world.size());
+    EXPECT_EQ(isec.compare(a), GroupEquality::Identical);
+}
+
+TEST(GroupSetAlgebraTest, DifferenceWithSelf) {
+    comm_view world(MPI_COMM_WORLD);
+    group     a    = world.group();
+    group     b    = world.group();
+    group     diff = difference(a, b);
+    EXPECT_EQ(diff.size(), 0);
+}
+
+TEST(GroupSetAlgebraTest, IntersectionDisjoint) {
+    comm_view world(MPI_COMM_WORLD);
+    if (world.size() < 2) {
+        GTEST_SKIP() << "need at least 2 ranks";
+    }
+    group world_g = world.group();
+    group sub0    = world_g.include(std::array{0});
+    group sub1    = world_g.include(std::array{1});
+    group isec    = intersection(sub0, sub1);
+    EXPECT_EQ(isec.size(), 0);
+}
+
+TEST(GroupSetAlgebraTest, UnionDisjointSubgroups) {
+    comm_view world(MPI_COMM_WORLD);
+    if (world.size() < 2) {
+        GTEST_SKIP() << "need at least 2 ranks";
+    }
+    group world_g = world.group();
+    group sub0    = world_g.include(std::array{0});
+    group sub1    = world_g.include(std::array{1});
+    group u       = set_union(sub0, sub1);
+    EXPECT_EQ(u.size(), 2);
+}
+
+TEST(GroupSetAlgebraTest, DifferenceRemovesSubset) {
+    comm_view world(MPI_COMM_WORLD);
+    if (world.size() < 2) {
+        GTEST_SKIP() << "need at least 2 ranks";
+    }
+    group world_g = world.group();
+    group sub0    = world_g.include(std::array{0});
+    group diff    = difference(world_g, sub0);
+    EXPECT_EQ(diff.size(), world.size() - 1);
 }
