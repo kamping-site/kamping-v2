@@ -13,6 +13,37 @@
 #include "mpi/handle.hpp"
 
 namespace mpi::experimental {
+
+#if MPI_VERSION >= 4
+template <send_buffer SBuf, recv_buffer RBuf, convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+void alltoall_c(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = MPI_COMM_WORLD) {
+    int comm_size = 0;
+    MPI_Comm_size(handle(comm), &comm_size);
+    using scount_t = decltype(count(sbuf));
+    using rcount_t = decltype(count(rbuf));
+    KAMPING_ASSERT(
+        count(sbuf) % static_cast<scount_t>(comm_size) == scount_t{0},
+        "send buffer size must be divisible by comm size"
+    );
+    KAMPING_ASSERT(
+        count(rbuf) % static_cast<rcount_t>(comm_size) == rcount_t{0},
+        "recv buffer size must be divisible by comm size"
+    );
+    int err = MPI_Alltoall_c(
+        ptr(sbuf),
+        count(sbuf) / comm_size,
+        type(sbuf),
+        ptr(rbuf),
+        count(rbuf) / comm_size,
+        type(rbuf),
+        handle(comm)
+    );
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
+}
+#endif
+
 template <send_buffer SBuf, recv_buffer RBuf, convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
 void alltoall(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = MPI_COMM_WORLD) {
     int comm_size = 0;
@@ -27,17 +58,6 @@ void alltoall(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = MPI_COMM_WORLD) {
         count(rbuf) % static_cast<rcount_t>(comm_size) == rcount_t{0},
         "recv buffer size must be divisible by comm size"
     );
-#if MPI_VERSION >= 4
-    int err = MPI_Alltoall_c(
-        ptr(sbuf),
-        count(sbuf) / comm_size,
-        type(sbuf),
-        ptr(rbuf),
-        count(rbuf) / comm_size,
-        type(rbuf),
-        handle(comm)
-    );
-#else
     KAMPING_ASSERT(count(sbuf) / comm_size <= INT_MAX, "element count exceeds int range; requires MPI-4");
     KAMPING_ASSERT(count(rbuf) / comm_size <= INT_MAX, "element count exceeds int range; requires MPI-4");
     int err = MPI_Alltoall(
@@ -49,9 +69,9 @@ void alltoall(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = MPI_COMM_WORLD) {
         type(rbuf),
         handle(comm)
     );
-#endif
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);
     }
 }
+
 } // namespace mpi::experimental

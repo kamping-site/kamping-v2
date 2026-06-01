@@ -13,14 +13,15 @@
 #include "mpi/handle.hpp"
 
 namespace mpi::experimental {
+
+#if MPI_VERSION >= 4
 template <
     recv_buffer                                RBuf,
     rank                                       Source  = int,
     tag                                        Tag     = int,
     convertible_to_mpi_handle<MPI_Comm>        Comm    = MPI_Comm,
     convertible_to_mpi_handle_ptr<MPI_Request> Request = MPI_Request*>
-void irecv(RBuf&& rbuf, Source source, Tag tag, Comm const& comm, Request&& request) {
-#if MPI_VERSION >= 4
+void irecv_c(RBuf&& rbuf, Source source, Tag tag, Comm const& comm, Request&& request) {
     int err = MPI_Irecv_c(
         ptr(rbuf),
         count(rbuf),
@@ -30,7 +31,19 @@ void irecv(RBuf&& rbuf, Source source, Tag tag, Comm const& comm, Request&& requ
         handle(comm),
         handle_ptr(request)
     );
-#else
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
+}
+#endif
+
+template <
+    recv_buffer                                RBuf,
+    rank                                       Source  = int,
+    tag                                        Tag     = int,
+    convertible_to_mpi_handle<MPI_Comm>        Comm    = MPI_Comm,
+    convertible_to_mpi_handle_ptr<MPI_Request> Request = MPI_Request*>
+void irecv(RBuf&& rbuf, Source source, Tag tag, Comm const& comm, Request&& request) {
     KAMPING_ASSERT(count(rbuf) <= INT_MAX, "element count exceeds int range; requires MPI-4");
     int err = MPI_Irecv(
         ptr(rbuf),
@@ -41,9 +54,9 @@ void irecv(RBuf&& rbuf, Source source, Tag tag, Comm const& comm, Request&& requ
         handle(comm),
         handle_ptr(request)
     );
-#endif
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);
     }
 }
+
 } // namespace mpi::experimental

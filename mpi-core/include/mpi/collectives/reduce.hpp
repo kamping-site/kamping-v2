@@ -32,6 +32,59 @@ namespace mpi::experimental {
 /// Preconditions:
 /// - For non-inplace: on root, `count(sbuf) == count(rbuf)` and `type(sbuf) == type(rbuf)`
 /// - For inplace: count and type are derived from rbuf
+#if MPI_VERSION >= 4
+template <
+    send_buffer                         SBuf,
+    recv_buffer                         RBuf,
+    valid_op<SBuf, RBuf>                Op,
+    rank                                Root = int,
+    convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+void reduce_c(SBuf&& sbuf, RBuf&& rbuf, Op const& op, Root root, Comm const& comm = MPI_COMM_WORLD) {
+    auto sbuf_ptr  = ptr(sbuf);
+    int  comm_rank = 0;
+    MPI_Comm_rank(handle(comm), &comm_rank);
+    int root_rank = to_rank(root);
+
+    if (sbuf_ptr == MPI_IN_PLACE) {
+        KAMPING_ASSERT(comm_rank == root_rank, "inplace reduce only valid on root");
+        int err = MPI_Reduce_c(
+            sbuf_ptr,
+            ptr(rbuf),
+            count(rbuf),
+            type(rbuf),
+            as_mpi_op(op, sbuf, rbuf),
+            root_rank,
+            handle(comm)
+        );
+        if (err != MPI_SUCCESS) {
+            throw mpi_error(err);
+        }
+    } else {
+        using scount_t = decltype(count(sbuf));
+        KAMPING_ASSERT(
+            comm_rank != root_rank || count(sbuf) == static_cast<scount_t>(count(rbuf)),
+            "on root: send and receive buffers must have the same count"
+        );
+        KAMPING_ASSERT(
+            comm_rank != root_rank || type(sbuf) == type(rbuf),
+            "on root: send and receive buffers must have the same type"
+        );
+        int err = MPI_Reduce_c(
+            sbuf_ptr,
+            ptr(rbuf),
+            count(sbuf),
+            type(sbuf),
+            as_mpi_op(op, sbuf, rbuf),
+            root_rank,
+            handle(comm)
+        );
+        if (err != MPI_SUCCESS) {
+            throw mpi_error(err);
+        }
+    }
+}
+#endif
+
 template <
     send_buffer                         SBuf,
     recv_buffer                         RBuf,
@@ -47,17 +100,6 @@ void reduce(SBuf&& sbuf, RBuf&& rbuf, Op const& op, Root root, Comm const& comm 
     if (sbuf_ptr == MPI_IN_PLACE) {
         // Inplace: count and type from rbuf
         KAMPING_ASSERT(rank == root_rank, "inplace reduce only valid on root");
-#if MPI_VERSION >= 4
-        int err = MPI_Reduce_c(
-            sbuf_ptr,
-            ptr(rbuf),
-            count(rbuf),
-            type(rbuf),
-            as_mpi_op(op, sbuf, rbuf),
-            root_rank,
-            handle(comm)
-        );
-#else
         KAMPING_ASSERT(count(rbuf) <= INT_MAX, "element count exceeds int range; requires MPI-4");
         int err = MPI_Reduce(
             sbuf_ptr,
@@ -68,7 +110,6 @@ void reduce(SBuf&& sbuf, RBuf&& rbuf, Op const& op, Root root, Comm const& comm 
             root_rank,
             handle(comm)
         );
-#endif
         if (err != MPI_SUCCESS) {
             throw mpi_error(err);
         }
@@ -83,17 +124,6 @@ void reduce(SBuf&& sbuf, RBuf&& rbuf, Op const& op, Root root, Comm const& comm 
             rank != root_rank || type(sbuf) == type(rbuf),
             "on root: send and receive buffers must have the same type"
         );
-#if MPI_VERSION >= 4
-        int err = MPI_Reduce_c(
-            sbuf_ptr,
-            ptr(rbuf),
-            count(sbuf),
-            type(sbuf),
-            as_mpi_op(op, sbuf, rbuf),
-            root_rank,
-            handle(comm)
-        );
-#else
         KAMPING_ASSERT(count(sbuf) <= INT_MAX, "element count exceeds int range; requires MPI-4");
         int err = MPI_Reduce(
             sbuf_ptr,
@@ -104,7 +134,6 @@ void reduce(SBuf&& sbuf, RBuf&& rbuf, Op const& op, Root root, Comm const& comm 
             root_rank,
             handle(comm)
         );
-#endif
         if (err != MPI_SUCCESS) {
             throw mpi_error(err);
         }
