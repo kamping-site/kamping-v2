@@ -7,9 +7,8 @@
 #include <ranges>
 #include <type_traits>
 
-#include <mpi.h>
-
 #include <kamping/types/builtin_types.hpp>
+#include <mpi.h>
 
 /// @file
 /// MPI buffer contract: customization point (buffer_traits), accessor dispatch
@@ -53,6 +52,11 @@ concept count_range =
 template <typename T>
 concept count_range_c =
     std::ranges::contiguous_range<T> && std::same_as<MPI_Count, std::remove_cvref_t<std::ranges::range_value_t<T>>>;
+
+/// A contiguous range of `MPI_Aint` — the displacement element type used for MPI-4 variadic operations.
+template <typename T>
+concept displ_range_c =
+    std::ranges::contiguous_range<T> && std::same_as<MPI_Aint, std::remove_cvref_t<std::ranges::range_value_t<T>>>;
 #endif
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -177,16 +181,15 @@ constexpr auto ptr(T&& t) {
 }
 
 template <typename T>
-    requires(!detail::traits_has_const_ptr<std::remove_cvref_t<T>>)
-            && (!detail::traits_has_ptr<std::remove_cvref_t<T>>) && detail::has_ptr_member<T>
+    requires(!detail::traits_has_const_ptr<std::remove_cvref_t<T>>) && (!detail::traits_has_ptr<std::remove_cvref_t<T>>)
+            && detail::has_ptr_member<T>
 constexpr auto ptr(T&& t) {
     return t.mpi_ptr();
 }
 
 template <typename T>
-    requires(!detail::traits_has_const_ptr<std::remove_cvref_t<T>>)
-            && (!detail::traits_has_ptr<std::remove_cvref_t<T>>) && (!detail::has_ptr_member<T>)
-            && std::ranges::contiguous_range<T>
+    requires(!detail::traits_has_const_ptr<std::remove_cvref_t<T>>) && (!detail::traits_has_ptr<std::remove_cvref_t<T>>)
+            && (!detail::has_ptr_member<T>) && std::ranges::contiguous_range<T>
 constexpr auto ptr(T&& t) {
     return std::ranges::data(std::forward<T>(t));
 }
@@ -323,5 +326,31 @@ template <typename T>
 concept recv_buffer_v = data_buffer_v<T> && requires(T&& t) {
     { ptr(t) } -> std::convertible_to<void*>;
 };
+
+#if MPI_VERSION >= 4
+/// Variadic buffer with MPI-4 large-count arrays: counts as MPI_Count[], displs as MPI_Aint[].
+template <typename T>
+concept has_mpi_counts_c = requires(T const& t) {
+    { counts(t) } -> count_range_c;
+};
+
+template <typename T>
+concept has_mpi_displs_c = requires(T const& t) {
+    { displs(t) } -> displ_range_c;
+};
+
+template <typename T>
+concept data_buffer_v_c = has_mpi_ptr<T> && has_mpi_type<T> && has_mpi_counts_c<T> && has_mpi_displs_c<T>;
+
+template <typename T>
+concept send_buffer_v_c = data_buffer_v_c<T> && requires(T&& t) {
+    { ptr(t) } -> std::convertible_to<void const*>;
+};
+
+template <typename T>
+concept recv_buffer_v_c = data_buffer_v_c<T> && requires(T&& t) {
+    { ptr(t) } -> std::convertible_to<void*>;
+};
+#endif
 
 } // namespace mpi::experimental
