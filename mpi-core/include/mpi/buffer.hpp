@@ -48,6 +48,13 @@ template <typename T>
 concept count_range =
     std::ranges::contiguous_range<T> && std::same_as<int, std::remove_cvref_t<std::ranges::range_value_t<T>>>;
 
+#if MPI_VERSION >= 4
+/// A contiguous range of `MPI_Count` — the large-count element type used for MPI-4 counts.
+template <typename T>
+concept count_range_c =
+    std::ranges::contiguous_range<T> && std::same_as<MPI_Count, std::remove_cvref_t<std::ranges::range_value_t<T>>>;
+#endif
+
 // ──────────────────────────────────────────────────────────────────────────────
 // detail — implementation helpers for the accessor dispatch, not public API.
 // ──────────────────────────────────────────────────────────────────────────────
@@ -246,6 +253,13 @@ constexpr auto displs(T&& t) {
 template <typename T>
 concept has_mpi_count = requires(T const& t) {
     { count(t) } -> detail::integer_like;
+};
+
+/// Buffer whose scalar count type is wider than `int` can dispatch to MPI_*_c on MPI >= 4.
+template <typename T>
+concept has_large_count = requires(std::remove_cvref_t<T> const& t) {
+    { count(t) } -> detail::integer_like;
+    requires sizeof(decltype(count(t))) > sizeof(int);
 };
 
 template <typename T>

@@ -48,16 +48,29 @@ auto isendrecv(
         mpi::experimental::to_tag(recv_tag),
         mpi::experimental::handle(comm)
     );
-    mpi::experimental::isendrecv(
-        res.send,
-        std::move(dest),
-        std::move(send_tag),
-        res.recv,
-        std::move(source),
-        std::move(recv_tag),
-        comm,
-        std::forward<Request>(request)
-    );
+    if constexpr (mpi::experimental::large_count<SBuf> && mpi::experimental::large_count<RBuf>) {
+        mpi::experimental::isendrecv_c(
+            res.send,
+            std::move(dest),
+            std::move(send_tag),
+            res.recv,
+            std::move(source),
+            std::move(recv_tag),
+            comm,
+            std::forward<Request>(request)
+        );
+    } else {
+        mpi::experimental::isendrecv(
+            res.send,
+            std::move(dest),
+            std::move(send_tag),
+            res.recv,
+            std::move(source),
+            std::move(recv_tag),
+            comm,
+            std::forward<Request>(request)
+        );
+    }
     return res;
 }
 
@@ -133,16 +146,29 @@ auto isendrecv(
         mpi::experimental::to_tag(recv_tag),
         mpi::experimental::handle(comm)
     );
-    mpi::experimental::isendrecv(
-        res.send(),
-        dest,
-        send_tag,
-        res.recv(),
-        source,
-        recv_tag,
-        comm,
-        res.mpi_native_handle_ptr()
-    );
+    if constexpr (mpi::experimental::large_count<SBuf> && mpi::experimental::large_count<RBuf>) {
+        mpi::experimental::isendrecv_c(
+            res.send(),
+            dest,
+            send_tag,
+            res.recv(),
+            source,
+            recv_tag,
+            comm,
+            res.mpi_native_handle_ptr()
+        );
+    } else {
+        mpi::experimental::isendrecv(
+            res.send(),
+            dest,
+            send_tag,
+            res.recv(),
+            source,
+            recv_tag,
+            comm,
+            res.mpi_native_handle_ptr()
+        );
+    }
     return res;
 }
 

@@ -42,6 +42,14 @@ auto recv(
             mpi::experimental::to_tag(tag),
             mpi::experimental::handle(comm)
         );
+        if constexpr (mpi::experimental::has_large_count<RBuf>) {
+#if MPI_VERSION >= 4
+            if (count(rbuf) > INT_MAX) {
+                mpi::experimental::mrecv_c(rbuf, &msg, std::forward<Status>(status));
+                return std::forward<RBuf>(rbuf);
+            }
+#endif
+        }
         mpi::experimental::mrecv(rbuf, &msg, std::forward<Status>(status));
         return std::forward<RBuf>(rbuf);
     } else if constexpr (std::is_same_v<infer_result_t, std::pair<int, int>>) {
@@ -54,6 +62,14 @@ auto recv(
             mpi::experimental::to_tag(tag),
             mpi::experimental::handle(comm)
         );
+        if constexpr (mpi::experimental::has_large_count<RBuf>) {
+#if MPI_VERSION >= 4
+            if (count(rbuf) > INT_MAX) {
+                mpi::experimental::recv_c(rbuf, src, tg, comm, std::forward<Status>(status));
+                return std::forward<RBuf>(rbuf);
+            }
+#endif
+        }
         mpi::experimental::recv(rbuf, src, tg, comm, std::forward<Status>(status));
         return std::forward<RBuf>(rbuf);
     } else {
@@ -64,6 +80,14 @@ auto recv(
             mpi::experimental::to_tag(tag),
             mpi::experimental::handle(comm)
         );
+        if constexpr (mpi::experimental::has_large_count<RBuf>) {
+#if MPI_VERSION >= 4
+            if (count(rbuf) > INT_MAX) {
+                mpi::experimental::recv_c(rbuf, std::move(source), std::move(tag), comm, std::forward<Status>(status));
+                return std::forward<RBuf>(rbuf);
+            }
+#endif
+        }
         mpi::experimental::recv(rbuf, std::move(source), std::move(tag), comm, std::forward<Status>(status));
         return std::forward<RBuf>(rbuf);
     }

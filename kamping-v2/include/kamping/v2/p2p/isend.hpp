@@ -25,18 +25,31 @@ template <
 auto isend(
     SendMode&&, Request&& request, SBuf&& sbuf, Dest dest, Tag tag = DEFAULT_SEND_TAG, Comm const& comm = MPI_COMM_WORLD
 ) -> SBuf {
-    auto isend_impl = [](auto&&... args) {
-        if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::standard_t>) {
-            mpi::experimental::isend(std::forward<decltype(args)>(args)...);
-        } else if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::buffered_t>) {
-            mpi::experimental::ibsend(std::forward<decltype(args)>(args)...);
-        } else if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::sync_t>) {
-            mpi::experimental::issend(std::forward<decltype(args)>(args)...);
-        } else if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::ready_t>) {
-            mpi::experimental::irsend(std::forward<decltype(args)>(args)...);
+    if constexpr (mpi::experimental::has_large_count<SBuf>) {
+#if MPI_VERSION >= 4
+        if (count(sbuf) > INT_MAX) {
+            if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::standard_t>) {
+                mpi::experimental::isend_c(sbuf, std::move(dest), std::move(tag), comm, std::forward<Request>(request));
+            } else if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::buffered_t>) {
+                mpi::experimental::ibsend_c(sbuf, std::move(dest), std::move(tag), comm, std::forward<Request>(request));
+            } else if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::sync_t>) {
+                mpi::experimental::issend_c(sbuf, std::move(dest), std::move(tag), comm, std::forward<Request>(request));
+            } else if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::ready_t>) {
+                mpi::experimental::irsend_c(sbuf, std::move(dest), std::move(tag), comm, std::forward<Request>(request));
+            }
+            return std::forward<SBuf>(sbuf);
         }
-    };
-    isend_impl(sbuf, std::move(dest), std::move(tag), comm, std::forward<Request>(request));
+#endif
+    }
+    if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::standard_t>) {
+        mpi::experimental::isend(sbuf, std::move(dest), std::move(tag), comm, std::forward<Request>(request));
+    } else if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::buffered_t>) {
+        mpi::experimental::ibsend(sbuf, std::move(dest), std::move(tag), comm, std::forward<Request>(request));
+    } else if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::sync_t>) {
+        mpi::experimental::issend(sbuf, std::move(dest), std::move(tag), comm, std::forward<Request>(request));
+    } else if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::ready_t>) {
+        mpi::experimental::irsend(sbuf, std::move(dest), std::move(tag), comm, std::forward<Request>(request));
+    }
     return std::forward<SBuf>(sbuf);
 }
 /// High-level overload: creates and owns the MPI_Request internally.
@@ -51,6 +64,22 @@ template <
 auto isend(SendMode&&, SBuf&& sbuf, Dest dest, Tag tag = DEFAULT_SEND_TAG, Comm const& comm = MPI_COMM_WORLD)
     -> iresult<SBuf> {
     iresult<SBuf> res{std::forward<SBuf>(sbuf)};
+    if constexpr (mpi::experimental::has_large_count<SBuf>) {
+#if MPI_VERSION >= 4
+        if (count(res.view()) > INT_MAX) {
+            if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::standard_t>) {
+                mpi::experimental::isend_c(res.view(), dest, tag, comm, res.mpi_native_handle_ptr());
+            } else if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::buffered_t>) {
+                mpi::experimental::ibsend_c(res.view(), dest, tag, comm, res.mpi_native_handle_ptr());
+            } else if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::sync_t>) {
+                mpi::experimental::issend_c(res.view(), dest, tag, comm, res.mpi_native_handle_ptr());
+            } else if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::ready_t>) {
+                mpi::experimental::irsend_c(res.view(), dest, tag, comm, res.mpi_native_handle_ptr());
+            }
+            return res;
+        }
+#endif
+    }
     if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::standard_t>) {
         mpi::experimental::isend(res.view(), dest, tag, comm, res.mpi_native_handle_ptr());
     } else if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::buffered_t>) {
