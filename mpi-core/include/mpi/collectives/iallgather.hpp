@@ -1,0 +1,37 @@
+// Copyright (c) 2026 Karlsruhe Institute of Technology
+// SPDX-License-Identifier: BSL-1.0
+
+#pragma once
+
+#include <mpi.h>
+
+#include "kamping/kassert/kassert.hpp"
+#include "mpi/buffer.hpp"
+#include "mpi/error.hpp"
+#include "mpi/handle.hpp"
+
+namespace mpi::experimental {
+template <
+    send_buffer                                SBuf,
+    recv_buffer                                RBuf,
+    convertible_to_mpi_handle<MPI_Comm>        Comm    = MPI_Comm,
+    convertible_to_mpi_handle_ptr<MPI_Request> Request = MPI_Request*>
+void iallgather(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm, Request&& request) {
+    int comm_size = 0;
+    MPI_Comm_size(handle(comm), &comm_size);
+    KAMPING_ASSERT(static_cast<int>(count(rbuf)) % comm_size == 0, "recv buffer size must be divisible by comm size");
+    int err = MPI_Iallgather(
+        ptr(sbuf),
+        static_cast<int>(count(sbuf)),
+        type(sbuf),
+        ptr(rbuf),
+        static_cast<int>(count(rbuf)) / comm_size,
+        type(rbuf),
+        handle(comm),
+        handle_ptr(request)
+    );
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
+}
+} // namespace mpi::experimental
