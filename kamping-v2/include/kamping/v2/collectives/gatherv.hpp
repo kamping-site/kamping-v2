@@ -40,4 +40,18 @@ auto gatherv(SBuf&& sbuf, RBuf&& rbuf, Root root = 0, Comm const& comm = MPI_COM
     return res;
 }
 
+#if MPI_VERSION >= 4
+template <
+    mpi::experimental::send_buffer                         SBuf,
+    mpi::experimental::recv_buffer_v_c                     RBuf,
+    mpi::experimental::rank                                Root = int,
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+auto gatherv(SBuf&& sbuf, RBuf&& rbuf, Root root = 0, Comm const& comm = MPI_COMM_WORLD) -> result<SBuf, RBuf> {
+    result<SBuf, RBuf> res{std::forward<SBuf>(sbuf), std::forward<RBuf>(rbuf)};
+    infer(comm_op::gatherv{}, res.send, res.recv, mpi::experimental::to_rank(root), mpi::experimental::handle(comm));
+    mpi::experimental::gatherv_c(res.send, res.recv, std::move(root), comm);
+    return res;
+}
+#endif
+
 } // namespace kamping::v2

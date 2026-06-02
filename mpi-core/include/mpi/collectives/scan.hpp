@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <climits>
+
 #include <mpi.h>
 
 #include "mpi/buffer.hpp"
@@ -26,6 +28,34 @@ namespace mpi::experimental {
 /// @param rbuf Receive buffer.
 /// @param op   Reduction operation.
 /// @param comm MPI communicator (default: MPI_COMM_WORLD).
+#if MPI_VERSION >= 4
+template <
+    send_buffer                                            SBuf,
+    recv_buffer                                            RBuf,
+    mpi::experimental::valid_op<SBuf, RBuf>                Op,
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+void scan_c(SBuf&& sbuf, RBuf&& rbuf, Op const& op, Comm const& comm = MPI_COMM_WORLD) {
+    auto sbuf_ptr = ptr(sbuf);
+    if (sbuf_ptr == MPI_IN_PLACE) {
+        int err = MPI_Scan_c(sbuf_ptr, ptr(rbuf), count(rbuf), type(rbuf), as_mpi_op(op, sbuf, rbuf), handle(comm));
+        if (err != MPI_SUCCESS) {
+            throw mpi_error(err);
+        }
+    } else {
+        using scount_t = decltype(count(sbuf));
+        KAMPING_ASSERT(
+            count(sbuf) == static_cast<scount_t>(count(rbuf)),
+            "send and receive buffer must have the same count"
+        );
+        KAMPING_ASSERT(type(sbuf) == type(rbuf), "send and receive buffer must have the same type");
+        int err = MPI_Scan_c(sbuf_ptr, ptr(rbuf), count(sbuf), type(sbuf), as_mpi_op(op, sbuf, rbuf), handle(comm));
+        if (err != MPI_SUCCESS) {
+            throw mpi_error(err);
+        }
+    }
+}
+#endif
+
 template <
     send_buffer                                            SBuf,
     recv_buffer                                            RBuf,
@@ -34,6 +64,7 @@ template <
 void scan(SBuf&& sbuf, RBuf&& rbuf, Op const& op, Comm const& comm = MPI_COMM_WORLD) {
     auto sbuf_ptr = ptr(sbuf);
     if (sbuf_ptr == MPI_IN_PLACE) {
+        KAMPING_ASSERT(count(rbuf) <= INT_MAX, "element count exceeds int range; requires MPI-4");
         int err = MPI_Scan(
             sbuf_ptr,
             ptr(rbuf),
@@ -52,6 +83,7 @@ void scan(SBuf&& sbuf, RBuf&& rbuf, Op const& op, Comm const& comm = MPI_COMM_WO
             "send and receive buffer must have the same count"
         );
         KAMPING_ASSERT(type(sbuf) == type(rbuf), "send and receive buffer must have the same type");
+        KAMPING_ASSERT(count(sbuf) <= INT_MAX, "element count exceeds int range; requires MPI-4");
         int err = MPI_Scan(
             sbuf_ptr,
             ptr(rbuf),

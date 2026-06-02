@@ -43,6 +43,14 @@ auto irecv(
             mpi::experimental::to_tag(tag),
             mpi::experimental::handle(comm)
         );
+        if constexpr (mpi::experimental::has_large_count<RBuf>) {
+#if MPI_VERSION >= 4
+            if (count(rbuf) > INT_MAX) {
+                mpi::experimental::imrecv_c(rbuf, &msg, std::forward<Request>(request));
+                return std::forward<RBuf>(rbuf);
+            }
+#endif
+        }
         mpi::experimental::imrecv(rbuf, &msg, std::forward<Request>(request));
         return std::forward<RBuf>(rbuf);
     } else if constexpr (std::is_same_v<infer_result_t, std::pair<int, int>>) {
@@ -53,6 +61,14 @@ auto irecv(
             mpi::experimental::to_tag(tag),
             mpi::experimental::handle(comm)
         );
+        if constexpr (mpi::experimental::has_large_count<RBuf>) {
+#if MPI_VERSION >= 4
+            if (count(rbuf) > INT_MAX) {
+                mpi::experimental::irecv_c(rbuf, src, tg, comm, std::forward<Request>(request));
+                return std::forward<RBuf>(rbuf);
+            }
+#endif
+        }
         mpi::experimental::irecv(rbuf, src, tg, comm, std::forward<Request>(request));
         return std::forward<RBuf>(rbuf);
     } else {
@@ -63,6 +79,14 @@ auto irecv(
             mpi::experimental::to_tag(tag),
             mpi::experimental::handle(comm)
         );
+        if constexpr (mpi::experimental::has_large_count<RBuf>) {
+#if MPI_VERSION >= 4
+            if (count(rbuf) > INT_MAX) {
+                mpi::experimental::irecv_c(rbuf, std::move(source), std::move(tag), comm, std::forward<Request>(request));
+                return std::forward<RBuf>(rbuf);
+            }
+#endif
+        }
         mpi::experimental::irecv(rbuf, std::move(source), std::move(tag), comm, std::forward<Request>(request));
         return std::forward<RBuf>(rbuf);
     }
@@ -105,6 +129,14 @@ auto irecv(RBuf&& rbuf, Source source = MPI_ANY_SOURCE, Tag tag = MPI_ANY_TAG, C
             mpi::experimental::to_tag(tag),
             mpi::experimental::handle(comm)
         );
+        if constexpr (mpi::experimental::has_large_count<RBuf>) {
+#if MPI_VERSION >= 4
+            if (count(res.view()) > INT_MAX) {
+                mpi::experimental::imrecv_c(res.view(), &msg, res.mpi_native_handle_ptr());
+                return res;
+            }
+#endif
+        }
         mpi::experimental::imrecv(res.view(), &msg, res.mpi_native_handle_ptr());
     } else if constexpr (std::is_same_v<infer_result_t, std::pair<int, int>>) {
         auto [src, tg] = infer(
@@ -114,6 +146,14 @@ auto irecv(RBuf&& rbuf, Source source = MPI_ANY_SOURCE, Tag tag = MPI_ANY_TAG, C
             mpi::experimental::to_tag(tag),
             mpi::experimental::handle(comm)
         );
+        if constexpr (mpi::experimental::has_large_count<RBuf>) {
+#if MPI_VERSION >= 4
+            if (count(res.view()) > INT_MAX) {
+                mpi::experimental::irecv_c(res.view(), src, tg, comm, res.mpi_native_handle_ptr());
+                return res;
+            }
+#endif
+        }
         mpi::experimental::irecv(res.view(), src, tg, comm, res.mpi_native_handle_ptr());
     } else {
         infer(
@@ -123,6 +163,14 @@ auto irecv(RBuf&& rbuf, Source source = MPI_ANY_SOURCE, Tag tag = MPI_ANY_TAG, C
             mpi::experimental::to_tag(tag),
             mpi::experimental::handle(comm)
         );
+        if constexpr (mpi::experimental::has_large_count<RBuf>) {
+#if MPI_VERSION >= 4
+            if (count(res.view()) > INT_MAX) {
+                mpi::experimental::irecv_c(res.view(), source, tag, comm, res.mpi_native_handle_ptr());
+                return res;
+            }
+#endif
+        }
         mpi::experimental::irecv(res.view(), source, tag, comm, res.mpi_native_handle_ptr());
     }
     return res;

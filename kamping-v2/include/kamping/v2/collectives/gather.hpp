@@ -22,6 +22,14 @@ template <
 auto gather(SBuf&& sbuf, RBuf&& rbuf, Root root = 0, Comm const& comm = MPI_COMM_WORLD) -> result<SBuf, RBuf> {
     result<SBuf, RBuf> res{std::forward<SBuf>(sbuf), std::forward<RBuf>(rbuf)};
     infer(comm_op::gather{}, res.send, res.recv, mpi::experimental::to_rank(root), mpi::experimental::handle(comm));
+    if constexpr (mpi::experimental::has_large_count<SBuf> && mpi::experimental::has_large_count<RBuf>) {
+#if MPI_VERSION >= 4
+        if (count(res.send) > INT_MAX && count(res.recv) > INT_MAX) {
+            mpi::experimental::gather_c(res.send, res.recv, std::move(root), comm);
+            return res;
+        }
+#endif
+    }
     mpi::experimental::gather(res.send, res.recv, std::move(root), comm);
     return res;
 }

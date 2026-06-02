@@ -24,4 +24,18 @@ auto alltoallv(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = MPI_COMM_WORLD) -> r
     mpi::experimental::alltoallv(res.send, res.recv, comm);
     return res;
 }
+
+#if MPI_VERSION >= 4
+template <
+    mpi::experimental::send_buffer_v_c                     SBuf,
+    mpi::experimental::recv_buffer_v_c                     RBuf,
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+auto alltoallv(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = MPI_COMM_WORLD) -> result<SBuf, RBuf> {
+    result<SBuf, RBuf> res{std::forward<SBuf>(sbuf), std::forward<RBuf>(rbuf)};
+    infer(comm_op::alltoallv{}, res.send, res.recv, mpi::experimental::handle(comm));
+    mpi::experimental::alltoallv_c(res.send, res.recv, comm);
+    return res;
+}
+#endif
+
 } // namespace kamping::v2

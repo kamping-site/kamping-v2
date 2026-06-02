@@ -21,6 +21,14 @@ template <
 auto alltoall(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = MPI_COMM_WORLD) -> result<SBuf, RBuf> {
     result<SBuf, RBuf> res{std::forward<SBuf>(sbuf), std::forward<RBuf>(rbuf)};
     infer(comm_op::alltoall{}, res.send, res.recv, mpi::experimental::handle(comm));
+    if constexpr (mpi::experimental::has_large_count<SBuf> && mpi::experimental::has_large_count<RBuf>) {
+#if MPI_VERSION >= 4
+        if (count(res.send) > INT_MAX && count(res.recv) > INT_MAX) {
+            mpi::experimental::alltoall_c(res.send, res.recv, comm);
+            return res;
+        }
+#endif
+    }
     mpi::experimental::alltoall(res.send, res.recv, comm);
     return res;
 }

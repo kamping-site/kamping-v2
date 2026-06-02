@@ -3,21 +3,41 @@
 
 #pragma once
 
+#include <climits>
 #include <ranges>
 
 #include <mpi.h>
 
+#include "kamping/kassert/kassert.hpp"
 #include "mpi/buffer.hpp"
 #include "mpi/error.hpp"
 #include "mpi/handle.hpp"
 
 namespace mpi::experimental {
-template <
-    send_buffer                         SBuf,
-    recv_buffer_v                       RBuf,
-    rank                                Root,
-    convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+
+#if MPI_VERSION >= 4
+template <send_buffer SBuf, recv_buffer_v_c RBuf, rank Root, convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+void gatherv_c(SBuf&& sbuf, RBuf&& rbuf, Root root, Comm const& comm) {
+    int err = MPI_Gatherv_c(
+        ptr(sbuf),
+        count(sbuf),
+        type(sbuf),
+        ptr(rbuf),
+        std::ranges::data(counts(rbuf)),
+        std::ranges::data(displs(rbuf)),
+        type(rbuf),
+        to_rank(root),
+        handle(comm)
+    );
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
+}
+#endif
+
+template <send_buffer SBuf, recv_buffer_v RBuf, rank Root, convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
 void gatherv(SBuf&& sbuf, RBuf&& rbuf, Root root, Comm const& comm) {
+    KAMPING_ASSERT(count(sbuf) <= INT_MAX, "element count exceeds int range; requires MPI-4");
     int err = MPI_Gatherv(
         ptr(sbuf),
         static_cast<int>(count(sbuf)),

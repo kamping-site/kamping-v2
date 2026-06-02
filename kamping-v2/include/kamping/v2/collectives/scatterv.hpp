@@ -40,4 +40,18 @@ auto scatterv(SBuf&& sbuf, RBuf&& rbuf, Root root = 0, Comm const& comm = MPI_CO
     return res;
 }
 
+#if MPI_VERSION >= 4
+template <
+    mpi::experimental::send_buffer_v_c                     SBuf,
+    mpi::experimental::recv_buffer                         RBuf,
+    mpi::experimental::rank                                Root = int,
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+auto scatterv(SBuf&& sbuf, RBuf&& rbuf, Root root = 0, Comm const& comm = MPI_COMM_WORLD) -> result<SBuf, RBuf> {
+    result<SBuf, RBuf> res{std::forward<SBuf>(sbuf), std::forward<RBuf>(rbuf)};
+    infer(comm_op::scatterv{}, res.send, res.recv, mpi::experimental::to_rank(root), mpi::experimental::handle(comm));
+    mpi::experimental::scatterv_c(res.send, res.recv, std::move(root), comm);
+    return res;
+}
+#endif
+
 } // namespace kamping::v2

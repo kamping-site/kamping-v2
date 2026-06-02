@@ -19,18 +19,31 @@ template <
     mpi::experimental::tag                                 Tag  = int,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
 auto send(SendMode&&, SBuf&& sbuf, Dest dest, Tag tag = DEFAULT_SEND_TAG, Comm const& comm = MPI_COMM_WORLD) -> SBuf {
-    auto send_impl = [](auto&&... args) {
-        if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::standard_t>) {
-            mpi::experimental::send(std::forward<decltype(args)>(args)...);
-        } else if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::buffered_t>) {
-            mpi::experimental::bsend(std::forward<decltype(args)>(args)...);
-        } else if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::sync_t>) {
-            mpi::experimental::ssend(std::forward<decltype(args)>(args)...);
-        } else if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::ready_t>) {
-            mpi::experimental::rsend(std::forward<decltype(args)>(args)...);
+    if constexpr (mpi::experimental::has_large_count<SBuf>) {
+#if MPI_VERSION >= 4
+        if (count(sbuf) > INT_MAX) {
+            if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::standard_t>) {
+                mpi::experimental::send_c(sbuf, std::move(dest), std::move(tag), comm);
+            } else if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::buffered_t>) {
+                mpi::experimental::bsend_c(sbuf, std::move(dest), std::move(tag), comm);
+            } else if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::sync_t>) {
+                mpi::experimental::ssend_c(sbuf, std::move(dest), std::move(tag), comm);
+            } else if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::ready_t>) {
+                mpi::experimental::rsend_c(sbuf, std::move(dest), std::move(tag), comm);
+            }
+            return std::forward<SBuf>(sbuf);
         }
-    };
-    send_impl(sbuf, std::move(dest), std::move(tag), comm);
+#endif
+    }
+    if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::standard_t>) {
+        mpi::experimental::send(sbuf, std::move(dest), std::move(tag), comm);
+    } else if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::buffered_t>) {
+        mpi::experimental::bsend(sbuf, std::move(dest), std::move(tag), comm);
+    } else if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::sync_t>) {
+        mpi::experimental::ssend(sbuf, std::move(dest), std::move(tag), comm);
+    } else if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::ready_t>) {
+        mpi::experimental::rsend(sbuf, std::move(dest), std::move(tag), comm);
+    }
     return std::forward<SBuf>(sbuf);
 }
 

@@ -46,6 +46,14 @@ auto allreduce(SBuf&& sbuf, RBuf&& rbuf, Op const& op = std::plus<>{}, Comm cons
         mpi::experimental::as_mpi_op(op, res.send, res.recv),
         mpi::experimental::handle(comm)
     );
+    if constexpr (mpi::experimental::has_large_count<SBuf> && mpi::experimental::has_large_count<RBuf>) {
+#if MPI_VERSION >= 4
+        if (count(res.send) > INT_MAX && count(res.recv) > INT_MAX) {
+            mpi::experimental::allreduce_c(res.send, res.recv, op, comm);
+            return res;
+        }
+#endif
+    }
     mpi::experimental::allreduce(res.send, res.recv, op, comm);
     return res;
 }
