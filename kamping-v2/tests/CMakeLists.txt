@@ -56,6 +56,10 @@ add_executable(test_v2_alltoallv v2_alltoallv_test.cpp)
 target_link_libraries(test_v2_alltoallv PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
 katestrophe_add_mpi_test(test_v2_alltoallv CORES 1 2 4)
 
+add_executable(test_v2_ialltoallv v2_ialltoallv_test.cpp)
+target_link_libraries(test_v2_ialltoallv PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
+katestrophe_add_mpi_test(test_v2_ialltoallv CORES 1 2 4)
+
 add_executable(test_v2_allreduce v2_allreduce_test.cpp)
 target_link_libraries(test_v2_allreduce PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
 katestrophe_add_mpi_test(test_v2_allreduce CORES 1 2 4)
