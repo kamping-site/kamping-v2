@@ -79,20 +79,22 @@ if (KAMPING_ENABLE_REFLECTION AND KAMPING_REFLECTION_USE_SYSTEM_BOOST_FOR_PFR)
     endif ()
 endif ()
 
-# kamping-types lives in the kamping-site/kamping (v1) repo.
-if (KAMPING_ENABLE_REFLECTION)
+if (NOT TARGET kamping::types)
+  # kamping-types lives in the kamping-site/kamping (v1) repo.
+  if (KAMPING_ENABLE_REFLECTION)
     set(KAMPING_TYPES_ENABLE_REFLECTION ON)
-endif ()
-if (PROJECT_IS_TOP_LEVEL OR KAMPING_BUILD_EXAMPLES_AND_TESTS)
+  endif ()
+  if (PROJECT_IS_TOP_LEVEL OR KAMPING_BUILD_EXAMPLES_AND_TESTS)
     set(KAMPING_TYPES_BUILD_EXAMPLES ON CACHE BOOL "" FORCE)
-endif ()
-FetchContent_Declare(
+  endif ()
+  FetchContent_Declare(
     kamping_types
     GIT_REPOSITORY https://github.com/kamping-site/kamping
     GIT_TAG main
     SOURCE_SUBDIR kamping-types
-)
-FetchContent_MakeAvailable(kamping_types)
+  )
+  FetchContent_MakeAvailable(kamping_types)
+endif ()
 
 add_subdirectory(mpi-core)
 add_subdirectory(kamping-v2)
