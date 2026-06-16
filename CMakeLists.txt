@@ -94,7 +94,7 @@ if (NOT TARGET kamping::types)
     SOURCE_SUBDIR kamping-types
   )
   FetchContent_MakeAvailable(kamping_types)
-endif()
+endif ()
 
 add_subdirectory(mpi-core)
 add_subdirectory(kamping-v2)
