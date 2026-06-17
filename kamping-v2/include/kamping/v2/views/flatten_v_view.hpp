@@ -17,6 +17,21 @@
 
 namespace kamping::v2 {
 
+template <typename R>
+concept nested_send_buffer = std::ranges::forward_range<R> && std::ranges::sized_range<R>
+                             && std::ranges::input_range<std::ranges::range_value_t<R>>
+                             && std::ranges::sized_range<std::ranges::range_value_t<R>>;
+template <typename R>
+struct flat_element {};
+
+template <nested_send_buffer R>
+struct flat_element<R> {
+    using type = std::ranges::range_value_t<std::ranges::range_value_t<R>>;
+};
+
+template <typename R>
+using flat_element_t = flat_element<R>::type;
+
 /// Flattens a range-of-ranges into a contiguous MPI buffer with per-rank counts
 /// and displacements.
 ///
@@ -51,10 +66,7 @@ template <
     bool                           resize_buf    = false,
     bool                           resize_counts = false,
     bool                           resize_displs = false>
-    requires std::ranges::forward_range<Source> && std::ranges::sized_range<Source>
-             && std::ranges::input_range<std::ranges::range_value_t<Source>>
-             && std::ranges::sized_range<std::ranges::range_value_t<Source>>
-             && (!resize_buf || has_resize<FlatBuf> || has_mpi_resize_for_receive<FlatBuf>)
+    requires nested_send_buffer<Source> && (!resize_buf || has_resize<FlatBuf> || has_mpi_resize_for_receive<FlatBuf>)
              && (!resize_counts || has_resize<Counts> || has_mpi_resize_for_receive<Counts>)
              && (!resize_displs || has_resize<Displs> || has_mpi_resize_for_receive<Displs>)
 class flatten_v_view
@@ -180,13 +192,11 @@ template <
     typename DisplsContainer                     = std::vector<int>>
 constexpr auto flatten_v() {
     return kamping::v2::adaptor<0, decltype([](auto&& source) {
-                                    using Source  = std::remove_cvref_t<decltype(source)>;
-                                    using inner_t = std::ranges::range_value_t<Source>;
-                                    using elem_t  = std::ranges::range_value_t<inner_t>;
-                                    using S       = kamping::v2::all_t<decltype(source)>;
-                                    using F       = kamping::v2::owning_view<FlatTemplate<elem_t>>;
-                                    using C       = kamping::v2::owning_view<CountsContainer>;
-                                    using D       = kamping::v2::owning_view<DisplsContainer>;
+                                    using elem_t = flat_element_t<std::remove_cvref_t<decltype(source)>>;
+                                    using S      = kamping::v2::all_t<decltype(source)>;
+                                    using F      = kamping::v2::owning_view<FlatTemplate<elem_t>>;
+                                    using C      = kamping::v2::owning_view<CountsContainer>;
+                                    using D      = kamping::v2::owning_view<DisplsContainer>;
                                     return kamping::v2::flatten_v_view<S, F, C, D, true, true, true>(
                                         std::forward<decltype(source)>(source),
                                         FlatTemplate<elem_t>{},
