@@ -109,4 +109,5 @@ if (KAMPING_WARNINGS_ARE_ERRORS)
     target_compile_options(kamping_v2_warnings INTERFACE -Werror)
 endif ()
 
+add_subdirectory(dstl)
 add_subdirectory(ecosystem)
