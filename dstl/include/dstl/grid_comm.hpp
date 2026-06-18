@@ -9,6 +9,10 @@
 #include <span>
 #include <vector>
 
+#ifdef _OPENMP
+    #include <omp.h>
+#endif
+
 #include <mpi.h>
 
 #include "dstl/factoring.hpp"
@@ -99,6 +103,29 @@ public:
         return _subcomms[i];
     }
 
+    /// @return The number of per-thread duplicated communicator sets. For the `thread_multiple`
+    /// policy this is the OpenMP thread count fixed at construction (`omp_get_max_threads()`);
+    /// for every other policy it is 1.
+    [[nodiscard]] std::size_t num_threads() const noexcept {
+        if constexpr (std::is_same_v<Exec, thread_multiple>) {
+            return _thread_subcomms.empty() ? 1 : _thread_subcomms.front().size();
+        } else {
+            return 1;
+        }
+    }
+
+    /// @return A non-owning view of OpenMP thread `thread`'s private duplicate of the
+    /// subcommunicator for dimension `dim`. Only available for the `thread_multiple` policy, which
+    /// owns one duplicated set of subcommunicators per thread so that the per-phase MPI exchanges
+    /// can run concurrently, each thread on its own communicator.
+    [[nodiscard]] mpi::experimental::comm_view subcomm(std::size_t dim, std::size_t thread) const {
+        static_assert(
+            std::is_same_v<Exec, thread_multiple>,
+            "per-thread subcommunicators only exist for the thread_multiple execution policy"
+        );
+        return _thread_subcomms[dim][thread];
+    }
+
     /// @return A view of the underlying global communicator.
     [[nodiscard]] mpi::experimental::comm_view global() const noexcept {
         return _global;
@@ -187,6 +214,29 @@ private:
             int  key     = static_cast<int>(coord_i);
             _subcomms.push_back(_global.split(color, key));
         }
+
+        if constexpr (std::is_same_v<Exec, thread_multiple>) {
+            build_thread_subcomms();
+        }
+    }
+
+    /// Duplicate every per-dimension subcommunicator once per OpenMP thread, so each thread can drive
+    /// its phase exchanges on a private communicator (the `MPI_THREAD_MULTIPLE` model). `MPI_Comm_dup`
+    /// is collective over each subcommunicator; this assumes a uniform `omp_get_max_threads()` across
+    /// the ranks of every subcommunicator (matching the multi-threaded all-to-all reference design).
+    void build_thread_subcomms() {
+#ifdef _OPENMP
+        auto const nthreads = static_cast<std::size_t>(omp_get_max_threads());
+        _thread_subcomms.resize(_dims.size());
+        for (std::size_t i = 0; i < _dims.size(); ++i) {
+            _thread_subcomms[i].reserve(nthreads);
+            for (std::size_t t = 0; t < nthreads; ++t) {
+                _thread_subcomms[i].push_back(_subcomms[i].dup());
+            }
+        }
+#else
+        KAMPING_ASSERT(false, "grid_comm: the thread_multiple execution policy requires an OpenMP build");
+#endif
     }
 
     static void check_thread_level() {
@@ -195,7 +245,7 @@ private:
         } else {
             int provided = MPI_THREAD_SINGLE;
             MPI_Query_thread(&provided);
-            int required = std::is_same_v<Exec, concurrent> ? MPI_THREAD_MULTIPLE : MPI_THREAD_FUNNELED;
+            int required = std::is_same_v<Exec, thread_multiple> ? MPI_THREAD_MULTIPLE : MPI_THREAD_FUNNELED;
             KAMPING_ASSERT(
                 provided >= required,
                 "grid_comm: the MPI runtime does not provide the thread support level required by this execution policy"
@@ -207,6 +257,10 @@ private:
     std::vector<std::size_t>             _dims;
     std::vector<std::size_t>             _strides;
     std::vector<mpi::experimental::comm> _subcomms;
+
+    /// Per-thread duplicates of each subcommunicator, shaped `[dim][thread]`. Populated only for the
+    /// `thread_multiple` policy (empty otherwise).
+    std::vector<std::vector<mpi::experimental::comm>> _thread_subcomms;
 };
 
 } // namespace dstl

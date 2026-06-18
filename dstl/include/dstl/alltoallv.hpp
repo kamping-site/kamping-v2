@@ -22,6 +22,7 @@
 #include "dstl/default_init_allocator.hpp"
 #include "dstl/grid_comm.hpp"
 #include "dstl/tags.hpp"
+#include "dstl/thread_multiple_helpers.hpp"
 #include "kamping/kassert/kassert.hpp"
 #include "kamping/v2/result.hpp"
 #include "kamping/v2/views.hpp"
@@ -122,6 +123,71 @@ struct routing_state {
 };
 // See grid_comm.hpp for a k = 2 diagram of how ranks map onto the grid and its subcommunicators, and
 // the remote-first routing order this algorithm follows over them.
+
+/// Rebin step shared by every execution policy: merge the received blocks (`recv_data`, laid out by
+/// source rank then bucket, with per-(source, bucket) counts `recv_meta` and per-source displacements
+/// `recv_displs`) back into remaining-destination-index order, producing the next phase's state. See
+/// the AFTER-MERGE diagram in `route_phase`. `parallel_rebin` selects the OpenMP-parallel merge kernel.
+template <typename T, bool Ordered>
+void phase_rebin(routing_state<T>& state, bool parallel_rebin, int subcomm_size, std::size_t next_subtree_size,
+                 std::span<int const> recv_meta, std::span<int const> recv_displs, int total_recv,
+                 uninit_vector<T> const& recv_data, uninit_vector<int> const& recv_source_rank) {
+    std::size_t const subtree_size = recv_meta.size();
+
+    // Rebin: merge the per-source-rank blocks back into remaining-index order. This is the
+    // execution-policy hotspot; each bucket is written independently.
+    std::vector<int> next_dest_counts(next_subtree_size, 0);
+    for (std::size_t subcomm_rank = 0; subcomm_rank < static_cast<std::size_t>(subcomm_size); ++subcomm_rank) {
+        for (std::size_t bucket = 0; bucket < next_subtree_size; ++bucket) {
+            next_dest_counts[bucket] += recv_meta[subcomm_rank * next_subtree_size + bucket];
+        }
+    }
+    std::vector<int> new_displs = exclusive_scan_int(next_dest_counts);
+
+    // Read offset (in elements) of the (source rank, bucket) sub-block within the received block.
+    std::vector<int> read_off(subtree_size, 0);
+    for (int subcomm_rank = 0; subcomm_rank < subcomm_size; ++subcomm_rank) {
+        int cursor = recv_displs[static_cast<std::size_t>(subcomm_rank)];
+        for (std::size_t bucket = 0; bucket < next_subtree_size; ++bucket) {
+            auto const slot = static_cast<std::size_t>(subcomm_rank) * next_subtree_size + bucket;
+            read_off[slot]  = cursor;
+            cursor += recv_meta[slot];
+        }
+    }
+
+    auto merge = [&]<typename Src>(Src const& src) {
+        using U = std::ranges::range_value_t<Src>;
+        uninit_vector<U> dst(static_cast<std::size_t>(total_recv));
+        // Each bucket writes its own disjoint output slice (new_displs[bucket]…), so the buckets split
+        // safely into one contiguous chunk per thread.
+        chunked_for(parallel_rebin, static_cast<std::ptrdiff_t>(next_subtree_size), [&](std::ptrdiff_t lo, std::ptrdiff_t hi) {
+            for (std::ptrdiff_t bucket = lo; bucket < hi; ++bucket) {
+                auto write = static_cast<std::size_t>(new_displs[static_cast<std::size_t>(bucket)]);
+                for (int subcomm_rank = 0; subcomm_rank < subcomm_size; ++subcomm_rank) {
+                    auto const slot =
+                        static_cast<std::size_t>(subcomm_rank) * next_subtree_size + static_cast<std::size_t>(bucket);
+                    int const cnt = recv_meta[slot];
+                    if (cnt > 0) {
+                        auto const from = static_cast<std::size_t>(read_off[slot]);
+                        std::copy_n(
+                            src.begin() + static_cast<std::ptrdiff_t>(from),
+                            cnt,
+                            dst.begin() + static_cast<std::ptrdiff_t>(write)
+                        );
+                        write += static_cast<std::size_t>(cnt);
+                    }
+                }
+            }
+        });
+        return dst;
+    };
+
+    state.data = merge(recv_data);
+    if constexpr (Ordered) {
+        state.source_rank = merge(recv_source_rank);
+    }
+    state.dest_counts = std::move(next_dest_counts);
+}
 
 /// Run one phase (dimension `i`) of the grid routing: exchange the next count-tree level and the
 /// corresponding data within subcommunicator `i`, then rebin the received blocks back into
@@ -229,60 +295,165 @@ void route_phase(routing_state<T>& state, std::size_t dim_size, MPI_Datatype dt,
         );
     }
 
-    // Rebin: merge the per-source-rank blocks back into remaining-index order. This is the
-    // execution-policy hotspot; each bucket is written independently.
-    std::vector<int> next_dest_counts(next_subtree_size, 0);
-    for (std::size_t subcomm_rank = 0; subcomm_rank < static_cast<std::size_t>(subcomm_size); ++subcomm_rank) {
-        for (std::size_t bucket = 0; bucket < next_subtree_size; ++bucket) {
-            next_dest_counts[bucket] += recv_meta[subcomm_rank * next_subtree_size + bucket];
-        }
-    }
-    std::vector<int> new_displs = exclusive_scan_int(next_dest_counts);
+    // Rebin the per-source-rank blocks back into remaining-index order (shared by all policies).
+    phase_rebin<T, Ordered>(
+        state, ParallelRebin, subcomm_size, next_subtree_size, recv_meta, recv_displs, total_recv, recv_data,
+        recv_source_rank
+    );
+}
 
-    // Read offset (in elements) of the (source rank, bucket) sub-block within the received block.
-    std::vector<int> read_off(subtree_size, 0);
-    for (int subcomm_rank = 0; subcomm_rank < subcomm_size; ++subcomm_rank) {
-        int cursor = recv_displs[static_cast<std::size_t>(subcomm_rank)];
-        for (std::size_t bucket = 0; bucket < next_subtree_size; ++bucket) {
-            auto const slot = static_cast<std::size_t>(subcomm_rank) * next_subtree_size + bucket;
-            read_off[slot]  = cursor;
-            cursor += recv_meta[slot];
-        }
-    }
+#ifdef _OPENMP
+/// `thread_multiple` transport for one phase: instead of a single per-subcommunicator exchange, every
+/// OpenMP thread drives its own MPI_Alltoall + MPI_Alltoallv on a private duplicate of subcommunicator
+/// `dim` (`grid.subcomm(dim, tid)`), so the exchanges run concurrently under MPI_THREAD_MULTIPLE.
+///
+/// Each (dest rank, bucket) slot's count is split across the threads (`plan_thread_send`); thread `t`
+/// ships a contiguous slice of every slot, packed into a private send buffer, and receives into a
+/// private buffer. We then scatter the private buffers back into one shared `recv_data` laid out exactly
+/// like the single-threaded path — source rank then bucket, with the threads concatenated *in thread
+/// order* inside each (source, bucket) sub-block. That last detail preserves within-source element order
+/// (thread 0 carried the lowest indices, …), so `ordered_by_source` stays byte-identical to a flat
+/// MPI_Alltoallv — and the shared `phase_rebin` then runs unchanged.
+template <typename T, bool Ordered, execution_policy Exec>
+void route_phase_thread_multiple(routing_state<T>& state, grid_comm<Exec> const& grid, std::size_t dim, MPI_Datatype dt) {
+    namespace views = kamping::v2::views;
 
-    auto merge = [&]<typename Src>(Src const& src) {
-        using U = std::ranges::range_value_t<Src>;
-        uninit_vector<U> dst(static_cast<std::size_t>(total_recv));
-        // Each bucket writes its own disjoint output slice (new_displs[bucket]…), so the buckets split
-        // safely into one contiguous chunk per thread.
-        chunked_for(ParallelRebin, static_cast<std::ptrdiff_t>(next_subtree_size), [&](std::ptrdiff_t lo, std::ptrdiff_t hi) {
-            for (std::ptrdiff_t bucket = lo; bucket < hi; ++bucket) {
-                auto write = static_cast<std::size_t>(new_displs[static_cast<std::size_t>(bucket)]);
-                for (int subcomm_rank = 0; subcomm_rank < subcomm_size; ++subcomm_rank) {
-                    auto const slot =
-                        static_cast<std::size_t>(subcomm_rank) * next_subtree_size + static_cast<std::size_t>(bucket);
-                    int const cnt = recv_meta[slot];
-                    if (cnt > 0) {
-                        auto const from = static_cast<std::size_t>(read_off[slot]);
-                        std::copy_n(
-                            src.begin() + static_cast<std::ptrdiff_t>(from),
-                            cnt,
-                            dst.begin() + static_cast<std::ptrdiff_t>(write)
-                        );
-                        write += static_cast<std::size_t>(cnt);
-                    }
+    auto const        dim_size          = grid.dim_size(dim);
+    auto const        subcomm_size      = static_cast<int>(dim_size);
+    std::size_t const subtree_size      = state.dest_counts.size();
+    std::size_t const next_subtree_size = subtree_size / dim_size;
+    auto const        nthreads          = static_cast<int>(grid.num_threads());
+
+    // Start offset of each (dest rank, bucket) slot's block in the shared state.data / source_rank.
+    std::vector<int> const slot_displs = exclusive_scan_int(state.dest_counts);
+
+    // Per-thread results, each slot written by exactly one thread (sized up front, no reallocation).
+    std::vector<std::vector<int>>   thread_recv_meta(static_cast<std::size_t>(nthreads)); // [t][slot]
+    std::vector<uninit_vector<T>>   thread_recv_data(static_cast<std::size_t>(nthreads));
+    std::vector<uninit_vector<int>> thread_recv_src(static_cast<std::size_t>(nthreads));
+
+    // Shared aggregate recv layout, filled after the exchange and consumed by the rebin.
+    std::vector<int>   recv_meta(subtree_size, 0);            // Σ over threads of thread_recv_meta
+    std::vector<int>   recv_counts(static_cast<std::size_t>(subcomm_size), 0);
+    std::vector<int>   recv_displs;                           // per source rank, into recv_data
+    std::vector<int>   bucket_prefix(subtree_size, 0);        // within-source exclusive prefix of recv_meta
+    std::vector<int>   thread_meta_prefix;                    // [t*subtree_size + slot]: elems from threads < t
+    int                total_recv = 0;
+    uninit_vector<T>   recv_data;
+    uninit_vector<int> recv_source_rank;
+
+    #pragma omp parallel num_threads(nthreads)
+    {
+        int const      tid   = omp_get_thread_num();
+        MPI_Comm const tcomm = grid.subcomm(dim, static_cast<std::size_t>(tid)).mpi_handle();
+
+        // Send side: this thread's split of every slot, packed contiguously per dest rank.
+        thread_slot_plan const plan =
+            plan_thread_send(state.dest_counts, slot_displs, subcomm_size, next_subtree_size, tid, nthreads);
+        uninit_vector<T> send_data(static_cast<std::size_t>(plan.ranks.total));
+        pack_by_plan(plan, state.data.data(), send_data);
+        uninit_vector<int> send_src;
+        if constexpr (Ordered) {
+            send_src.resize(static_cast<std::size_t>(plan.ranks.total));
+            pack_by_plan(plan, state.source_rank.data(), send_src);
+        }
+
+        // Metadata exchange (per-bucket counts), on this thread's private communicator. The wrapper
+        // ships size/comm_size = next_subtree_size ints per rank, matching the single-threaded path.
+        std::vector<int>& rmeta = thread_recv_meta[static_cast<std::size_t>(tid)];
+        rmeta.assign(subtree_size, 0);
+        mpi::experimental::alltoall(plan.count, rmeta, tcomm);
+        rank_layout const recv_lay = rank_layout_from_meta(rmeta, subcomm_size, next_subtree_size);
+
+        // Data exchange into a private recv buffer (laid out source rank then bucket, this thread's slice).
+        uninit_vector<T>& rdata = thread_recv_data[static_cast<std::size_t>(tid)];
+        rdata.resize(static_cast<std::size_t>(recv_lay.total));
+        mpi::experimental::alltoallv(
+            send_data | views::with_type(dt) | views::with_counts(plan.ranks.counts)
+                | views::with_displs(plan.ranks.displs),
+            rdata | views::with_type(dt) | views::with_counts(recv_lay.counts) | views::with_displs(recv_lay.displs),
+            tcomm
+        );
+        if constexpr (Ordered) {
+            uninit_vector<int>& rsrc = thread_recv_src[static_cast<std::size_t>(tid)];
+            rsrc.resize(static_cast<std::size_t>(recv_lay.total));
+            mpi::experimental::alltoallv(
+                send_src | views::with_counts(plan.ranks.counts) | views::with_displs(plan.ranks.displs),
+                rsrc | views::with_counts(recv_lay.counts) | views::with_displs(recv_lay.displs),
+                tcomm
+            );
+        }
+
+        #pragma omp barrier
+        // Aggregate the per-thread metadata into the shared, canonical recv layout (one thread).
+        #pragma omp single
+        {
+            for (int t = 0; t < nthreads; ++t) {
+                for (std::size_t s = 0; s < subtree_size; ++s) {
+                    recv_meta[s] += thread_recv_meta[static_cast<std::size_t>(t)][s];
                 }
             }
-        });
-        return dst;
-    };
+            for (int sc = 0; sc < subcomm_size; ++sc) {
+                int    cursor = 0;
+                int    sum    = 0;
+                for (std::size_t b = 0; b < next_subtree_size; ++b) {
+                    auto const slot    = static_cast<std::size_t>(sc) * next_subtree_size + b;
+                    bucket_prefix[slot] = cursor; // bucket's start inside its source block
+                    cursor += recv_meta[slot];
+                    sum += recv_meta[slot];
+                }
+                recv_counts[static_cast<std::size_t>(sc)] = sum;
+            }
+            recv_displs = exclusive_scan_int(recv_counts);
+            total_recv  = subcomm_size > 0 ? recv_displs.back() + recv_counts.back() : 0;
+            // For each slot, the start offset (within its (source, bucket) sub-block) of each thread.
+            thread_meta_prefix.assign(static_cast<std::size_t>(nthreads) * subtree_size, 0);
+            for (std::size_t s = 0; s < subtree_size; ++s) {
+                int cursor = 0;
+                for (int t = 0; t < nthreads; ++t) {
+                    thread_meta_prefix[static_cast<std::size_t>(t) * subtree_size + s] = cursor;
+                    cursor += thread_recv_meta[static_cast<std::size_t>(t)][s];
+                }
+            }
+            recv_data.resize(static_cast<std::size_t>(total_recv));
+            if constexpr (Ordered) {
+                recv_source_rank.resize(static_cast<std::size_t>(total_recv));
+            }
+        } // implicit barrier: shared layout is now visible to every thread
 
-    state.data = merge(recv_data);
-    if constexpr (Ordered) {
-        state.source_rank = merge(recv_source_rank);
-    }
-    state.dest_counts = std::move(next_dest_counts);
+        // Scatter this thread's private recv buffer into the shared recv_data, reproducing the
+        // single-threaded [source][bucket] layout with threads concatenated in order inside each slot.
+        std::vector<int> const&   rmeta_t = thread_recv_meta[static_cast<std::size_t>(tid)];
+        uninit_vector<T> const&   rdata_t = thread_recv_data[static_cast<std::size_t>(tid)];
+        int                       read    = 0;
+        for (int sc = 0; sc < subcomm_size; ++sc) {
+            for (std::size_t b = 0; b < next_subtree_size; ++b) {
+                auto const slot = static_cast<std::size_t>(sc) * next_subtree_size + b;
+                int const  cnt  = rmeta_t[slot];
+                if (cnt > 0) {
+                    auto const write = static_cast<std::size_t>(
+                        recv_displs[static_cast<std::size_t>(sc)] + bucket_prefix[slot]
+                        + thread_meta_prefix[static_cast<std::size_t>(tid) * subtree_size + slot]
+                    );
+                    std::copy_n(rdata_t.begin() + read, cnt, recv_data.begin() + static_cast<std::ptrdiff_t>(write));
+                    if constexpr (Ordered) {
+                        std::copy_n(
+                            thread_recv_src[static_cast<std::size_t>(tid)].begin() + read, cnt,
+                            recv_source_rank.begin() + static_cast<std::ptrdiff_t>(write)
+                        );
+                    }
+                }
+                read += cnt;
+            }
+        }
+    } // omp parallel
+
+    phase_rebin<T, Ordered>(
+        state, /*parallel_rebin=*/true, subcomm_size, next_subtree_size, recv_meta, recv_displs, total_recv,
+        recv_data, recv_source_rank
+    );
 }
+#endif // _OPENMP
 
 /// Core implementation shared by the free function and the member entry points.
 template <execution_policy Exec, typename Order, grid_send_buffer SBuf, grid_recv_buffer RBuf>
@@ -343,7 +514,16 @@ void grid_alltoallv_impl(SBuf const& sbuf, RBuf& rbuf, grid_comm<Exec> const& gr
 
     // k phases, remote dimension first (dimension 0 → k-1).
     for (std::size_t i = 0; i < grid.num_dims(); ++i) {
-        route_phase<T, ordered, parallel>(state, grid.dim_size(i), dt, grid.subcomm(i).mpi_handle());
+        if constexpr (std::is_same_v<Exec, thread_multiple>) {
+#ifdef _OPENMP
+            // Per-thread concurrent exchanges on the grid's per-thread duplicated subcommunicators.
+            route_phase_thread_multiple<T, ordered>(state, grid, i, dt);
+#else
+            KAMPING_ASSERT(false, "dstl::alltoallv: the thread_multiple execution policy requires an OpenMP build");
+#endif
+        } else {
+            route_phase<T, ordered, parallel>(state, grid.dim_size(i), dt, grid.subcomm(i).mpi_handle());
+        }
     }
 
     int const total_recv = state.dest_counts.empty() ? 0 : state.dest_counts[0];
