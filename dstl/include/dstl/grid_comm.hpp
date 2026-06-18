@@ -11,9 +11,9 @@
 
 #include <mpi.h>
 
-#include "kamping/kassert/kassert.hpp"
 #include "dstl/factoring.hpp"
 #include "dstl/tags.hpp"
+#include "kamping/kassert/kassert.hpp"
 #include "mpi/comm.hpp"
 
 /// @file
@@ -65,7 +65,8 @@ public:
 
     /// Build a grid over `global` using a factoring strategy.
     template <factoring Strategy>
-    grid_comm(mpi::experimental::comm_view global, Strategy strategy) : _global(global), _dims(strategy(global)) {
+    grid_comm(mpi::experimental::comm_view global, Strategy strategy) : _global(global),
+                                                                        _dims(strategy(global)) {
         build();
     }
 
@@ -149,12 +150,6 @@ public:
     [[nodiscard]] std::size_t stride(std::size_t i) const {
         return _strides[i];
     }
-
-    /// Member entry point for the grid all-to-all-v (D1), for discoverability. Delegates to the free
-    /// function `dstl::alltoallv`; defined out-of-line in dstl/alltoallv.hpp. The send/recv buffer
-    /// constraints (`grid_send_buffer` / `grid_recv_buffer`) are enforced there.
-    template <typename SBuf, typename RBuf, recv_ordering Order = unordered>
-    auto alltoallv(SBuf&& sbuf, RBuf&& rbuf, Order order = {}) const;
 
 private:
     /// Shared construction: validate the (complete) grid, precompute row-major strides, and split off

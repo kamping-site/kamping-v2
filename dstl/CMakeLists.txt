@@ -34,4 +34,5 @@ endif ()
 
 if (PROJECT_IS_TOP_LEVEL OR KAMPING_BUILD_EXAMPLES_AND_TESTS)
     add_subdirectory(tests)
+    add_subdirectory(examples)
 endif ()
