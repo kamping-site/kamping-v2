@@ -146,6 +146,28 @@ TEST(FlattenVTest, ValueDestination) {
     EXPECT_THAT(data, ElementsAre(200, 100, 101, 300));
 }
 
+// Projection-based flattening needs no dedicated API: the caller derives the destination
+// from each element with a plain std::ranges adaptor, producing a (value, rank) pair range
+// that flows through the value-destination path. Here the rank is value % comm_size.
+TEST(FlattenVTest, ProjectionViaStdRanges) {
+    struct Item {
+        int payload;
+        int owner;
+    };
+    std::vector<Item> items = {{10, 1}, {20, 0}, {11, 1}, {30, 2}};
+
+    auto pairs = items | std::views::transform([](Item const& it) { return std::pair{it.payload, it.owner}; });
+
+    auto view = pairs | kamping::v2::views::flatten_v();
+    view.set_comm_size(3);
+    auto const [data, counts, displs] = materialize(view);
+
+    // rank0: [20], rank1: [10,11], rank2: [30]
+    EXPECT_THAT(counts, ElementsAre(1, 2, 1));
+    EXPECT_THAT(displs, ElementsAre(0, 1, 3));
+    EXPECT_THAT(data, ElementsAre(20, 10, 11, 30));
+}
+
 // Lazy re-flatten: changing the comm size invalidates the cached layout.
 TEST(FlattenVTest, ReflattensAfterSetCommSize) {
     std::vector<std::pair<int, int>> items = {{7, 0}, {8, 2}};
