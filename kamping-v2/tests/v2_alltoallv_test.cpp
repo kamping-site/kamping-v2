@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <numeric>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
@@ -97,6 +98,32 @@ TEST(V2AlltoallvTest, UniformSingleElement) {
 
     std::vector<int> expected(static_cast<std::size_t>(size));
     std::iota(expected.begin(), expected.end(), 0);
+    EXPECT_EQ(recv_data, expected);
+}
+
+// Sparse send buffer flattened in-pipeline: rank r sends (r+1) copies of (r*10+j) to
+// rank j, built as (destination, buffer) pairs in reverse rank order. flatten_v() needs
+// the communicator size to lay out the per-rank counts/displs; this exercises the
+// set_comm_size() hand-off through infer() end-to-end.
+TEST(V2AlltoallvTest, SparseFlattenSendBuffer) {
+    int rank, size;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    std::vector<std::pair<int, std::vector<int>>> per_dest;
+    for (int j = size - 1; j >= 0; --j) { // reverse order -> exercises out-of-order layout
+        per_dest.emplace_back(j, std::vector<int>(static_cast<std::size_t>(rank + 1), rank * 10 + j));
+    }
+
+    std::vector<int> recv_data;
+    kamping::v2::alltoallv(per_dest | kamping::v2::views::flatten_v(), recv_data | kamping::v2::views::auto_recv_v);
+
+    std::vector<int> expected;
+    for (int i = 0; i < size; ++i) {
+        for (int k = 0; k < i + 1; ++k) {
+            expected.push_back(i * 10 + rank);
+        }
+    }
     EXPECT_EQ(recv_data, expected);
 }
 

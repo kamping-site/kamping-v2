@@ -6,16 +6,82 @@
 #include <algorithm>
 #include <cstddef>
 #include <numeric>
+#include <optional>
 #include <ranges>
 #include <span>
 #include <vector>
 
+#include "kamping/kassert/kassert.hpp"
 #include "kamping/v2/views/adaptor.hpp"
 #include "kamping/v2/views/all.hpp"
 #include "kamping/v2/views/concepts.hpp"
 #include "kamping/v2/views/view_interface.hpp"
+#include "mpi/handle.hpp"
 
 namespace kamping::v2 {
+
+/// Dependent false for static_assert in if-constexpr chains (in C++20 the condition
+/// must depend on a template parameter, otherwise the assertion fires unconditionally).
+template <typename>
+inline constexpr bool always_false = false;
+
+template <typename R>
+concept nested_send_buffer = std::ranges::forward_range<R> && std::ranges::sized_range<R>
+                             && std::ranges::input_range<std::ranges::range_value_t<R>>
+                             && std::ranges::sized_range<std::ranges::range_value_t<R>>;
+
+template <typename T>
+concept pair_like = requires(T t) { std::tuple_size<T>::value == 2; };
+
+template <typename T>
+concept destination_buffer_pair =
+    pair_like<T> && mpi::experimental::rank<std::tuple_element_t<0, T>>
+    && std::ranges::input_range<std::tuple_element_t<1, T>> && std::ranges::sized_range<std::tuple_element_t<1, T>>;
+
+template <typename R>
+concept sparse_nested_send_buffer =
+    std::ranges::forward_range<R> && destination_buffer_pair<std::ranges::range_value_t<R>>;
+
+// The value slot (element 0) must not itself be a range. A range-valued payload means
+// "multiple elements for this rank" and belongs to the buffer path
+// (destination_buffer_pair), not the single-value path. Without this exclusion a
+// (range, rank) pair would match here and the whole range would be copied into a single
+// element slot. Such a pair now matches no flattenable concept and fails to compile.
+template <typename T>
+concept value_destination_pair = pair_like<T> && mpi::experimental::rank<std::tuple_element_t<1, T>>
+                                 && !std::ranges::input_range<std::tuple_element_t<0, T>>;
+
+template <typename R>
+concept value_destination_pair_buffer =
+    std::ranges::forward_range<R> && value_destination_pair<std::ranges::range_value_t<R>>;
+
+template <typename R>
+struct flat_element {};
+
+template <nested_send_buffer R>
+struct flat_element<R> {
+    using type = std::ranges::range_value_t<std::ranges::range_value_t<R>>;
+};
+
+template <sparse_nested_send_buffer R>
+struct flat_element<R> {
+    using type = std::ranges::range_value_t<std::tuple_element_t<1, std::ranges::range_value_t<R>>>;
+};
+
+template <value_destination_pair_buffer R>
+struct flat_element<R> {
+    // remove_cvref: the value slot may be a reference — e.g. a (value, rank) pair built
+    // lazily to carry the payload by reference and avoid a copy — but the MPI element type
+    // must be a plain value.
+    using type = std::remove_cvref_t<std::tuple_element_t<0, std::ranges::range_value_t<R>>>;
+};
+
+template <typename R>
+using flat_element_t = flat_element<R>::type;
+
+template <typename R>
+concept flattenable_send_buffer =
+    nested_send_buffer<R> || sparse_nested_send_buffer<R> || value_destination_pair_buffer<R>;
 
 /// Flattens a range-of-ranges into a contiguous MPI buffer with per-rank counts
 /// and displacements.
@@ -51,9 +117,7 @@ template <
     bool                           resize_buf    = false,
     bool                           resize_counts = false,
     bool                           resize_displs = false>
-    requires std::ranges::forward_range<Source> && std::ranges::sized_range<Source>
-             && std::ranges::input_range<std::ranges::range_value_t<Source>>
-             && std::ranges::sized_range<std::ranges::range_value_t<Source>>
+    requires flattenable_send_buffer<Source>
              && (!resize_buf || has_resize<FlatBuf> || has_mpi_resize_for_receive<FlatBuf>)
              && (!resize_counts || has_resize<Counts> || has_mpi_resize_for_receive<Counts>)
              && (!resize_displs || has_resize<Displs> || has_mpi_resize_for_receive<Displs>)
@@ -64,12 +128,29 @@ class flatten_v_view
     mutable Counts  counts_;
     mutable Displs  displs_;
     mutable bool    needs_flatten_ = true;
+    // Communicator size, supplied via set_comm_size() through the infer() protocol.
+    // Required to lay out counts/displs for sparse sources (where the source does not
+    // span all ranks); unused for dense nested_send_buffer sources.
+    mutable std::optional<int> comm_size_;
 
     void ensure_flattened() const {
         if (!needs_flatten_)
             return;
 
-        auto const num_ranks = std::ranges::size(source_);
+        // The counts/displs arrays span one entry per rank. For a dense nested buffer
+        // there is exactly one inner range per rank, so the source size is the rank
+        // count. Sparse sources only mention a subset of ranks, so the communicator
+        // size must have been provided via set_comm_size().
+        std::size_t num_ranks;
+        if constexpr (nested_send_buffer<Source>) {
+            num_ranks = static_cast<std::size_t>(std::ranges::size(source_));
+        } else {
+            KAMPING_ASSERT(
+                comm_size_.has_value(),
+                "set_comm_size() must be called before flattening a sparse send buffer"
+            );
+            num_ranks = static_cast<std::size_t>(*comm_size_);
+        }
 
         // Resize and fill counts
         if constexpr (resize_counts) {
@@ -77,27 +158,71 @@ class flatten_v_view
         }
         auto*          counts_ptr = std::ranges::data(counts_);
         std::ptrdiff_t total_size = 0;
-        std::size_t    idx        = 0;
-        for (auto&& inner: source_) {
-            auto const s      = static_cast<int>(std::ranges::size(inner));
-            counts_ptr[idx++] = s;
-            total_size += s;
+        if constexpr (nested_send_buffer<Source>) {
+            std::size_t idx = 0;
+            for (auto&& inner: source_) {
+                auto const s      = static_cast<int>(std::ranges::size(inner));
+                counts_ptr[idx++] = s;
+                total_size += s;
+            }
+        } else {
+            // Ranks may be mentioned out of order, repeatedly, or not at all.
+            std::ranges::fill(counts_ptr, counts_ptr + num_ranks, 0);
+            for (auto&& [first, second]: source_) {
+                if constexpr (sparse_nested_send_buffer<Source>) {
+                    auto const r = mpi::experimental::to_rank(first);
+                    auto const s = static_cast<int>(std::ranges::size(second));
+                    counts_ptr[r] += s;
+                    total_size += s;
+                } else if constexpr (value_destination_pair_buffer<Source>) {
+                    auto const r = mpi::experimental::to_rank(second);
+                    counts_ptr[r] += 1;
+                    total_size += 1;
+                } else {
+                    static_assert(always_false<Source>, "unhandled flattenable_send_buffer kind");
+                }
+            }
         }
 
         // Resize and compute displacements
         if constexpr (resize_displs) {
             kamping::v2::resize_for_receive(displs_, static_cast<std::ptrdiff_t>(num_ranks));
         }
-        std::exclusive_scan(counts_ptr, counts_ptr + num_ranks, std::ranges::data(displs_), 0);
+        auto* displs_ptr = std::ranges::data(displs_);
+        std::exclusive_scan(counts_ptr, counts_ptr + num_ranks, displs_ptr, 0);
 
         // Resize and copy data into flat buffer
         if constexpr (resize_buf) {
             kamping::v2::resize_for_receive(flat_buf_, total_size);
         }
-        using elem_t = std::ranges::range_value_t<std::ranges::range_value_t<Source>>;
-        elem_t* dest = std::ranges::data(flat_buf_);
-        for (auto&& inner: source_) {
-            dest = std::copy(std::ranges::begin(inner), std::ranges::end(inner), dest);
+        using elem_t      = flat_element_t<Source>;
+        elem_t* flat_data = std::ranges::data(flat_buf_);
+        if constexpr (nested_send_buffer<Source>) {
+            elem_t* dest = flat_data;
+            for (auto&& inner: source_) {
+                dest = std::ranges::copy(inner, dest).out;
+            }
+        } else {
+            // Scatter each pair into its destination rank's slice. The displacements
+            // double as per-rank write cursors (handling out-of-order and repeated
+            // ranks), avoiding a separate cursor allocation.
+            for (auto&& [first, second]: source_) {
+                if constexpr (sparse_nested_send_buffer<Source>) {
+                    auto const r = mpi::experimental::to_rank(first);
+                    std::ranges::copy(second, flat_data + displs_ptr[r]);
+                    displs_ptr[r] += static_cast<int>(std::ranges::size(second));
+                } else if constexpr (value_destination_pair_buffer<Source>) {
+                    auto const r               = mpi::experimental::to_rank(second);
+                    flat_data[displs_ptr[r]++] = first;
+                } else {
+                    static_assert(always_false<Source>, "unhandled flattenable_send_buffer kind");
+                }
+            }
+            // Each cursor now holds its rank's end offset (= the next rank's start), so
+            // the exclusive-scan displacements are just the cursors shifted right by one,
+            // with displs[0] = 0 (there is always at least one rank).
+            std::shift_right(std::ranges::begin(displs_), std::ranges::end(displs_), 1);
+            displs_ptr[0] = 0;
         }
 
         needs_flatten_ = false;
@@ -122,14 +247,23 @@ public:
           counts_(kamping::v2::all(std::forward<C>(counts))),
           displs_(kamping::v2::all(std::forward<D>(displs))) {}
 
+    /// Supplies the communicator size so that sparse sources can lay out their
+    /// counts/displs/data over all ranks. Called by the infer() protocol (see
+    /// deferred_send_buf_v) before any accessor is read. A no-op effect for dense
+    /// nested sources, whose rank count is derived from the source size.
+    void set_comm_size(int n) const {
+        comm_size_     = n;
+        needs_flatten_ = true;
+    }
+
     std::span<int const> mpi_counts() const {
         ensure_flattened();
-        return {std::ranges::data(counts_), std::ranges::size(counts_)};
+        return {std::ranges::data(counts_), static_cast<std::size_t>(std::ranges::size(counts_))};
     }
 
     std::span<int const> mpi_displs() const {
         ensure_flattened();
-        return {std::ranges::data(displs_), std::ranges::size(displs_)};
+        return {std::ranges::data(displs_), static_cast<std::size_t>(std::ranges::size(displs_))};
     }
 
     /// Displacements are always computed via exclusive_scan — monotonically non-decreasing.
@@ -180,13 +314,11 @@ template <
     typename DisplsContainer                     = std::vector<int>>
 constexpr auto flatten_v() {
     return kamping::v2::adaptor<0, decltype([](auto&& source) {
-                                    using Source  = std::remove_cvref_t<decltype(source)>;
-                                    using inner_t = std::ranges::range_value_t<Source>;
-                                    using elem_t  = std::ranges::range_value_t<inner_t>;
-                                    using S       = kamping::v2::all_t<decltype(source)>;
-                                    using F       = kamping::v2::owning_view<FlatTemplate<elem_t>>;
-                                    using C       = kamping::v2::owning_view<CountsContainer>;
-                                    using D       = kamping::v2::owning_view<DisplsContainer>;
+                                    using elem_t = flat_element_t<std::remove_cvref_t<decltype(source)>>;
+                                    using S      = kamping::v2::all_t<decltype(source)>;
+                                    using F      = kamping::v2::owning_view<FlatTemplate<elem_t>>;
+                                    using C      = kamping::v2::owning_view<CountsContainer>;
+                                    using D      = kamping::v2::owning_view<DisplsContainer>;
                                     return kamping::v2::flatten_v_view<S, F, C, D, true, true, true>(
                                         std::forward<decltype(source)>(source),
                                         FlatTemplate<elem_t>{},
