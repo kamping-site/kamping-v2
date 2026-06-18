@@ -143,7 +143,7 @@ class flatten_v_view
         // size must have been provided via set_comm_size().
         std::size_t num_ranks;
         if constexpr (nested_send_buffer<Source>) {
-            num_ranks = std::ranges::size(source_);
+            num_ranks = static_cast<std::size_t>(std::ranges::size(source_));
         } else {
             KAMPING_ASSERT(
                 comm_size_.has_value(),
@@ -258,12 +258,12 @@ public:
 
     std::span<int const> mpi_counts() const {
         ensure_flattened();
-        return {std::ranges::data(counts_), std::ranges::size(counts_)};
+        return {std::ranges::data(counts_), static_cast<std::size_t>(std::ranges::size(counts_))};
     }
 
     std::span<int const> mpi_displs() const {
         ensure_flattened();
-        return {std::ranges::data(displs_), std::ranges::size(displs_)};
+        return {std::ranges::data(displs_), static_cast<std::size_t>(std::ranges::size(displs_))};
     }
 
     /// Displacements are always computed via exclusive_scan — monotonically non-decreasing.
