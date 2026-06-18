@@ -9,6 +9,8 @@
 
 #include <mpi.h>
 
+#include "kamping/v2/views/ref_single_view.hpp"
+#include "mpi/collectives/allreduce.hpp"
 #include "mpi/comm.hpp"
 
 /// @file
@@ -48,8 +50,18 @@ struct topology_aware {
         // Require a homogeneous decomposition: every node must hold the same number of ranks.
         int min_size = 0;
         int max_size = 0;
-        MPI_Allreduce(&local_size, &min_size, 1, MPI_INT, MPI_MIN, global.mpi_handle());
-        MPI_Allreduce(&local_size, &max_size, 1, MPI_INT, MPI_MAX, global.mpi_handle());
+        mpi::experimental::allreduce(
+            kamping::v2::views::ref_single(local_size),
+            kamping::v2::views::ref_single(min_size),
+            MPI_MIN,
+            global
+        );
+        mpi::experimental::allreduce(
+            kamping::v2::views::ref_single(local_size),
+            kamping::v2::views::ref_single(max_size),
+            MPI_MAX,
+            global
+        );
         auto intra = static_cast<std::size_t>(local_size);
         if (min_size != max_size || intra == 0 || p % intra != 0) {
             return dims_create{2}(global);

@@ -13,6 +13,10 @@
 #include <utility>
 #include <vector>
 
+#ifdef _OPENMP
+    #include <omp.h>
+#endif
+
 #include <mpi.h>
 
 #include "dstl/default_init_allocator.hpp"
@@ -31,10 +35,9 @@
 /// The routing replaces the p−1 direct messages per PE of a flat MPI_Alltoallv with k phases of
 /// Σs_i messages, routed through the grid's subcommunicators. The flat per-destination send counts
 /// fully determine the routing: they form a radix count-tree with p leaves, and each phase exchanges
-/// one level of that tree (count metadata is interleaved with the data, D7). See
-/// DSTL-Alltoallv-Design.md (§2, §9, §11) for the full derivation.
+/// one level of that tree (count metadata is interleaved with the data).
 ///
-/// Recv ordering (D5): `dstl::unordered` (default) delivers the correct multiset grouped by routing
+/// Recv ordering: `dstl::unordered` (default) delivers the correct multiset grouped by routing
 /// path — this is where the speedup lives. `dstl::ordered_by_source` carries a per-element source
 /// label through every hop and performs a final local stable sort so the result is byte-identical to
 /// a flat MPI_Alltoallv.
@@ -71,12 +74,35 @@ namespace detail {
 /// Exclusive prefix sum (displacements) of a counts array, in element units.
 inline std::vector<int> exclusive_scan_int(std::span<int const> counts) {
     std::vector<int> displs(counts.size());
-    int              acc = 0;
-    for (std::size_t i = 0; i < counts.size(); ++i) {
-        displs[i] = acc;
-        acc += counts[i];
-    }
+    std::exclusive_scan(counts.begin(), counts.end(), displs.begin(), 0);
     return displs;
+}
+
+/// Apply `body(lo, hi)` over contiguous chunks of `[0, n)` (TBB `blocked_range` style: each invocation
+/// owns a disjoint slice). When `parallel` is set the range is split into one contiguous chunk per
+/// OpenMP thread and the chunks run concurrently; otherwise `body` runs once over the whole range. The
+/// `n*tid/nthreads` split tolerates `n` not divisible by the thread count: chunks stay contiguous, cover
+/// `[0, n)` exactly, and differ in size by at most one element (empty chunks when threads outnumber
+/// elements are fine — `body` then sees `lo == hi`). Parallel execution requires OpenMP, asserted here.
+/// `body` must be safe to invoke concurrently across distinct slices.
+template <typename F>
+inline void chunked_for([[maybe_unused]] bool parallel, std::ptrdiff_t n, F&& body) {
+#ifndef _OPENMP
+    KAMPING_ASSERT(!parallel, "chunked_for: parallel execution requires OpenMP, which this build lacks.");
+    body(std::ptrdiff_t{0}, n);
+#else
+    if (!parallel) {
+        // Non-parallel: use the plain sequential path, not a one-thread OpenMP region.
+        body(std::ptrdiff_t{0}, n);
+    } else {
+    #pragma omp parallel
+        {
+            std::ptrdiff_t const nthreads = omp_get_num_threads();
+            std::ptrdiff_t const tid      = omp_get_thread_num();
+            body(n * tid / nthreads, n * (tid + 1) / nthreads);
+        }
+    }
+#endif
 }
 
 /// State carried between phases of the grid routing.
@@ -106,43 +132,87 @@ void route_phase(routing_state<T>& state, std::size_t dim_size, MPI_Datatype dt,
 
     auto const        subcomm_size      = static_cast<int>(dim_size);
     std::size_t const subtree_size      = state.dest_counts.size(); // size of the current count-tree level
-    std::size_t const next_subtree_size = subtree_size / dim_size;  // each member's subtree (next level's size)
+    std::size_t const next_subtree_size = subtree_size / dim_size;  // each rank's subtree (next level's size)
 
-    // Send counts for the data exchange: `member` receives the elements whose current remaining
-    //    index falls in [member*next_subtree_size, (member+1)*next_subtree_size) — a contiguous
-    //    block (data is kept sorted by remaining index).
-    std::vector<int> send_counts(static_cast<std::size_t>(subcomm_size), 0);
-    for (int member = 0; member < subcomm_size; ++member) {
-        int sum = 0;
-        for (std::size_t bucket = 0; bucket < next_subtree_size; ++bucket) {
-            sum += state.dest_counts[static_cast<std::size_t>(member) * next_subtree_size + bucket];
-        }
-        send_counts[static_cast<std::size_t>(member)] = sum;
+    // A phase regroups (state.data, state.dest_counts): in goes data keyed by THIS dimension's
+    // destination rank, out comes data keyed by the NEXT count-tree level. With s = subcomm_size and
+    // m = next_subtree_size, the current level holds subtree_size = s*m buckets, and a remaining
+    // destination index splits as idx = subcomm_rank * m + bucket. Write c[b,r] / b[b,r] for the
+    // count / data of bucket b within destination rank r's block.
+    //
+    // BEFORE — sorted by remaining dest index; dest_counts is the current tree level (one int per
+    // bucket). The m buckets of each rank r form the contiguous block sent to it, with
+    // send_counts[r] = sum_b c[b,r]:
+    //
+    //                     dest rank 0                dest rank 1              ...     dest rank (subcomm_size -1)
+    //                   +---------------------------+---------------------------+-----+
+    // state.dest_counts:| c[0,0] c[1,0] .. c[m-1,0] | c[0,1] c[1,1] .. c[m-1,1] | ... |   subtree_size many entries
+    // state.data:       | b[0,0] b[1,0] .. b[m-1,0] | b[0,1] b[1,1] .. b[m-1,1] | ... |   b[b,r] holds c[b,r] elems
+    //                   +---------------------------+---------------------------+-----+
+    //
+    //   Note: c[i,j] = state.dest_counts[j*m + i]
+    //
+    //
+    // AFTER EXCHANGE — the alltoallv ships each rank's block to that rank, so recv_data keeps the
+    // block shape but is now keyed by SOURCE rank. Source src delivers recv_counts[src] =
+    // sum_b recv_meta[b,src] elements, still ordered by bucket inside; recv_meta (from the count
+    // alltoall above) carries the matching per-bucket counts in the same layout. Write e[b,src] for
+    // the elements of bucket b that arrived from source src:
+    //
+    //                 source 0                   source 1                 ...     source (subcomm_size -1)
+    //               +---------------------------+---------------------------+-----+
+    // recv_data:    | e[0,0] e[1,0] .. e[m-1,0] | e[0,1] e[1,1] .. e[m-1,1] | ... |   e[b,src] holds recv_meta[b,src]
+    //               +---------------------------+---------------------------+-----+
+    //
+    // AFTER MERGE — the merge transposes source<->bucket, concatenating each bucket across all
+    // sources, so state.data is now sorted by the next dest index (the bucket) and dest_counts
+    // collapses to the next tree level of m buckets, with next_dest_counts[b] = sum_src recv_meta[b,src]:
+    //
+    //                     bucket 0                   bucket 1                 ...     bucket (m-1)
+    //                   +---------------------------+---------------------------+-----+
+    // state.dest_counts:| next_dest_counts[0]       | next_dest_counts[1]       | ... |   = sum_src recv_meta[b,src]
+    // state.data:       | e[0,0] e[0,1] .. e[0,s-1] | e[1,0] e[1,1] .. e[1,s-1] | ... |   bucket b gathered over srcs
+    //                   +---------------------------+---------------------------+-----+
+    //
+    // These m buckets are the next count-tree level, already laid out for the next phase. With
+    // m' = m / s' (s' = the next dimension's subcomm size), the buckets split into s' contiguous
+    // ranges, one per destination of the next phase, so this AFTER picture is already that phase's
+    // BEFORE picture:
+    //
+    // next dest:   next dest rank 0        next dest rank 1         ...  next dest rank s'-1
+    //              [bucket 0, bucket m')   [bucket m', bucket 2m')  ...  [bucket (s'-1)m', bucket m)
+    //
+    std::vector<int> send_counts(dim_size, 0);
+    for (std::size_t subcomm_rank = 0; subcomm_rank < dim_size; ++subcomm_rank) {
+        auto const next_subtree_range_start = subcomm_rank * next_subtree_size;
+        auto const subtree        = std::span{state.dest_counts}.subspan(next_subtree_range_start, next_subtree_size);
+        send_counts[subcomm_rank] = std::accumulate(subtree.begin(), subtree.end(), 0);
     }
     std::vector<int> send_displs = exclusive_scan_int(send_counts);
 
-    // Count metadata: ship the whole tree level, next_subtree_size ints per member (uniform →
-    // alltoall). The receiver learns, per source member and bucket, how many elements arrive.
+    // Count metadata: ship the whole tree level, next_subtree_size ints per rank.
+    // The receiver learns, per source rank and bucket, how many elements arrive.
     std::vector<int> recv_meta(subtree_size, 0);
     mpi::experimental::alltoall(state.dest_counts, recv_meta, subcomm);
 
     std::vector<int> recv_counts(static_cast<std::size_t>(subcomm_size), 0);
-    for (int member = 0; member < subcomm_size; ++member) {
+    for (int subcomm_rank = 0; subcomm_rank < subcomm_size; ++subcomm_rank) {
         int sum = 0;
         for (std::size_t bucket = 0; bucket < next_subtree_size; ++bucket) {
-            sum += recv_meta[static_cast<std::size_t>(member) * next_subtree_size + bucket];
+            sum += recv_meta[static_cast<std::size_t>(subcomm_rank) * next_subtree_size + bucket];
         }
-        recv_counts[static_cast<std::size_t>(member)] = sum;
+        recv_counts[static_cast<std::size_t>(subcomm_rank)] = sum;
     }
     std::vector<int> recv_displs = exclusive_scan_int(recv_counts);
     int const        total_recv  = subcomm_size > 0 ? recv_displs[static_cast<std::size_t>(subcomm_size) - 1]
                                                           + recv_counts[static_cast<std::size_t>(subcomm_size) - 1]
                                                     : 0;
 
-    // Data (and, if ordered, source ranks) exchange within the subcommunicator. The recv counts and
-    // displacements were derived locally from recv_meta above, so we attach them explicitly rather
-    // than let the kamping::v2 layer re-negotiate them (which would cost a redundant collective per
-    // phase; see the design's D7). with_type(dt) preserves the caller's MPI datatype.
+    // recv_counts / recv_displs were derived locally from recv_meta above (the BEFORE half of the
+    // phase diagram at the top of this function), so we attach them explicitly rather than let the
+    // kamping::v2 layer re-negotiate them (a redundant collective per phase).
+    // with_type(dt) preserves the caller's MPI datatype; when ordering by source, source_rank rides
+    // along with the identical counts and displacements.
     uninit_vector<T> recv_data(static_cast<std::size_t>(total_recv));
     mpi::experimental::alltoallv(
         state.data | views::with_type(dt) | views::with_counts(send_counts) | views::with_displs(send_displs),
@@ -159,51 +229,51 @@ void route_phase(routing_state<T>& state, std::size_t dim_size, MPI_Datatype dt,
         );
     }
 
-    // Rebin: merge the per-source-member blocks back into remaining-index order. This is the
+    // Rebin: merge the per-source-rank blocks back into remaining-index order. This is the
     // execution-policy hotspot; each bucket is written independently.
-    std::vector<int> new_dest_counts(next_subtree_size, 0);
-    for (int member = 0; member < subcomm_size; ++member) {
+    std::vector<int> next_dest_counts(next_subtree_size, 0);
+    for (std::size_t subcomm_rank = 0; subcomm_rank < static_cast<std::size_t>(subcomm_size); ++subcomm_rank) {
         for (std::size_t bucket = 0; bucket < next_subtree_size; ++bucket) {
-            new_dest_counts[bucket] += recv_meta[static_cast<std::size_t>(member) * next_subtree_size + bucket];
+            next_dest_counts[bucket] += recv_meta[subcomm_rank * next_subtree_size + bucket];
         }
     }
-    std::vector<int> new_displs = exclusive_scan_int(new_dest_counts);
+    std::vector<int> new_displs = exclusive_scan_int(next_dest_counts);
 
-    // Read offset (in elements) of the (source member, bucket) sub-block within the received block.
+    // Read offset (in elements) of the (source rank, bucket) sub-block within the received block.
     std::vector<int> read_off(subtree_size, 0);
-    for (int member = 0; member < subcomm_size; ++member) {
-        int cursor = recv_displs[static_cast<std::size_t>(member)];
+    for (int subcomm_rank = 0; subcomm_rank < subcomm_size; ++subcomm_rank) {
+        int cursor = recv_displs[static_cast<std::size_t>(subcomm_rank)];
         for (std::size_t bucket = 0; bucket < next_subtree_size; ++bucket) {
-            auto const slot = static_cast<std::size_t>(member) * next_subtree_size + bucket;
+            auto const slot = static_cast<std::size_t>(subcomm_rank) * next_subtree_size + bucket;
             read_off[slot]  = cursor;
-            cursor         += recv_meta[slot];
+            cursor += recv_meta[slot];
         }
     }
 
     auto merge = [&]<typename Src>(Src const& src) {
         using U = std::ranges::range_value_t<Src>;
-        uninit_vector<U>                dst(static_cast<std::size_t>(total_recv));
-        [[maybe_unused]] constexpr bool parallel = ParallelRebin;
-#ifdef _OPENMP
-    #pragma omp parallel for schedule(static) if (parallel)
-#endif
-        for (std::ptrdiff_t bucket = 0; bucket < static_cast<std::ptrdiff_t>(next_subtree_size); ++bucket) {
-            auto write = static_cast<std::size_t>(new_displs[static_cast<std::size_t>(bucket)]);
-            for (int member = 0; member < subcomm_size; ++member) {
-                auto const slot =
-                    static_cast<std::size_t>(member) * next_subtree_size + static_cast<std::size_t>(bucket);
-                int const cnt = recv_meta[slot];
-                if (cnt > 0) {
-                    auto const from = static_cast<std::size_t>(read_off[slot]);
-                    std::copy_n(
-                        src.begin() + static_cast<std::ptrdiff_t>(from),
-                        cnt,
-                        dst.begin() + static_cast<std::ptrdiff_t>(write)
-                    );
-                    write += static_cast<std::size_t>(cnt);
+        uninit_vector<U> dst(static_cast<std::size_t>(total_recv));
+        // Each bucket writes its own disjoint output slice (new_displs[bucket]…), so the buckets split
+        // safely into one contiguous chunk per thread.
+        chunked_for(ParallelRebin, static_cast<std::ptrdiff_t>(next_subtree_size), [&](std::ptrdiff_t lo, std::ptrdiff_t hi) {
+            for (std::ptrdiff_t bucket = lo; bucket < hi; ++bucket) {
+                auto write = static_cast<std::size_t>(new_displs[static_cast<std::size_t>(bucket)]);
+                for (int subcomm_rank = 0; subcomm_rank < subcomm_size; ++subcomm_rank) {
+                    auto const slot =
+                        static_cast<std::size_t>(subcomm_rank) * next_subtree_size + static_cast<std::size_t>(bucket);
+                    int const cnt = recv_meta[slot];
+                    if (cnt > 0) {
+                        auto const from = static_cast<std::size_t>(read_off[slot]);
+                        std::copy_n(
+                            src.begin() + static_cast<std::ptrdiff_t>(from),
+                            cnt,
+                            dst.begin() + static_cast<std::ptrdiff_t>(write)
+                        );
+                        write += static_cast<std::size_t>(cnt);
+                    }
                 }
             }
-        }
+        });
         return dst;
     };
 
@@ -211,7 +281,7 @@ void route_phase(routing_state<T>& state, std::size_t dim_size, MPI_Datatype dt,
     if constexpr (Ordered) {
         state.source_rank = merge(recv_source_rank);
     }
-    state.dest_counts = std::move(new_dest_counts);
+    state.dest_counts = std::move(next_dest_counts);
 }
 
 /// Core implementation shared by the free function and the member entry points.
@@ -248,7 +318,7 @@ void grid_alltoallv_impl(SBuf const& sbuf, RBuf& rbuf, grid_comm<Exec> const& gr
     //             leaf(d) = Σ_i coords(d)[i] · leaf_stride[i],  leaf_stride[i] = Π_{j>i} dims[j],
     //         and build tree/data by that permutation. (The send buffer arrives in global-rank order,
     //         whose most-significant digit is the most-remote dimension, so this reorder is the price
-    //         of going the other way — see the "only a top-level reorder" discussion in the design.)
+    //         of going the other way.)
     //      2. Iterate the phase loop and subcommunicators in reverse (i = k-1 … 0).
     routing_state<T> state;
     state.dest_counts.assign(send_counts.begin(), send_counts.end());
@@ -293,7 +363,10 @@ void grid_alltoallv_impl(SBuf const& sbuf, RBuf& rbuf, grid_comm<Exec> const& gr
             out[pos] = state.data[static_cast<std::size_t>(order_idx[pos])];
         }
     } else {
-        std::copy_n(state.data.begin(), static_cast<std::size_t>(total_recv), out);
+        // Flat contiguous deposit: each chunk memcpys its own disjoint slice via std::copy_n.
+        chunked_for(parallel, static_cast<std::ptrdiff_t>(total_recv), [&](std::ptrdiff_t lo, std::ptrdiff_t hi) {
+            std::copy_n(state.data.begin() + lo, hi - lo, out + lo);
+        });
     }
 }
 
@@ -304,7 +377,7 @@ void grid_alltoallv_impl(SBuf const& sbuf, RBuf& rbuf, grid_comm<Exec> const& gr
 /// `send_buffer_v` (`data | with_counts | with_displs`); the recv buffer is any resizable contiguous
 /// range (e.g. a plain `std::vector<T>`).
 ///
-/// @tparam Order Recv ordering tag: `unordered` (default) or `ordered_by_source` (§D5).
+/// @tparam Order Recv ordering tag: `unordered` (default) or `ordered_by_source`.
 template <grid_send_buffer SBuf, grid_recv_buffer RBuf, execution_policy Exec, recv_ordering Order = unordered>
 auto alltoallv(SBuf&& sbuf, RBuf&& rbuf, grid_comm<Exec> const& grid, Order order = {})
     -> kamping::v2::result<SBuf, RBuf> {
@@ -312,12 +385,4 @@ auto alltoallv(SBuf&& sbuf, RBuf&& rbuf, grid_comm<Exec> const& grid, Order orde
     detail::grid_alltoallv_impl(res.send, res.recv, grid, order);
     return res;
 }
-
-// grid_comm::alltoallv member (declared in grid_comm.hpp)
-template <execution_policy Exec>
-template <typename SBuf, typename RBuf, recv_ordering Order>
-auto grid_comm<Exec>::alltoallv(SBuf&& sbuf, RBuf&& rbuf, Order order) const {
-    return dstl::alltoallv(std::forward<SBuf>(sbuf), std::forward<RBuf>(rbuf), *this, order);
-}
-
 } // namespace dstl

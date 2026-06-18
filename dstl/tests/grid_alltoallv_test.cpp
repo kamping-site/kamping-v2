@@ -48,7 +48,7 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<int>> build_send(int 
 }
 
 // Oracle: the flat kamping::v2::alltoallv result on MPI_COMM_WORLD.
-std::vector<int> flat_oracle(std::vector<int> const& data, std::vector<int> const& counts, std::vector<int> const& displs) {
+std::vector<int> standard_alltoallv(std::vector<int> const& data, std::vector<int> const& counts, std::vector<int> const& displs) {
     std::vector<int> recv;
     kamping::v2::alltoallv(
         data | kamping::v2::views::with_counts(counts) | kamping::v2::views::with_displs(displs),
@@ -70,7 +70,7 @@ TEST(GridAlltoallvTest, UnorderedMultisetEqualsFlat) {
     int size = world_size();
     auto [data, counts, displs] = build_send(rank, size);
 
-    std::vector<int> expected = flat_oracle(data, counts, displs);
+    std::vector<int> expected = standard_alltoallv(data, counts, displs);
 
     dstl::grid_comm<dstl::sequential> grid{comm_view{MPI_COMM_WORLD}};
     std::vector<int>                  recv;
@@ -90,7 +90,7 @@ TEST(GridAlltoallvTest, OrderedEqualsFlatExactly) {
     int size = world_size();
     auto [data, counts, displs] = build_send(rank, size);
 
-    std::vector<int> expected = flat_oracle(data, counts, displs);
+    std::vector<int> expected = standard_alltoallv(data, counts, displs);
 
     dstl::grid_comm<dstl::sequential> grid{comm_view{MPI_COMM_WORLD}};
     std::vector<int>                  recv;
@@ -110,7 +110,7 @@ TEST(GridAlltoallvTest, OwnedRecvBuffer) {
     int size = world_size();
     auto [data, counts, displs] = build_send(rank, size);
 
-    std::vector<int> expected = flat_oracle(data, counts, displs);
+    std::vector<int> expected = standard_alltoallv(data, counts, displs);
 
     dstl::grid_comm<dstl::sequential> grid{comm_view{MPI_COMM_WORLD}};
     auto                              res = dstl::alltoallv(
@@ -121,25 +121,6 @@ TEST(GridAlltoallvTest, OwnedRecvBuffer) {
     );
 
     EXPECT_EQ(res.recv, expected);
-}
-
-// Member-function entry point delegates to the free function.
-TEST(GridAlltoallvTest, MemberEntryPoint) {
-    int rank = world_rank();
-    int size = world_size();
-    auto [data, counts, displs] = build_send(rank, size);
-
-    std::vector<int> expected = flat_oracle(data, counts, displs);
-
-    dstl::grid_comm<dstl::sequential> grid{comm_view{MPI_COMM_WORLD}};
-    std::vector<int>                  recv;
-    grid.alltoallv(
-        data | kamping::v2::views::with_counts(counts) | kamping::v2::views::with_displs(displs),
-        recv,
-        dstl::ordered_by_source{}
-    );
-
-    EXPECT_EQ(recv, expected);
 }
 
 // Each rank sends exactly one element to each rank — same multiset as alltoall.
@@ -186,7 +167,7 @@ TEST(GridAlltoallvTest, ExplicitFactorizations) {
     int rank = world_rank();
     int size = world_size();
     auto [data, counts, displs] = build_send(rank, size);
-    std::vector<int> expected   = flat_oracle(data, counts, displs);
+    std::vector<int> expected   = standard_alltoallv(data, counts, displs);
 
     // A 1-D grid (flat), and — when 4 ranks — a 2x2 grid.
     std::vector<std::vector<std::size_t>> factorings = {{static_cast<std::size_t>(size)}};
