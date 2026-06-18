@@ -17,11 +17,11 @@ void alltoall(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = MPI_COMM_WORLD) {
     MPI_Comm_size(handle(comm), &comm_size);
     using scount_t = decltype(count(sbuf));
     using rcount_t = decltype(count(rbuf));
-    KAMPING_ASSERT(
+    KAMPING_V2_ASSERT(
         count(sbuf) % static_cast<scount_t>(comm_size) == scount_t{0},
         "send buffer size must be divisible by comm size"
     );
-    KAMPING_ASSERT(
+    KAMPING_V2_ASSERT(
         count(rbuf) % static_cast<rcount_t>(comm_size) == rcount_t{0},
         "recv buffer size must be divisible by comm size"
     );

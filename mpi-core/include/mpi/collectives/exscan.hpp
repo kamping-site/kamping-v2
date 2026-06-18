@@ -48,11 +48,11 @@ void exscan(SBuf&& sbuf, RBuf&& rbuf, Op const& op, Comm const& comm = MPI_COMM_
         }
     } else {
         using scount_t = decltype(count(sbuf));
-        KAMPING_ASSERT(
+        KAMPING_V2_ASSERT(
             count(sbuf) == static_cast<scount_t>(count(rbuf)),
             "send and receive buffer must have the same count"
         );
-        KAMPING_ASSERT(type(sbuf) == type(rbuf), "send and receive buffer must have the same type");
+        KAMPING_V2_ASSERT(type(sbuf) == type(rbuf), "send and receive buffer must have the same type");
         int err = MPI_Exscan(
             sbuf_ptr,
             ptr(rbuf),
