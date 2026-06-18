@@ -168,6 +168,27 @@ TEST(FlattenVTest, ProjectionViaStdRanges) {
     EXPECT_THAT(data, ElementsAre(20, 10, 11, 30));
 }
 
+// (value, rank) pairs may carry the payload by reference to avoid an intermediate copy
+// (only the final copy into the flat buffer remains). flat_element strips the reference, so
+// the flat buffer holds plain values. Using pair<int const&, int> here would fail to compile
+// without that remove_cvref in flat_element.
+TEST(FlattenVTest, ReferenceCarryingPairs) {
+    std::vector<int> values = {10, 20, 11, 30};
+
+    auto pairs = values | std::views::transform([](int const& v) {
+                     return std::pair<int const&, int>(v, v % 3); // payload carried by reference
+                 });
+
+    auto view = pairs | kamping::v2::views::flatten_v();
+    view.set_comm_size(3);
+    auto const [data, counts, displs] = materialize(view);
+
+    // dest = value % 3 -> 10:1, 20:2, 11:2, 30:0
+    EXPECT_THAT(counts, ElementsAre(1, 1, 2));
+    EXPECT_THAT(displs, ElementsAre(0, 1, 2));
+    EXPECT_THAT(data, ElementsAre(30, 10, 20, 11));
+}
+
 // Lazy re-flatten: changing the comm size invalidates the cached layout.
 TEST(FlattenVTest, ReflattensAfterSetCommSize) {
     std::vector<std::pair<int, int>> items = {{7, 0}, {8, 2}};

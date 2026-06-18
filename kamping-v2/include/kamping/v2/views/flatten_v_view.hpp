@@ -70,7 +70,10 @@ struct flat_element<R> {
 
 template <value_destination_pair_buffer R>
 struct flat_element<R> {
-    using type = std::tuple_element_t<0, std::ranges::range_value_t<R>>;
+    // remove_cvref: the value slot may be a reference — e.g. a (value, rank) pair built
+    // lazily to carry the payload by reference and avoid a copy — but the MPI element type
+    // must be a plain value.
+    using type = std::remove_cvref_t<std::tuple_element_t<0, std::ranges::range_value_t<R>>>;
 };
 
 template <typename R>
