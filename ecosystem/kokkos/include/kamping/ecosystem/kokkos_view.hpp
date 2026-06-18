@@ -13,7 +13,7 @@
     #include <KokkosComm/impl/contiguous.hpp>
 #endif
 #include <Kokkos_Core.hpp>
-#include <kamping/kassert/kassert.hpp>
+#include <kamping/v2/kassert.hpp>
 
 #include "kamping/v2/views/adaptor.hpp"
 #include "kamping/v2/views/resize_view.hpp"

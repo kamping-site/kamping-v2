@@ -11,7 +11,7 @@
 #include <span>
 #include <vector>
 
-#include "kamping/kassert/kassert.hpp"
+#include "kamping/v2/kassert.hpp"
 #include "kamping/v2/views/adaptor.hpp"
 #include "kamping/v2/views/all.hpp"
 #include "kamping/v2/views/concepts.hpp"
