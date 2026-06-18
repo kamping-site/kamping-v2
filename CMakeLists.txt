@@ -42,16 +42,21 @@ option(
 set(MPI_DETERMINE_LIBRARY_VERSION TRUE)
 find_package(MPI REQUIRED)
 
-FetchContent_Declare(
-    kamping_v2_kassert
-    GIT_REPOSITORY https://github.com/kamping-site/kassert
-    GIT_TAG v1.0.0
-)
-set(KASSERT_CMAKE_NAMESPACE kamping_v2)
-set(KASSERT_CXX_NAMESPACE kamping::v2::kassert)
-set(KASSERT_INCLUDE_SUBDIR kamping/v2)
-set(KASSERT_PREFIX KAMPING_V2_ASSERT)
-FetchContent_MakeAvailable(kamping_v2_kassert)
+# Configure the kassert variables inside a block() so they stay scoped to this kassert instance and do
+# not leak into the shared kamping-types component below, which configures its own (kamping::kassert)
+# kassert instance. The created target is global and remains available outside the block.
+block()
+    set(KASSERT_CMAKE_NAMESPACE kamping_v2)
+    set(KASSERT_CXX_NAMESPACE kamping::v2::kassert)
+    set(KASSERT_INCLUDE_SUBDIR kamping/v2)
+    set(KASSERT_PREFIX KAMPING_V2_ASSERT)
+    FetchContent_Declare(
+        kamping_v2_kassert
+        GIT_REPOSITORY https://github.com/kamping-site/kassert
+        GIT_TAG v1.0.0
+    )
+    FetchContent_MakeAvailable(kamping_v2_kassert)
+endblock()
 
 # Boost.PFR: declare here so kamping-types can discover it. The system-Boost alias must be
 # created before FetchContent_MakeAvailable(kamping_types) so kamping-types sees an existing

@@ -18,7 +18,10 @@ template <
 void allgather(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = MPI_COMM_WORLD) {
     int comm_size = 0;
     MPI_Comm_size(handle(comm), &comm_size);
-    KAMPING_V2_ASSERT(static_cast<int>(count(rbuf)) % comm_size == 0, "recv buffer size must be divisible by comm size");
+    KAMPING_V2_ASSERT(
+        static_cast<int>(count(rbuf)) % comm_size == 0,
+        "recv buffer size must be divisible by comm size"
+    );
     int err = MPI_Allgather(
         ptr(sbuf),
         static_cast<int>(count(sbuf)),
