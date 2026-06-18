@@ -46,6 +46,17 @@ concept deferred_recv_buf_v = mpi::experimental::has_mpi_counts_mutable<T>
                            && has_commit_counts<T>
                            && has_set_comm_size<T>;
 
+/// Send buffer for variadic collectives whose per-rank counts depend on the
+/// communicator size (e.g. a sparse or flattened source where ranks not present
+/// in the input must receive a count of 0). The infer() protocol calls
+/// set_comm_size(comm_size) before reading mpi_counts()/mpi_displs(), giving the
+/// buffer a chance to lay out its counts/displs/data across all comm_size ranks.
+///
+/// Unlike deferred_recv_buf_v, the counts are produced *by the buffer* rather than
+/// written by MPI, so no mutable mpi_counts()/commit_counts() is required.
+template <typename T>
+concept deferred_send_buf_v = mpi::experimental::send_buffer_v<T> && has_set_comm_size<T>;
+
 // ──────────────────────────────────────────────────────────────────────────────
 // enable_borrowed_buffer — opt-in trait for non-owning buffer types.
 //
