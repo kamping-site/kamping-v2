@@ -11,15 +11,15 @@ if (NOT TARGET mpi::core)
     find_package(MPI REQUIRED)
 
     FetchContent_Declare(
-        kamping_kassert
+        kamping_v2_kassert
         GIT_REPOSITORY https://github.com/kamping-site/kassert
         GIT_TAG v1.0.0
     )
-    set(KASSERT_VENDOR_ID kamping)
-    set(KASSERT_CXX_NAMESPACE kamping::kassert)
-    set(KASSERT_INCLUDE_SUBDIR kamping/kassert)
-    set(KASSERT_PREFIX KAMPING_ASSERT)
-    FetchContent_MakeAvailable(kamping_kassert)
+    set(KASSERT_CMAKE_NAMESPACE kamping_v2)
+    set(KASSERT_CXX_NAMESPACE kamping::v2::kassert)
+    set(KASSERT_INCLUDE_SUBDIR kamping/v2)
+    set(KASSERT_PREFIX KAMPING_V2_ASSERT)
+    FetchContent_MakeAvailable(kamping_v2_kassert)
 
     # Declare pfr so kamping-types can discover it (it calls FetchContent_MakeAvailable(pfr)
     # internally when Boost::pfr is not already a target).
