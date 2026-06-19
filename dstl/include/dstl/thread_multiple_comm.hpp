@@ -28,10 +28,10 @@
 /// across `T` threads and `T` concurrent MPI_Alltoallv calls are issued, one per duplicated
 /// communicator (the MultiThreadedAlltoAll algorithm).
 ///
-/// The `sequential` and `funneled` thread models need no such wrapper: their exchange is a single
-/// MPI_Alltoallv, identical to `kamping::v2::alltoallv` — so callers use that directly. Funneled's
-/// only intra-rank win is parallelizing the *send-buffer pack*, exposed as a separate helper (see
-/// DSTL-Flat-Alltoallv-Design.md §0/§9), not as a thread_multiple_comm or alltoallv overload.
+/// The `seq` and `par` execution policies need no such wrapper: their exchange is a single
+/// MPI_Alltoallv, identical to `kamping::v2::alltoallv` — so callers use that directly. The `par`
+/// policy's only intra-rank win is parallelizing the *send-buffer pack*, exposed as a separate helper
+/// (see DSTL-Flat-Alltoallv-Design.md §0/§9), not as a thread_multiple_comm or alltoallv overload.
 ///
 
 namespace dstl {
@@ -50,7 +50,7 @@ namespace dstl {
 /// run, one per thread.
 class thread_multiple_comm {
 public:
-    using execution_policy_type = thread_multiple;
+    using execution_policy_type = par_comm;
 
     /// Borrow `global` and duplicate `t` communicators (collective). Asserts that the runtime
     /// provides MPI_THREAD_MULTIPLE.

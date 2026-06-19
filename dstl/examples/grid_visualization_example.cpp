@@ -27,7 +27,7 @@
 #include "mpi/comm.hpp"
 
 int main(int argc, char** argv) {
-    // dstl::funneled needs MPI_THREAD_FUNNELED: the main thread issues every MPI call while the OpenMP
+    // dstl::par needs MPI_THREAD_FUNNELED: the main thread issues every MPI call while the OpenMP
     // threads only do node-local work (the rebin / final deposit in dstl::alltoallv).
     kamping::v2::environment          env(argc, argv, mpi::experimental::ThreadLevel::funneled);
     mpi::experimental::comm_view const world{MPI_COMM_WORLD};
@@ -46,7 +46,7 @@ int main(int argc, char** argv) {
 #endif
 
     // Build a grid over the world communicator using the default balanced factoring.
-    dstl::grid_comm<dstl::funneled> const grid(world);
+    dstl::grid_comm<dstl::par> const grid(world);
 
     // (1) Local, communication-free structural dump via std::format. Every rank could print this; we
     //     only do so on rank 0 to keep the output tidy (it is identical everywhere).

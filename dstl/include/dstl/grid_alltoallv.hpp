@@ -251,7 +251,7 @@ void grid_alltoallv_impl(SBuf const& sbuf, RBuf& rbuf, grid_comm<Exec> const& gr
         "dstl::alltoallv: send and recv buffers must have the same element type."
     );
     constexpr bool ordered  = std::is_same_v<Order, ordered_by_source>;
-    constexpr bool parallel = !std::is_same_v<Exec, sequential>;
+    constexpr bool parallel = !std::is_same_v<Exec, seq>;
 
     auto const p  = static_cast<std::size_t>(grid.size());
     auto const dt = mpi::experimental::type(sbuf);

@@ -12,25 +12,31 @@
 
 namespace dstl {
 
-// Execution policy (D3)// The three thread models differ in *resources*, not just code, so they are bound
-// to the grid_comm type and dispatched via `if constexpr` in the re-bin kernel.
+// Execution policy (D3)
+//
+// These tags select *what is parallelized* (nothing / compute / compute + communication); the MPI
+// threading level each one needs is a consequence, not the thing being chosen. The policies differ
+// in *resources*, not just code, so they are bound to the grid_comm type and dispatched via
+// `if constexpr` in the re-bin kernel.
 
-/// MPI_THREAD_SINGLE — serial rearrange, one communicator per dimension.
-struct sequential {};
+/// Sequential policy: a single thread performs the re-bin and issues all MPI, with one communicator
+/// per dimension. Safe at any MPI threading level (needs no more than MPI_THREAD_SINGLE).
+struct seq {};
 
-/// MPI_THREAD_FUNNELED — OpenMP-parallel rearrange, one communicator per dimension.
-/// Falls back to a serial rebin when the translation unit is not compiled with OpenMP.
-struct funneled {};
+/// Parallel-compute policy: the re-bin is OpenMP-parallel, but MPI is still issued from a single
+/// thread (one communicator per dimension). Requires MPI initialized with at least
+/// MPI_THREAD_FUNNELED. Falls back to a serial re-bin when the translation unit is compiled without
+/// OpenMP.
+struct par {};
 
-/// MPI_THREAD_MULTIPLE — like funneled for the rearrange, but additionally requires
-/// (and asserts) MPI_THREAD_MULTIPLE so concurrent MPI can be issued from several threads
-/// at once (one duplicated communicator per thread, as the flat thread_multiple exchange does).
-struct thread_multiple {};
+/// Parallel-compute-and-communicate policy: like `par` for the re-bin, but MPI is additionally
+/// issued concurrently from several threads (one duplicated communicator per thread, as the flat
+/// thread_multiple exchange does). Requires — and asserts — MPI initialized with MPI_THREAD_MULTIPLE.
+struct par_comm {};
 
 /// Concept: one of the execution policy tags above.
 template <typename T>
-concept execution_policy =
-    std::is_same_v<T, sequential> || std::is_same_v<T, funneled> || std::is_same_v<T, thread_multiple>;
+concept execution_policy = std::is_same_v<T, seq> || std::is_same_v<T, par> || std::is_same_v<T, par_comm>;
 
 // Recv ordering (D5)
 /// Default: the recv buffer holds the correct *multiset*, grouped by routing path.

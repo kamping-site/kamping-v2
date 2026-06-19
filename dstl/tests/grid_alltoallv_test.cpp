@@ -30,7 +30,7 @@ TEST(GridAlltoallvTest, UnorderedMultisetEqualsFlat) {
 
     std::vector<int> expected = standard_alltoallv(data, counts, displs);
 
-    dstl::grid_comm<dstl::sequential> grid{comm_view{MPI_COMM_WORLD}};
+    dstl::grid_comm<dstl::seq> grid{comm_view{MPI_COMM_WORLD}};
     std::vector<int>                  recv;
     dstl::alltoallv(
         data | kamping::v2::views::with_counts(counts) | kamping::v2::views::with_displs(displs),
@@ -50,7 +50,7 @@ TEST(GridAlltoallvTest, OrderedEqualsFlatExactly) {
 
     std::vector<int> expected = standard_alltoallv(data, counts, displs);
 
-    dstl::grid_comm<dstl::sequential> grid{comm_view{MPI_COMM_WORLD}};
+    dstl::grid_comm<dstl::seq> grid{comm_view{MPI_COMM_WORLD}};
     std::vector<int>                  recv;
     dstl::alltoallv(
         data | kamping::v2::views::with_counts(counts) | kamping::v2::views::with_displs(displs),
@@ -70,7 +70,7 @@ TEST(GridAlltoallvTest, OwnedRecvBuffer) {
 
     std::vector<int> expected = standard_alltoallv(data, counts, displs);
 
-    dstl::grid_comm<dstl::sequential> grid{comm_view{MPI_COMM_WORLD}};
+    dstl::grid_comm<dstl::seq> grid{comm_view{MPI_COMM_WORLD}};
     auto                              res = dstl::alltoallv(
         data | kamping::v2::views::with_counts(counts) | kamping::v2::views::with_displs(displs),
         std::vector<int>{},
@@ -90,7 +90,7 @@ TEST(GridAlltoallvTest, UniformSingleElement) {
     std::vector<int> displs(static_cast<std::size_t>(size));
     std::iota(displs.begin(), displs.end(), 0);
 
-    dstl::grid_comm<dstl::sequential> grid{comm_view{MPI_COMM_WORLD}};
+    dstl::grid_comm<dstl::seq> grid{comm_view{MPI_COMM_WORLD}};
     std::vector<int>                  recv;
     dstl::alltoallv(
         data | kamping::v2::views::with_counts(counts) | kamping::v2::views::with_displs(displs),
@@ -110,7 +110,7 @@ TEST(GridAlltoallvTest, AllEmpty) {
     std::vector<int>                  data;
     std::vector<int>                  counts(static_cast<std::size_t>(size), 0);
     std::vector<int>                  displs(static_cast<std::size_t>(size), 0);
-    dstl::grid_comm<dstl::sequential> grid{comm_view{MPI_COMM_WORLD}};
+    dstl::grid_comm<dstl::seq> grid{comm_view{MPI_COMM_WORLD}};
     std::vector<int>                  recv;
     dstl::alltoallv(
         data | kamping::v2::views::with_counts(counts) | kamping::v2::views::with_displs(displs),
@@ -138,7 +138,7 @@ TEST(GridAlltoallvTest, ExplicitFactorizations) {
     }
 
     for (auto const& dims: factorings) {
-        dstl::grid_comm<dstl::sequential> grid{comm_view{MPI_COMM_WORLD}, std::span<std::size_t const>{dims}};
+        dstl::grid_comm<dstl::seq> grid{comm_view{MPI_COMM_WORLD}, std::span<std::size_t const>{dims}};
         std::vector<int>                  recv;
         dstl::alltoallv(
             data | kamping::v2::views::with_counts(counts) | kamping::v2::views::with_displs(displs),

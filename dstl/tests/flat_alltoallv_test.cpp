@@ -10,9 +10,9 @@
 
 #include "alltoallv_test_common.hpp"
 #include "dstl/dstl.hpp"
-#include "thread_multiple_test_main.hpp"
 #include "kamping/v2/views.hpp"
 #include "mpi/comm.hpp"
+#include "thread_multiple_test_main.hpp"
 
 using mpi::experimental::comm_view;
 namespace views = kamping::v2::views;
@@ -31,14 +31,18 @@ TEST(FlatAlltoallvTest, EqualsFlat) {
     if (provided_thread_level() < MPI_THREAD_MULTIPLE) {
         GTEST_SKIP() << "runtime does not provide MPI_THREAD_MULTIPLE";
     }
-    int rank = world_rank();
-    int size = world_size();
+    int rank                    = world_rank();
+    int size                    = world_size();
     auto [data, counts, displs] = build_send(rank, size);
     std::vector<int> expected   = standard_alltoallv(data, counts, displs);
 
-    dstl::thread_multiple_comm  fc{comm_view{MPI_COMM_WORLD}};
-    std::vector<int> recv;
-    dstl::alltoallv(data | views::with_counts(counts) | views::with_displs(displs), recv, fc);
+    dstl::thread_multiple_comm fc{comm_view{MPI_COMM_WORLD}};
+    std::vector<int>           recv;
+    dstl::alltoallv(
+        data | views::with_counts(counts) | views::with_displs(displs),
+        recv | views::auto_recv_v,
+        fc
+    );
 
     EXPECT_EQ(sorted(recv), sorted(expected)); // multiset always holds
     EXPECT_EQ(recv, expected);                 // and the layout is flat-identical here
@@ -49,14 +53,18 @@ TEST(FlatAlltoallvTest, OwnedRecvBuffer) {
     if (provided_thread_level() < MPI_THREAD_MULTIPLE) {
         GTEST_SKIP() << "runtime does not provide MPI_THREAD_MULTIPLE";
     }
-    int rank = world_rank();
-    int size = world_size();
+    int rank                    = world_rank();
+    int size                    = world_size();
     auto [data, counts, displs] = build_send(rank, size);
     std::vector<int> expected   = standard_alltoallv(data, counts, displs);
 
     dstl::thread_multiple_comm fc{comm_view{MPI_COMM_WORLD}};
-    auto res = dstl::alltoallv(data | views::with_counts(counts) | views::with_displs(displs), std::vector<int>{}, fc);
-    EXPECT_EQ(res.recv, expected);
+    auto                       res = dstl::alltoallv(
+        data | views::with_counts(counts) | views::with_displs(displs),
+        std::vector<int>{} | views::auto_recv_v,
+        fc
+    );
+    EXPECT_EQ(res.recv.underlying(), expected);
 }
 
 // Each rank sends exactly one element to each rank.
@@ -71,9 +79,9 @@ TEST(FlatAlltoallvTest, UniformSingleElement) {
     std::vector<int> displs(static_cast<std::size_t>(size));
     std::iota(displs.begin(), displs.end(), 0);
 
-    dstl::thread_multiple_comm  fc{comm_view{MPI_COMM_WORLD}};
-    std::vector<int> recv;
-    dstl::alltoallv(data | views::with_counts(counts) | views::with_displs(displs), recv, fc);
+    dstl::thread_multiple_comm fc{comm_view{MPI_COMM_WORLD}};
+    std::vector<int>           recv;
+    dstl::alltoallv(data | views::with_counts(counts) | views::with_displs(displs), recv | views::auto_recv_v, fc);
 
     std::vector<int> expected(static_cast<std::size_t>(size));
     std::iota(expected.begin(), expected.end(), 0);
@@ -90,8 +98,8 @@ TEST(FlatAlltoallvTest, AllEmpty) {
     std::vector<int> counts(static_cast<std::size_t>(size), 0);
     std::vector<int> displs(static_cast<std::size_t>(size), 0);
 
-    dstl::thread_multiple_comm  fc{comm_view{MPI_COMM_WORLD}};
-    std::vector<int> recv;
-    dstl::alltoallv(data | views::with_counts(counts) | views::with_displs(displs), recv, fc);
+    dstl::thread_multiple_comm fc{comm_view{MPI_COMM_WORLD}};
+    std::vector<int>           recv;
+    dstl::alltoallv(data | views::with_counts(counts) | views::with_displs(displs), recv | views::auto_recv_v, fc);
     EXPECT_TRUE(recv.empty());
 }
