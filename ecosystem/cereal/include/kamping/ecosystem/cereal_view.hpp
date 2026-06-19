@@ -170,14 +170,23 @@ public:
         return buffer_.data();
     }
 
-    /// Recv-side pointer. Resizes `buffer_` to `recv_count_` bytes on the first call
-    /// after `set_recv_count()`, then returns `void*` so MPI can write directly into it.
-    /// A non-const view satisfies both `send_buffer` and `recv_buffer`.
-    void* mpi_ptr() {
+    /// Eagerly resizes `buffer_` to the `recv_count_` bytes recorded by `set_recv_count()`,
+    /// so MPI can write into it. Idempotent. Called automatically by `mpi_ptr()`, or
+    /// explicitly via `kamping::v2::materialize()` to realize the buffer before the MPI
+    /// call (the recv-side counterpart of the byte-buffer realization done lazily in v1).
+    /// Does not deserialize — that happens on first read via `unwrap()` / `operator*`.
+    void materialize() {
         if (needs_resize_) {
             buffer_.resize(static_cast<std::size_t>(recv_count_));
             needs_resize_ = false;
         }
+    }
+
+    /// Recv-side pointer. Resizes `buffer_` to `recv_count_` bytes on the first call
+    /// after `set_recv_count()`, then returns `void*` so MPI can write directly into it.
+    /// A non-const view satisfies both `send_buffer` and `recv_buffer`.
+    void* mpi_ptr() {
+        materialize();
         return const_cast<void*>(std::as_const(*this).mpi_ptr());
     }
 };

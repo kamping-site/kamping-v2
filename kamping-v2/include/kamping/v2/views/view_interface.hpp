@@ -192,11 +192,41 @@ struct view_interface : public view_interface_base, public std::ranges::view_int
         derived().base().commit_counts();
     }
 
+    /// Propagates eager realization to the wrapped base, so a deferred resizing view
+    /// (resize_view / resize_v_view) stays materializable when it is nested inside other
+    /// view layers (with_type, GPU/serialization adaptors, …). Without this, an outer
+    /// wrapper would forward mpi_ptr() — and thus the lazy resize — but silently swallow
+    /// an explicit kamping::v2::materialize(), diverging the two paths.
+    ///
+    /// Guarded on the base having a materialize() member and calling it directly, exactly
+    /// like the other forwarders (has_commit_counts / commit_counts, …). has_materialize
+    /// is itself forwarded this way, so it chains through any number of wrapping layers.
+    /// The deferred-buffer safety check lives solely in the free function kamping::v2::
+    /// materialize(), the public entry point that gates this whole cascade.
+    template <typename Self = Derived>
+    void materialize()
+        requires kamping::v2::has_materialize<decltype(std::declval<Self&>().base())>
+    {
+        derived().base().materialize();
+    }
+
     template <typename Self = Derived>
     void set_comm_size(int n)
         requires kamping::v2::has_set_comm_size<decltype(std::declval<Self&>().base())>
     {
         derived().base().set_comm_size(n);
+    }
+
+    /// Forwards the single-count deferred protocol (set_recv_count) so a resize_view
+    /// nested inside other view layers stays a deferred_recv_buf. Mirrors the variadic
+    /// protocol forwarding above (set_comm_size / commit_counts); without it, a wrapper
+    /// would forward mpi_ptr()/mpi_count() but not the inferred-size hook, so infer()
+    /// could not resize the buffer and it would receive into a stale size.
+    template <typename Self = Derived>
+    void set_recv_count(std::ptrdiff_t n)
+        requires kamping::v2::deferred_recv_buf<std::remove_cvref_t<decltype(std::declval<Self&>().base())>>
+    {
+        derived().base().set_recv_count(n);
     }
 
     template <typename Self = Derived>
@@ -219,7 +249,7 @@ struct view_interface : public view_interface_base, public std::ranges::view_int
     }
 
     /// Const overload of underlying().
-    constexpr auto const& underlying() const &
+    constexpr auto const& underlying() const&
         requires detail::has_const_base<Derived>
     {
         if constexpr (std::derived_from<std::remove_cvref_t<decltype(derived().base())>, view_interface_base>) {

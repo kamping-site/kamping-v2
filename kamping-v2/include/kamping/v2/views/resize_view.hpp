@@ -9,6 +9,7 @@
 #include "kamping/v2/kassert.hpp"
 #include "kamping/v2/views/adaptor.hpp"
 #include "kamping/v2/views/all.hpp"
+#include "kamping/v2/views/concepts.hpp"
 #include "kamping/v2/views/view_interface.hpp"
 
 namespace kamping::v2 {
@@ -49,14 +50,26 @@ public:
         }
     }
 
-    /// Triggers the lazy resize on first access, then returns the data pointer.
-    /// Overrides view_interface::mpi_ptr().
-    auto mpi_ptr() {
+    /// Eagerly performs the deferred resize using the count set by set_recv_count().
+    /// Idempotent: a no-op once the resize has happened. Called automatically by
+    /// mpi_ptr(), or explicitly via kamping::v2::materialize() to realize the buffer
+    /// before the MPI call.
+    void materialize() {
         if (needs_resize_) {
             KAMPING_V2_ASSERT(recv_count_.has_value());
             kamping::v2::resize_for_receive(base_, *recv_count_);
             needs_resize_ = false;
         }
+        // Defensive: realize a nested deferred buffer too. A guarded no-op for every
+        // base used today (plain containers / with_type), kept so materialize() stays
+        // correct if a deferred buffer is ever composed underneath.
+        kamping::v2::materialize(base_);
+    }
+
+    /// Triggers the lazy resize on first access, then returns the data pointer.
+    /// Overrides view_interface::mpi_ptr().
+    auto mpi_ptr() {
+        materialize();
         return mpi::experimental::ptr(base_);
     }
 };
