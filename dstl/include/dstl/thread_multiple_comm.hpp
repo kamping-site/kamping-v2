@@ -21,6 +21,7 @@
 #include "kamping/v2/sentinels.hpp"
 #include "kamping/v2/views/ref_single_view.hpp"
 #include "mpi/comm.hpp"
+#include "mpi/environment.hpp"
 
 /// @file
 /// dstl::thread_multiple_comm — a single-exchange (flat) all-to-all-v communicator that parallelizes the MPI
@@ -48,7 +49,7 @@ namespace dstl {
 /// (Flat) communicator for the thread_multiple model: it owns
 /// `t = flat_max_threads()` duplicated communicators so that `t` concurrent MPI_Alltoallv calls can
 /// run, one per thread.
-class thread_multiple_comm {
+class thread_multiple_comm : public mpi::experimental::comm_accessors<thread_multiple_comm> {
 public:
     using execution_policy_type = par_comm;
 
@@ -60,10 +61,8 @@ public:
     /// (i.e. `omp_get_max_threads()`) can legitimately differ across ranks under CPU affinity or
     /// oversubscription, so we agree on the maximum via an MPI_Allreduce before duplicating.
     explicit thread_multiple_comm(mpi::experimental::comm_view global) : _global(global) {
-        int provided = MPI_THREAD_SINGLE;
-        MPI_Query_thread(&provided);
         KAMPING_ASSERT(
-            provided >= MPI_THREAD_MULTIPLE,
+            mpi::experimental::environment::thread_level() >= mpi::experimental::ThreadLevel::multiple,
             "thread_multiple_comm<thread_multiple>: the MPI runtime does not provide MPI_THREAD_MULTIPLE"
         );
         int t = flat_max_threads();
@@ -80,19 +79,16 @@ public:
     thread_multiple_comm& operator=(thread_multiple_comm&&)      = default;
     ~thread_multiple_comm()                                      = default;
 
+    /// @return The underlying global `MPI_Comm`. This is the `mpi_handle()` dispatch point: it makes
+    /// `thread_multiple_comm` usable directly in normal communication contexts and is the handle the
+    /// inherited `rank()` / `size()` / `group()` / `dup()` / `split()` (from `comm_accessors`) operate on.
+    [[nodiscard]] MPI_Comm mpi_handle() const noexcept {
+        return _global.mpi_handle();
+    }
+
     /// @return A view of the underlying global communicator.
     [[nodiscard]] mpi::experimental::comm_view global() const noexcept {
         return _global;
-    }
-
-    /// @return The calling rank in the global communicator.
-    [[nodiscard]] int rank() const {
-        return _global.rank();
-    }
-
-    /// @return The global communicator size p.
-    [[nodiscard]] int size() const {
-        return _global.size();
     }
 
     /// @return The `t` per-thread communicators used by the concurrent exchange.
