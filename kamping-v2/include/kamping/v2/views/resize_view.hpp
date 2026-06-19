@@ -6,7 +6,7 @@
 #include <cstddef>
 #include <optional>
 
-#include "kamping/kassert/kassert.hpp"
+#include "kamping/v2/kassert.hpp"
 #include "kamping/v2/views/adaptor.hpp"
 #include "kamping/v2/views/all.hpp"
 #include "kamping/v2/views/view_interface.hpp"
@@ -53,7 +53,7 @@ public:
     /// Overrides view_interface::mpi_ptr().
     auto mpi_ptr() {
         if (needs_resize_) {
-            KAMPING_ASSERT(recv_count_.has_value());
+            KAMPING_V2_ASSERT(recv_count_.has_value());
             kamping::v2::resize_for_receive(base_, *recv_count_);
             needs_resize_ = false;
         }

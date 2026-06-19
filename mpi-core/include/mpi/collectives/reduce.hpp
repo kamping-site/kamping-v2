@@ -44,7 +44,7 @@ void reduce(SBuf&& sbuf, RBuf&& rbuf, Op const& op, Root root, Comm const& comm 
 
     if (sbuf_ptr == MPI_IN_PLACE) {
         // Inplace: count and type from rbuf
-        KAMPING_ASSERT(rank == root_rank, "inplace reduce only valid on root");
+        KAMPING_V2_ASSERT(rank == root_rank, "inplace reduce only valid on root");
         int err = MPI_Reduce(
             sbuf_ptr,
             ptr(rbuf),
@@ -60,11 +60,11 @@ void reduce(SBuf&& sbuf, RBuf&& rbuf, Op const& op, Root root, Comm const& comm 
     } else {
         // Normal: count and type from sbuf
         using scount_t = decltype(count(sbuf));
-        KAMPING_ASSERT(
+        KAMPING_V2_ASSERT(
             rank != root_rank || count(sbuf) == static_cast<scount_t>(count(rbuf)),
             "on root: send and receive buffers must have the same count"
         );
-        KAMPING_ASSERT(
+        KAMPING_V2_ASSERT(
             rank != root_rank || type(sbuf) == type(rbuf),
             "on root: send and receive buffers must have the same type"
         );

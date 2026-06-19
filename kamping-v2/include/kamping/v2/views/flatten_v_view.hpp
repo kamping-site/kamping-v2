@@ -11,7 +11,7 @@
 #include <span>
 #include <vector>
 
-#include "kamping/kassert/kassert.hpp"
+#include "kamping/v2/kassert.hpp"
 #include "kamping/v2/views/adaptor.hpp"
 #include "kamping/v2/views/all.hpp"
 #include "kamping/v2/views/concepts.hpp"
@@ -145,7 +145,7 @@ class flatten_v_view
         if constexpr (nested_send_buffer<Source>) {
             num_ranks = static_cast<std::size_t>(std::ranges::size(source_));
         } else {
-            KAMPING_ASSERT(
+            KAMPING_V2_ASSERT(
                 comm_size_.has_value(),
                 "set_comm_size() must be called before flattening a sparse send buffer"
             );

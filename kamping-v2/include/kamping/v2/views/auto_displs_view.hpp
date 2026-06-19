@@ -8,7 +8,7 @@
 #include <span>
 #include <vector>
 
-#include "kamping/kassert/kassert.hpp"
+#include "kamping/v2/kassert.hpp"
 #include "kamping/v2/views/adaptor.hpp"
 #include "kamping/v2/views/all.hpp"
 #include "kamping/v2/views/concepts.hpp"
@@ -77,7 +77,7 @@ public:
                     kamping::v2::resize_for_receive(displs_, static_cast<std::ptrdiff_t>(std::ranges::size(counts)));
                 }
             }
-            KAMPING_ASSERT(std::ranges::size(displs_) >= std::ranges::size(counts));
+            KAMPING_V2_ASSERT(std::ranges::size(displs_) >= std::ranges::size(counts));
             std::exclusive_scan(std::ranges::begin(counts), std::ranges::end(counts), std::ranges::begin(displs_), 0);
             needs_to_compute_displs_ = false;
         }

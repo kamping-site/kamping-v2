@@ -5,7 +5,7 @@
 
 #include <mpi.h>
 
-#include "kamping/kassert/kassert.hpp"
+#include "kamping/v2/kassert.hpp"
 #include "mpi/buffer.hpp"
 #include "mpi/error.hpp"
 #include "mpi/handle.hpp"
@@ -17,7 +17,7 @@ void scatter(SBuf&& sbuf, RBuf&& rbuf, Root root, Comm const& comm) {
     int comm_rank = 0;
     MPI_Comm_size(handle(comm), &comm_size);
     MPI_Comm_rank(handle(comm), &comm_rank);
-    KAMPING_ASSERT(
+    KAMPING_V2_ASSERT(
         to_rank(root) != comm_rank || static_cast<int>(count(sbuf)) % comm_size == 0,
         "on root: send buffer size must be divisible by comm size"
     );

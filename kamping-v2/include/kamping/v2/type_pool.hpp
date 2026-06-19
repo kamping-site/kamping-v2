@@ -121,7 +121,7 @@ struct with_pool_fn {
     auto operator()(R&& r, type_pool const& pool) {
         using elem_t = kamping::v2::detail::mpi_element_type_t<std::remove_cvref_t<R>>;
         auto dt      = pool.find<elem_t>();
-        KAMPING_ASSERT(dt.has_value(), "Type not registered in pool; call register_type<T>() first.");
+        KAMPING_V2_ASSERT(dt.has_value(), "Type not registered in pool; call register_type<T>() first.");
         return kamping::v2::with_type_view(std::forward<R>(r), *dt);
     }
 };

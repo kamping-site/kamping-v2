@@ -135,7 +135,7 @@ template <
 void allgather(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = MPI_COMM_WORLD) {
     int comm_size = 0;
     MPI_Comm_size(handle(comm), &comm_size);
-    KAMPING_ASSERT(count(rbuf) % comm_size == 0, "recv buffer size must be divisible by comm size");
+    KAMPING_V2_ASSERT(count(rbuf) % comm_size == 0, "recv buffer size must be divisible by comm size");
     
     int err = MPI_Allgather(
         ptr(sbuf),
@@ -158,7 +158,7 @@ void allgather(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = MPI_COMM_WORLD) {
 - Template over buffer concepts (`send_buffer`, `recv_buffer`), not specific types
 - Extract metadata via `count()`, `ptr()`, `type()` free functions
 - Extract handles via `handle()`
-- Use `KAMPING_ASSERT` for precondition validation
+- Use `KAMPING_V2_ASSERT` for precondition validation
 - Throw `mpi_error` on MPI failure
 - No inference, no resizing, no ownership tricks — pure MPI wrapper
 
