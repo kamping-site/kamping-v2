@@ -21,7 +21,7 @@ namespace {
 // Materializes a flattened view into (data, counts, displs) using the public buffer
 // protocol accessors. Triggers the lazy flatten on first access.
 template <typename View>
-std::tuple<std::vector<int>, std::vector<int>, std::vector<int>> materialize(View const& view) {
+std::tuple<std::vector<int>, std::vector<int>, std::vector<int>> collect(View const& view) {
     auto const  n = static_cast<std::ptrdiff_t>(mpi::experimental::count(view));
     auto const* p = mpi::experimental::ptr(view);
     auto const  c = mpi::experimental::counts(view);
@@ -40,7 +40,7 @@ std::tuple<std::vector<int>, std::vector<int>, std::vector<int>> materialize(Vie
 TEST(FlattenVTest, DenseNested) {
     std::vector<std::vector<int>> per_rank = {{10, 11}, {}, {30, 31, 32}};
 
-    auto const [data, counts, displs] = materialize(per_rank | kamping::v2::views::flatten_v());
+    auto const [data, counts, displs] = collect(per_rank | kamping::v2::views::flatten_v());
 
     EXPECT_THAT(data, ElementsAre(10, 11, 30, 31, 32));
     EXPECT_THAT(counts, ElementsAre(2, 0, 3));
@@ -50,7 +50,7 @@ TEST(FlattenVTest, DenseNested) {
 TEST(FlattenVTest, DenseEmpty) {
     std::vector<std::vector<int>> per_rank = {{}, {}};
 
-    auto const [data, counts, displs] = materialize(per_rank | kamping::v2::views::flatten_v());
+    auto const [data, counts, displs] = collect(per_rank | kamping::v2::views::flatten_v());
 
     EXPECT_THAT(data, IsEmpty());
     EXPECT_THAT(counts, ElementsAre(0, 0));
@@ -66,7 +66,7 @@ TEST(FlattenVTest, UserProvidedBuffers) {
     std::vector<int>              displs(2);
 
     auto view = per_rank | kamping::v2::views::flatten_v(flat_buf, counts, displs);
-    (void)materialize(view); // triggers the flatten through the borrowed buffers
+    (void)collect(view); // triggers the flatten through the borrowed buffers
 
     EXPECT_THAT(flat_buf, ElementsAre(1, 2, 3));
     EXPECT_THAT(counts, ElementsAre(2, 1));
@@ -86,7 +86,7 @@ TEST(FlattenVTest, SparseOutOfOrderRepeatedAbsent) {
 
     auto view = per_rank | kamping::v2::views::flatten_v();
     view.set_comm_size(4);
-    auto const [data, counts, displs] = materialize(view);
+    auto const [data, counts, displs] = collect(view);
 
     // rank0: [0], rank1: [], rank2: [20,21,22] (two contributions merged), rank3: [30,31,32]
     EXPECT_THAT(counts, ElementsAre(1, 0, 3, 3));
@@ -99,7 +99,7 @@ TEST(FlattenVTest, SparseNoPairsAllRanksZero) {
 
     auto view = per_rank | kamping::v2::views::flatten_v();
     view.set_comm_size(3);
-    auto const [data, counts, displs] = materialize(view);
+    auto const [data, counts, displs] = collect(view);
 
     EXPECT_THAT(data, IsEmpty());
     EXPECT_THAT(counts, ElementsAre(0, 0, 0));
@@ -119,7 +119,7 @@ TEST(FlattenVTest, SparseUnorderedMap) {
 
     auto view = per_rank | kamping::v2::views::flatten_v();
     view.set_comm_size(4);
-    auto const [data, counts, displs] = materialize(view);
+    auto const [data, counts, displs] = collect(view);
 
     EXPECT_THAT(counts, ElementsAre(1, 0, 2, 3));
     EXPECT_THAT(displs, ElementsAre(0, 1, 1, 3));
@@ -138,7 +138,7 @@ TEST(FlattenVTest, ValueDestination) {
 
     auto view = items | kamping::v2::views::flatten_v();
     view.set_comm_size(3);
-    auto const [data, counts, displs] = materialize(view);
+    auto const [data, counts, displs] = collect(view);
 
     // rank0: [200], rank1: [100,101] (input order preserved), rank2: [300]
     EXPECT_THAT(counts, ElementsAre(1, 2, 1));
@@ -160,7 +160,7 @@ TEST(FlattenVTest, ProjectionViaStdRanges) {
 
     auto view = pairs | kamping::v2::views::flatten_v();
     view.set_comm_size(3);
-    auto const [data, counts, displs] = materialize(view);
+    auto const [data, counts, displs] = collect(view);
 
     // rank0: [20], rank1: [10,11], rank2: [30]
     EXPECT_THAT(counts, ElementsAre(1, 2, 1));
@@ -181,7 +181,7 @@ TEST(FlattenVTest, ReferenceCarryingPairs) {
 
     auto view = pairs | kamping::v2::views::flatten_v();
     view.set_comm_size(3);
-    auto const [data, counts, displs] = materialize(view);
+    auto const [data, counts, displs] = collect(view);
 
     // dest = value % 3 -> 10:1, 20:2, 11:2, 30:0
     EXPECT_THAT(counts, ElementsAre(1, 1, 2));
@@ -196,8 +196,8 @@ TEST(FlattenVTest, ReflattensAfterSetCommSize) {
     auto view = items | kamping::v2::views::flatten_v();
 
     view.set_comm_size(3);
-    EXPECT_THAT(std::get<1>(materialize(view)), ElementsAre(1, 0, 1));
+    EXPECT_THAT(std::get<1>(collect(view)), ElementsAre(1, 0, 1));
 
     view.set_comm_size(4);
-    EXPECT_THAT(std::get<1>(materialize(view)), ElementsAre(1, 0, 1, 0));
+    EXPECT_THAT(std::get<1>(collect(view)), ElementsAre(1, 0, 1, 0));
 }

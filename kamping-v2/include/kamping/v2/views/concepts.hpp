@@ -8,7 +8,6 @@
 #include <type_traits>
 
 #include <mpi.h>
-
 #include <mpi/buffer.hpp>
 
 namespace kamping::v2 {
@@ -42,9 +41,49 @@ concept has_set_comm_size = requires(T& t, int n) { t.set_comm_size(n); };
 ///   2. MPI writes into mpi_counts()   — fill per-rank counts directly
 ///   3. commit_counts()               — signal counts are ready; invalidate cached state
 template <typename T>
-concept deferred_recv_buf_v = mpi::experimental::has_mpi_counts_mutable<T>
-                           && has_commit_counts<T>
-                           && has_set_comm_size<T>;
+concept deferred_recv_buf_v =
+    mpi::experimental::has_mpi_counts_mutable<T> && has_commit_counts<T> && has_set_comm_size<T>;
+
+/// A buffer that can be eagerly realized via a `materialize()` member. The
+/// deferred receive views (`resize_view`, `resize_v_view`) implement this to
+/// perform up front the resize / displacement computation that they otherwise
+/// postpone until their data pointer is first queried.
+template <typename T>
+concept has_materialize = requires(T& t) { t.materialize(); };
+
+/// @brief Forces a deferred receive buffer to realize its backing storage *now*.
+///
+/// Deferred receive buffers (those built with `views::resize` / `views::resize_v` /
+/// `views::auto_recv` / `views::auto_recv_v`) postpone resizing the underlying
+/// container and computing displacements until their data pointer is first accessed
+/// during the MPI call. Custom collectives sometimes need the buffer fully realized
+/// *before* the actual exchange — for instance to read back the final displacements
+/// in order to lay out a multi-phase transfer. `materialize` makes that an explicit,
+/// public operation instead of relying on the side effect of a `ptr()` access.
+///
+/// Contract: after `materialize(buf)` returns, `count()`, `ptr()`, `counts()` and
+/// `displs()` on `buf` yield final, stable values and the backing storage is sized.
+/// The operation is idempotent — calling it repeatedly, or letting the MPI wrapper
+/// trigger the lazy realization afterwards, is harmless.
+///
+/// The `materialize()` member is only invoked on buffers that are *both* materializable
+/// and an actual deferred receive buffer; on anything else (a plain, already-concrete
+/// buffer, or an unrelated type that merely happens to expose a `materialize()` member)
+/// this is a no-op, so it is safe to call unconditionally in generic code.
+///
+/// Propagates automatically through kamping view layers: an outer wrapper (with_type,
+/// GPU/serialization adaptors, …) around a deferred buffer forwards materialize() — see
+/// view_interface.hpp — so a nested deferred buffer is realized regardless of how many
+/// layers wrap it.
+///
+/// @param buf The buffer to realize. Mutated in place.
+template <typename T>
+constexpr void materialize(T&& buf) {
+    using B = std::remove_reference_t<T>;
+    if constexpr (has_materialize<B> && (deferred_recv_buf<B> || deferred_recv_buf_v<B>)) {
+        buf.materialize();
+    }
+}
 
 /// Send buffer for variadic collectives whose per-rank counts depend on the
 /// communicator size (e.g. a sparse or flattened source where ranks not present

@@ -45,7 +45,12 @@ public:
 
     // mpi_counts, mpi_displs, mpi_type, mpi_count are all forwarded through view_interface.
 
-    auto mpi_ptr() {
+    /// Eagerly resizes the underlying data buffer to fit all incoming elements,
+    /// reading the (committed) counts and displacements from the base — which in turn
+    /// realizes the lazily-computed displacements of the inner auto_displs/auto_counts
+    /// stack. Idempotent. Called automatically by mpi_ptr(), or explicitly via
+    /// kamping::v2::materialize() to realize the buffer before the MPI call.
+    void materialize() {
         auto const&    counts     = mpi::experimental::counts(base_);
         auto const&    displs     = mpi::experimental::displs(base_);
         auto const*    counts_ptr = std::ranges::data(counts);
@@ -70,6 +75,14 @@ public:
             }
         }
         kamping::v2::resize_for_receive(base_, total);
+        // Defensive: realize a nested deferred buffer too. A guarded no-op for every
+        // base used today (auto_displs / auto_counts have no materialize() member and
+        // already realize lazily on the accessor reads above).
+        kamping::v2::materialize(base_);
+    }
+
+    auto mpi_ptr() {
+        materialize();
         return mpi::experimental::ptr(base_);
     }
 };
