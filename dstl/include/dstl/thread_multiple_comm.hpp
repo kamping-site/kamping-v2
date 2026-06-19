@@ -45,18 +45,17 @@ namespace dstl {
 #endif
 }
 
-/// Single-exchange (flat) all-to-all-v communicator for the thread_multiple model: it owns
-/// `T = flat_max_threads()` duplicated communicators so that `T` concurrent MPI_Alltoallv calls can
-/// run, one per thread. The dups are collective MPI_Comm_dup calls performed once in the ctor; the
-/// move-only mpi::comm frees them on destruction.
+/// (Flat) communicator for the thread_multiple model: it owns
+/// `t = flat_max_threads()` duplicated communicators so that `t` concurrent MPI_Alltoallv calls can
+/// run, one per thread.
 class thread_multiple_comm {
 public:
     using execution_policy_type = thread_multiple;
 
-    /// Borrow `global` and duplicate `T` communicators (collective). Asserts that the runtime
+    /// Borrow `global` and duplicate `t` communicators (collective). Asserts that the runtime
     /// provides MPI_THREAD_MULTIPLE.
     ///
-    /// `T` must be identical on every rank: both MPI_Comm_dup here and the per-thread MPI_Alltoallv
+    /// `t` must be identical on every rank: both MPI_Comm_dup here and the per-thread MPI_Alltoallv
     /// later are collective, so thread `t` on every rank has to participate. `flat_max_threads()`
     /// (i.e. `omp_get_max_threads()`) can legitimately differ across ranks under CPU affinity or
     /// oversubscription, so we agree on the maximum via an MPI_Allreduce before duplicating.
@@ -79,7 +78,7 @@ public:
     thread_multiple_comm& operator=(thread_multiple_comm const&) = delete;
     thread_multiple_comm(thread_multiple_comm&&)                 = default;
     thread_multiple_comm& operator=(thread_multiple_comm&&)      = default;
-    ~thread_multiple_comm()                           = default;
+    ~thread_multiple_comm()                                      = default;
 
     /// @return A view of the underlying global communicator.
     [[nodiscard]] mpi::experimental::comm_view global() const noexcept {
@@ -96,7 +95,7 @@ public:
         return _global.size();
     }
 
-    /// @return The `T` per-thread communicators used by the concurrent exchange.
+    /// @return The `t` per-thread communicators used by the concurrent exchange.
     [[nodiscard]] std::span<mpi::experimental::comm const> thread_comms() const noexcept {
         return {_thread_comms.data(), _thread_comms.size()};
     }
