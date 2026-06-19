@@ -25,7 +25,7 @@ target_compile_features(dstl INTERFACE cxx_std_20)
 target_link_libraries(dstl INTERFACE kamping::v2)
 add_library(dstl::dstl ALIAS dstl)
 
-# Optional OpenMP acceleration for the funneled / concurrent re-bin kernels. When not found, those
+# Optional OpenMP acceleration for the funneled / thread_multiple re-bin kernels. When not found, those
 # execution policies fall back to a serial rebin (correctness is unaffected).
 find_package(OpenMP QUIET)
 if (OpenMP_CXX_FOUND)

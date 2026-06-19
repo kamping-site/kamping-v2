@@ -23,13 +23,14 @@ struct sequential {};
 struct funneled {};
 
 /// MPI_THREAD_MULTIPLE — like funneled for the rearrange, but additionally requires
-/// (and asserts) MPI_THREAD_MULTIPLE so concurrent per-phase MPI can be layered on later.
-struct concurrent {};
+/// (and asserts) MPI_THREAD_MULTIPLE so concurrent MPI can be issued from several threads
+/// at once (one duplicated communicator per thread, as the flat thread_multiple exchange does).
+struct thread_multiple {};
 
 /// Concept: one of the execution policy tags above.
 template <typename T>
 concept execution_policy =
-    std::is_same_v<T, sequential> || std::is_same_v<T, funneled> || std::is_same_v<T, concurrent>;
+    std::is_same_v<T, sequential> || std::is_same_v<T, funneled> || std::is_same_v<T, thread_multiple>;
 
 // Recv ordering (D5)
 /// Default: the recv buffer holds the correct *multiset*, grouped by routing path.

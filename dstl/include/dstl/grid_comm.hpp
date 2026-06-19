@@ -195,7 +195,7 @@ private:
         } else {
             int provided = MPI_THREAD_SINGLE;
             MPI_Query_thread(&provided);
-            int required = std::is_same_v<Exec, concurrent> ? MPI_THREAD_MULTIPLE : MPI_THREAD_FUNNELED;
+            int required = std::is_same_v<Exec, thread_multiple> ? MPI_THREAD_MULTIPLE : MPI_THREAD_FUNNELED;
             KAMPING_ASSERT(
                 provided >= required,
                 "grid_comm: the MPI runtime does not provide the thread support level required by this execution policy"

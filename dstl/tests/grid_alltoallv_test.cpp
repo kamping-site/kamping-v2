@@ -1,68 +1,26 @@
 // Copyright (c) 2026 Karlsruhe Institute of Technology
 // SPDX-License-Identifier: BSL-1.0
 
-#include <algorithm>
 #include <cstddef>
 #include <numeric>
-#include <tuple>
+#include <span>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include <mpi.h>
 
+#include "alltoallv_test_common.hpp"
 #include "dstl/dstl.hpp"
-#include "kamping/v2/collectives/alltoallv.hpp"
 #include "kamping/v2/views.hpp"
-#include "kamping/v2/views/auto_recv_v.hpp"
 #include "mpi/comm.hpp"
 
 using namespace ::testing;
 using mpi::experimental::comm_view;
-
-namespace {
-
-int world_size() {
-    int s = 0;
-    MPI_Comm_size(MPI_COMM_WORLD, &s);
-    return s;
-}
-int world_rank() {
-    int r = 0;
-    MPI_Comm_rank(MPI_COMM_WORLD, &r);
-    return r;
-}
-
-// rank i sends (i+1) copies of (i*10 + j) to rank j.
-std::tuple<std::vector<int>, std::vector<int>, std::vector<int>> build_send(int rank, int size) {
-    std::vector<int> counts(static_cast<std::size_t>(size));
-    std::vector<int> data;
-    for (int j = 0; j < size; ++j) {
-        counts[static_cast<std::size_t>(j)] = rank + 1;
-        for (int k = 0; k < rank + 1; ++k) {
-            data.push_back(rank * 10 + j);
-        }
-    }
-    std::vector<int> displs(static_cast<std::size_t>(size));
-    std::exclusive_scan(counts.begin(), counts.end(), displs.begin(), 0);
-    return {data, counts, displs};
-}
-
-// Oracle: the flat kamping::v2::alltoallv result on MPI_COMM_WORLD.
-std::vector<int> standard_alltoallv(std::vector<int> const& data, std::vector<int> const& counts, std::vector<int> const& displs) {
-    std::vector<int> recv;
-    kamping::v2::alltoallv(
-        data | kamping::v2::views::with_counts(counts) | kamping::v2::views::with_displs(displs),
-        recv | kamping::v2::views::auto_recv_v
-    );
-    return recv;
-}
-
-std::vector<int> sorted(std::vector<int> v) {
-    std::ranges::sort(v);
-    return v;
-}
-
-} // namespace
+using dstl_test::build_send;
+using dstl_test::sorted;
+using dstl_test::standard_alltoallv;
+using dstl_test::world_rank;
+using dstl_test::world_size;
 
 // unordered: the recv buffer is multiset-equal to the flat alltoallv.
 TEST(GridAlltoallvTest, UnorderedMultisetEqualsFlat) {
