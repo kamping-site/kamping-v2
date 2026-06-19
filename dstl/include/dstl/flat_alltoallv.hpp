@@ -84,8 +84,8 @@ auto alltoallv(SBuf&& sbuf, RBuf&& rbuf, thread_multiple_comm const& fc) -> kamp
     std::size_t const p               = static_cast<std::size_t>(fc.size());
     std::size_t const nthreads        = thread_comms.size();
     int const         nthreads_signed = static_cast<int>(nthreads);
-    auto const        send_counts     = mpi::experimental::counts(sbuf); // span<int const>, size p
-    auto const        send_displs     = mpi::experimental::displs(sbuf); // span<int const>, size p
+    auto const        send_counts     = mpi::experimental::counts(sbuf);
+    auto const        send_displs     = mpi::experimental::displs(sbuf);
 
     // Split each destination's send block contiguously across the T threads. Thread t receives the
     // remainder-adjusted slice [t*base + min(t, rem), …); concatenating the slices in thread order
