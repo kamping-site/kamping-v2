@@ -15,6 +15,7 @@
 
 #include "kamping/types/mpi_type_traits.hpp"
 #include "kamping/types/scoped_datatype.hpp"
+#include "kamping/v2/kassert.hpp"
 #include "kamping/v2/views/adaptor.hpp"
 #include "kamping/v2/views/with_type_view.hpp"
 

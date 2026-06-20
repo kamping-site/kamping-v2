@@ -57,4 +57,12 @@ target_compile_definitions(
     $<IF:$<CONFIG:Debug>,KAMPING_V2_ASSERT_ASSERTION_LEVEL=20,KAMPING_V2_ASSERT_ASSERTION_LEVEL=10>
 )
 
+# kamping::types transitively includes the kamping-v1 kassert (macro prefix KAMPING_ASSERT) via
+# headers such as kamping/types/scoped_datatype.hpp. Set its level too, so including those headers
+# does not warn "Assertion level was not set explicitly". Mirrors the kamping_v2 default above.
+target_compile_definitions(
+    mpi_core INTERFACE
+    $<IF:$<CONFIG:Debug>,KAMPING_ASSERT_ASSERTION_LEVEL=20,KAMPING_ASSERT_ASSERTION_LEVEL=10>
+)
+
 add_library(mpi::core ALIAS mpi_core)
