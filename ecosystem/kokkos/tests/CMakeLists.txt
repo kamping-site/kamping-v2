@@ -1,10 +1,6 @@
 include(FetchContent)
 
-FetchContent_Declare(
-        KaTestrophe
-        GIT_REPOSITORY https://github.com/kamping-site/KaTestrophe.cmake
-        GIT_TAG v1.0.2
-)
+# KaTestrophe is declared once in the top-level CMakeLists.txt; just make it available here.
 FetchContent_MakeAvailable(KaTestrophe)
 
 add_executable(test_kokkos_view kokkos_view_test.cpp)

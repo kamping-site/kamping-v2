@@ -12,7 +12,7 @@
 #include "dstl/dstl.hpp"
 #include "kamping/v2/views.hpp"
 #include "mpi/comm.hpp"
-#include "thread_multiple_test_main.hpp"
+#include "mpi/environment.hpp"
 
 using mpi::experimental::comm_view;
 namespace views = kamping::v2::views;
@@ -28,7 +28,7 @@ using dstl_test::world_size;
 // thread_multiple: the per-thread recv displacements reassemble each source's block contiguously in
 // rank-then-thread order, so the result is element-identical to the flat alltoallv.
 TEST(FlatAlltoallvTest, EqualsFlat) {
-    if (provided_thread_level() < MPI_THREAD_MULTIPLE) {
+    if (mpi::experimental::environment::thread_level() < mpi::experimental::ThreadLevel::multiple) {
         GTEST_SKIP() << "runtime does not provide MPI_THREAD_MULTIPLE";
     }
     int rank                    = world_rank();
@@ -50,7 +50,7 @@ TEST(FlatAlltoallvTest, EqualsFlat) {
 
 // Owned (rvalue) recv buffer: the data lives in the returned result.
 TEST(FlatAlltoallvTest, OwnedRecvBuffer) {
-    if (provided_thread_level() < MPI_THREAD_MULTIPLE) {
+    if (mpi::experimental::environment::thread_level() < mpi::experimental::ThreadLevel::multiple) {
         GTEST_SKIP() << "runtime does not provide MPI_THREAD_MULTIPLE";
     }
     int rank                    = world_rank();
@@ -69,7 +69,7 @@ TEST(FlatAlltoallvTest, OwnedRecvBuffer) {
 
 // Each rank sends exactly one element to each rank.
 TEST(FlatAlltoallvTest, UniformSingleElement) {
-    if (provided_thread_level() < MPI_THREAD_MULTIPLE) {
+    if (mpi::experimental::environment::thread_level() < mpi::experimental::ThreadLevel::multiple) {
         GTEST_SKIP() << "runtime does not provide MPI_THREAD_MULTIPLE";
     }
     int              rank = world_rank();
@@ -90,7 +90,7 @@ TEST(FlatAlltoallvTest, UniformSingleElement) {
 
 // Degenerate: every rank sends nothing.
 TEST(FlatAlltoallvTest, AllEmpty) {
-    if (provided_thread_level() < MPI_THREAD_MULTIPLE) {
+    if (mpi::experimental::environment::thread_level() < mpi::experimental::ThreadLevel::multiple) {
         GTEST_SKIP() << "runtime does not provide MPI_THREAD_MULTIPLE";
     }
     int              size = world_size();

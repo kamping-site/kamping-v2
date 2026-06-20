@@ -1,0 +1,9 @@
+cmake_minimum_required(VERSION 3.25)
+project(kamping-ecosystem LANGUAGES CXX)
+
+option(KAMPING_ENABLE_THRUST "Enable the Thrust device_vector adapter for kamping-v2." OFF)
+
+if (KAMPING_ENABLE_THRUST)
+    add_subdirectory(thrust)
+endif ()
+
