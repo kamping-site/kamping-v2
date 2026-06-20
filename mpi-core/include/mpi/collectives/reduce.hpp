@@ -9,6 +9,8 @@
 #include <mpi/handle.hpp>
 #include <mpi/ops.hpp>
 
+#include "kamping/v2/kassert.hpp"
+
 namespace mpi::experimental {
 
 /// Reduction operation (blocking).

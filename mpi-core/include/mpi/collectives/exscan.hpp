@@ -5,6 +5,7 @@
 
 #include <mpi.h>
 
+#include "kamping/v2/kassert.hpp"
 #include "mpi/buffer.hpp"
 #include "mpi/error.hpp"
 #include "mpi/handle.hpp"
