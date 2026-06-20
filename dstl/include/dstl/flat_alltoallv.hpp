@@ -121,6 +121,9 @@ auto alltoallv(SBuf&& sbuf, RBuf&& rbuf, thread_multiple_comm const& fc) -> kamp
             }
         }
         rbuf.commit_counts();
+        kamping::v2::materialize(
+            rbuf
+        ); // triggers resizing; cannot be done in the alltoallv via infer as this would be a data race
     }
     // Per-thread recv displacements: within each source's block the threads' contributions are laid
     // out in thread order, so the source's block ends up contiguous and in its original element order.
@@ -132,8 +135,6 @@ auto alltoallv(SBuf&& sbuf, RBuf&& rbuf, thread_multiple_comm const& fc) -> kamp
             cursor += thread_recv_counts[t][s];
         }
     }
-
-    mpi::experimental::ptr(rbuf); // triggers resizing ... if the buffer is resizable
 
     // Concurrent data exchange: each thread ships its slices into disjoint regions of rbuf.
     detail::for_each_thread(nthreads_signed, [&](int tid) {
