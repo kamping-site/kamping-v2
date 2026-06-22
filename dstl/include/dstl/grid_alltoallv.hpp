@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <concepts>
 #include <cstddef>
+#include <iterator>
 #include <numeric>
 #include <ranges>
 #include <span>
@@ -24,11 +25,13 @@
 #include "dstl/grid_comm.hpp"
 #include "dstl/tags.hpp"
 #include "kamping/kassert/kassert.hpp"
+#include "kamping/v2/collectives/alltoall.hpp"
+#include "kamping/v2/collectives/alltoallv.hpp"
 #include "kamping/v2/result.hpp"
 #include "kamping/v2/views.hpp"
+#include "kamping/v2/views/concepts.hpp"
 #include "mpi/buffer.hpp"
-#include "mpi/collectives/alltoall.hpp"
-#include "mpi/collectives/alltoallv.hpp"
+#include "mpi/comm.hpp"
 
 /// @file
 /// dstl::alltoallv — a k-dimensional grid (message-combining) all-to-all-v.
@@ -45,21 +48,53 @@
 
 namespace dstl {
 
-/// Send buffer accepted by the grid alltoallv. On top of the standard variadic send-buffer contract
-/// (data + type + per-destination counts + displacements) we additionally require that `ptr()`
-/// exposes a concrete, copyable element type — the routing relocates whole element blocks locally
-/// with `std::copy_n`, so a `void`-erased element type would make that copying ill-defined.
-template <typename SBuf>
-concept grid_send_buffer = mpi::experimental::send_buffer_v<std::remove_cvref_t<SBuf>>
-                           && (!std::is_void_v<detail::element_t<SBuf>>) && std::copyable<detail::element_t<SBuf>>;
+namespace detail {
+/// Element-type requirements shared by the grid send/recv buffers. Beyond an ordinary alltoallv the
+/// routing only relocates whole element blocks locally — it `std::copy_n`s them through internal
+/// staging buffers — so the element type need satisfy exactly what that staging needs:
+///   * `std::indirectly_copyable<T const*, T*>` — the precondition of `std::copy_n`
+///     (https://en.cppreference.com/w/cpp/algorithm/ranges/copy). `copy_n` *assigns* into existing
+///     elements, so this is strictly weaker than `std::copyable` (no copy-construction required), and
+///     a `void`-erased `ptr()` fails it for free (`void const*` is not `indirectly_readable`).
+///   * `std::default_initializable<T>` — the staging `uninit_vector<T>` default-initializes its
+///     elements before they are overwritten.
+template <typename T>
+concept grid_element = std::default_initializable<T> && std::indirectly_copyable<T const*, T*>;
 
-/// Recv buffer accepted by the grid alltoallv. Unlike the flat wrapper, the grid does *not* need a
-/// deferred variadic buffer: it computes the total locally and writes one contiguous block. Hence the
-/// recv buffer is simply a resizable, contiguous range whose element type matches the send buffer's.
-template <typename RBuf>
-concept grid_recv_buffer = std::ranges::contiguous_range<std::remove_cvref_t<RBuf>>
-                           && std::copyable<std::ranges::range_value_t<std::remove_cvref_t<RBuf>>>
-                           && requires(std::remove_cvref_t<RBuf>& r, std::size_t n) { r.resize(n); };
+/// The element type a recv buffer exposes through a *mutable* `ptr()`. Unlike `element_t` (which queries
+/// `ptr()` on a const reference) this uses a non-const reference, so it also works for deferred recv
+/// buffers (`views::resize` / `views::auto_recv_v`) whose `mpi_ptr()` is non-const.
+template <typename Buf>
+using recv_element_t = std::remove_cv_t<
+    std::remove_pointer_t<decltype(mpi::experimental::ptr(std::declval<std::remove_cvref_t<Buf>&>()))>>;
+} // namespace detail
+
+/// Send buffer accepted by the grid alltoallv: a standard variadic send buffer (`send_buffer_v` —
+/// data + type + per-destination counts + displacements) whose element type satisfies
+/// `detail::grid_element` (copyable via `std::copy_n`, default-initializable for the internal staging).
+template <typename SBuf>
+concept grid_send_buffer =
+    mpi::experimental::send_buffer_v<std::remove_cvref_t<SBuf>> && detail::grid_element<detail::element_t<SBuf>>;
+
+/// Recv buffer accepted by the grid alltoallv, constrained by the recv ordering. In `ordered_by_source`
+/// mode the result is a genuine alltoallv with well-defined per-source counts, so the recv buffer must be
+/// a *variadic* recv buffer (`recv_buffer_v`) able to carry them (e.g. `views::auto_recv_v`); in
+/// `unordered` mode only the multiset is defined, so an ordinary `recv_buffer` (e.g. a plain
+/// `std::vector<T>` or `views::resize`) suffices. In both cases the element type must satisfy
+/// `detail::grid_element` (copyable via `std::copy_n`, default-initializable for the internal staging) and
+/// match the send buffer's (asserted in the body). Sizing — and, for `ordered_by_source`, the per-source
+/// counts — are handled through the kamping v2 machinery in the body:
+///   * a variadic deferred buffer (`deferred_recv_buf_v`, e.g. `views::auto_recv_v`) has its per-source
+///     counts written, then `commit_counts()` + `materialize()` derive its displs and size;
+///   * a non-variadic deferred buffer (`deferred_recv_buf`, e.g. `views::resize`) is sized via
+///     `set_recv_count()`;
+///   * a plain resizable container is `resize()`d;
+///   * a pre-sized, non-resizable buffer is used as-is.
+template <typename RBuf, typename Order>
+concept grid_recv_buffer =
+    ((std::is_same_v<Order, ordered_by_source> && mpi::experimental::recv_buffer_v<std::remove_cvref_t<RBuf>>)
+     || (!std::is_same_v<Order, ordered_by_source> && mpi::experimental::recv_buffer<std::remove_cvref_t<RBuf>>))
+    && detail::grid_element<detail::recv_element_t<RBuf>>;
 
 namespace detail {
 
@@ -81,11 +116,97 @@ struct routing_state {
 // See grid_comm.hpp for a k = 2 diagram of how ranks map onto the grid and its subcommunicators, and
 // the remote-first routing order this algorithm follows over them.
 
+/// Resize a non-variadic recv buffer to hold `total_recv` elements ahead of the final-phase deposit:
+/// a deferred recv buffer (`views::resize`) via `set_recv_count` + `materialize`, a plain resizable
+/// container via `resize`. A pre-sized non-resizable buffer is left as-is (only asserted large enough),
+/// and a *variadic* deferred buffer is rejected — its per-source counts are unknown without source
+/// labels, so the ordered path sizes such buffers itself from the routed source labels instead.
+template <typename RBuf>
+void try_resize(RBuf& rbuf, int total_recv) {
+    using clean_rbuf = std::remove_cvref_t<RBuf>;
+    if constexpr (kamping::v2::deferred_recv_buf<clean_rbuf>) {
+        rbuf.set_recv_count(static_cast<std::ptrdiff_t>(total_recv));
+        kamping::v2::materialize(rbuf);
+    } else if constexpr (requires(clean_rbuf& r) { r.resize(static_cast<std::size_t>(total_recv)); }) {
+        rbuf.resize(static_cast<std::size_t>(total_recv));
+    } else {
+        static_assert(
+            !kamping::v2::deferred_recv_buf_v<clean_rbuf>,
+            "unordered grid alltoallv cannot fill a variadic recv buffer's per-source counts; pass a "
+            "non-variadic recv buffer (e.g. views::resize) or use ordered_by_source."
+        );
+        KAMPING_ASSERT(
+            static_cast<std::size_t>(mpi::experimental::count(rbuf)) >= static_cast<std::size_t>(total_recv),
+            "dstl::alltoallv: non-resizable recv buffer is smaller than the received element total"
+        );
+    }
+}
+
+/// Group the routed elements by their global source rank into `rbuf`, byte-identical to a flat
+/// MPI_Alltoallv. This is a stable counting sort (O(n), not O(n log n)): histogram the source labels,
+/// exclusive-scan into per-source write offsets, then scatter each element into its source's block —
+/// elements of the same source keep their arrival order.
+///
+/// The histogram *is* a variadic recv buffer's per-source `recv_counts`, and the scanned offsets *are*
+/// its displacements, so for a `deferred_recv_buf_v` (`views::auto_recv_v`) we write the histogram
+/// straight into the buffer's counts and reuse the displacements `materialize()` derives as the scatter
+/// offsets — sizing the buffer and computing the offsets in one pass. For any other buffer the histogram
+/// and offsets are local and the buffer is sized to the total via `try_resize`.
+template <typename T, typename RBuf>
+void deposit_by_source(
+    RBuf& rbuf, std::span<T const> recv_data, std::span<int const> recv_source_rank, int global_size
+) {
+    using clean_rbuf      = std::remove_cvref_t<RBuf>;
+    auto const total_recv = static_cast<int>(recv_data.size());
+
+    // write_pos[s] starts at the offset of source s's block and is bumped as elements are placed.
+    std::vector<int> write_pos;
+    if constexpr (kamping::v2::deferred_recv_buf_v<clean_rbuf>) {
+        rbuf.set_comm_size(global_size);
+        auto recv_counts = mpi::experimental::counts(rbuf); // mutable per-source counts buffer
+        std::fill(std::ranges::begin(recv_counts), std::ranges::end(recv_counts), 0);
+        for (auto const s: recv_source_rank) {
+            ++recv_counts[static_cast<std::size_t>(s)];
+        }
+        rbuf.commit_counts();
+        kamping::v2::materialize(rbuf); // resizes + derives the displacements from the counts above
+        auto recv_displs = mpi::experimental::displs(rbuf);
+        write_pos.assign(std::ranges::begin(recv_displs), std::ranges::end(recv_displs));
+    } else {
+        std::vector<int> counts(static_cast<std::size_t>(global_size), 0);
+        for (auto const s: recv_source_rank) {
+            ++counts[static_cast<std::size_t>(s)];
+        }
+        write_pos = exclusive_scan_int(counts);
+        try_resize(rbuf, total_recv);
+    }
+
+    auto* out = mpi::experimental::ptr(rbuf);
+    for (int j = 0; j < total_recv; ++j) {
+        auto const s = static_cast<std::size_t>(recv_source_rank[static_cast<std::size_t>(j)]);
+        out[static_cast<std::size_t>(write_pos[s]++)] = recv_data[static_cast<std::size_t>(j)];
+    }
+}
+
 /// Run one phase (dimension `i`) of the grid routing: exchange the next count-tree level and the
 /// corresponding data within subcommunicator `i`, then rebin the received blocks back into
 /// remaining-destination-index order. `ParallelRebin` selects the OpenMP-parallel merge kernel.
-template <typename T, bool Ordered, bool ParallelRebin>
-void route_phase(routing_state<T>& state, std::size_t dim_size, MPI_Datatype dt, MPI_Comm subcomm) {
+///
+/// On the last phase (`is_last`) the count-tree has collapsed to a single bucket per rank
+/// (`next_subtree_size == 1`), which makes the rebin an identity. We therefore skip the staging buffer
+/// and the rebin and deposit the routed result straight into the caller's `rbuf` (sized here), fusing
+/// the final receive with the result write-out (see D8). `global_size` is the grid's global comm size,
+/// needed only to size a variadic deferred recv buffer in `ordered_by_source` mode.
+template <typename T, bool Ordered, bool ParallelRebin, typename RBuf>
+void route_phase(
+    routing_state<T>&            state,
+    std::size_t                  dim_size,
+    MPI_Datatype                 dt,
+    mpi::experimental::comm_view subcomm,
+    RBuf&                        rbuf,
+    bool                         is_last,
+    [[maybe_unused]] int         global_size
+) {
     namespace views = kamping::v2::views;
 
     auto const        subcomm_size      = static_cast<int>(dim_size);
@@ -151,7 +272,7 @@ void route_phase(routing_state<T>& state, std::size_t dim_size, MPI_Datatype dt,
     // Count metadata: ship the whole tree level, next_subtree_size ints per rank.
     // The receiver learns, per source rank and bucket, how many elements arrive.
     std::vector<int> recv_meta(subtree_size, 0);
-    mpi::experimental::alltoall(state.dest_counts, recv_meta, subcomm);
+    kamping::v2::alltoall(state.dest_counts, recv_meta, subcomm);
 
     std::vector<int> recv_counts(static_cast<std::size_t>(subcomm_size), 0);
     for (int subcomm_rank = 0; subcomm_rank < subcomm_size; ++subcomm_rank) {
@@ -169,18 +290,62 @@ void route_phase(routing_state<T>& state, std::size_t dim_size, MPI_Datatype dt,
     // recv_counts / recv_displs were derived locally from recv_meta above (the BEFORE half of the
     // phase diagram at the top of this function), so we attach them explicitly rather than let the
     // kamping::v2 layer re-negotiate them (a redundant collective per phase).
-    // with_type(dt) preserves the caller's MPI datatype; when ordering by source, source_rank rides
-    // along with the identical counts and displacements.
+    // with_type(dt) preserves the caller's MPI datatype.
+    auto send_data =
+        state.data | views::with_type(dt) | views::with_counts(send_counts) | views::with_displs(send_displs);
+
+    // Last phase: next_subtree_size == 1, so the rebin/merge below would be an identity (it just
+    // concatenates each source's already-contiguous recv block in source order — exactly the alltoallv
+    // recv layout). We skip the staging buffer and the post-loop result copy and deposit the routed
+    // result straight into the caller's recv buffer (see D8 in DSTL-Alltoallv-Design.md).
+    if (is_last) {
+        if constexpr (!Ordered) {
+            // Unordered: the received multiset IS the result. Size rbuf first — for a deferred recv
+            // buffer (views::resize) try_resize calls set_recv_count + materialize, so its storage holds
+            // total_recv elements — then receive straight into it, no staging buffer and no result copy.
+            try_resize(rbuf, total_recv);
+            kamping::v2::alltoallv(
+                send_data,
+                rbuf | views::with_type(dt) | views::with_counts(recv_counts) | views::with_displs(recv_displs),
+                subcomm
+            );
+        } else {
+            // Ordered: receive data + per-element source labels into temporaries, then group by global
+            // source into rbuf (sizing it) so the layout is byte-identical to a flat MPI_Alltoallv.
+            uninit_vector<T> recv_data(static_cast<std::size_t>(total_recv));
+            kamping::v2::alltoallv(
+                send_data,
+                recv_data | views::with_type(dt) | views::with_counts(recv_counts) | views::with_displs(recv_displs),
+                subcomm
+            );
+            uninit_vector<int> recv_source_rank(static_cast<std::size_t>(total_recv));
+            kamping::v2::alltoallv(
+                state.source_rank | views::with_counts(send_counts) | views::with_displs(send_displs),
+                recv_source_rank | views::with_counts(recv_counts) | views::with_displs(recv_displs),
+                subcomm
+            );
+            deposit_by_source<T>(
+                rbuf,
+                std::span<T const>{recv_data},
+                std::span<int const>{recv_source_rank},
+                global_size
+            );
+        }
+        return;
+    }
+
+    // Intermediate phase: stage the received blocks, then rebin them back into remaining-index order.
+    // When ordering by source, source_rank rides along with the identical counts and displacements.
     uninit_vector<T> recv_data(static_cast<std::size_t>(total_recv));
-    mpi::experimental::alltoallv(
-        state.data | views::with_type(dt) | views::with_counts(send_counts) | views::with_displs(send_displs),
+    kamping::v2::alltoallv(
+        send_data,
         recv_data | views::with_type(dt) | views::with_counts(recv_counts) | views::with_displs(recv_displs),
         subcomm
     );
     uninit_vector<int> recv_source_rank;
     if constexpr (Ordered) {
         recv_source_rank.resize(static_cast<std::size_t>(total_recv));
-        mpi::experimental::alltoallv(
+        kamping::v2::alltoallv(
             state.source_rank | views::with_counts(send_counts) | views::with_displs(send_displs),
             recv_source_rank | views::with_counts(recv_counts) | views::with_displs(recv_displs),
             subcomm
@@ -213,25 +378,29 @@ void route_phase(routing_state<T>& state, std::size_t dim_size, MPI_Datatype dt,
         uninit_vector<U> dst(static_cast<std::size_t>(total_recv));
         // Each bucket writes its own disjoint output slice (new_displs[bucket]…), so the buckets split
         // safely into one contiguous chunk per thread.
-        chunked_for(ParallelRebin, static_cast<std::ptrdiff_t>(next_subtree_size), [&](std::ptrdiff_t lo, std::ptrdiff_t hi) {
-            for (std::ptrdiff_t bucket = lo; bucket < hi; ++bucket) {
-                auto write = static_cast<std::size_t>(new_displs[static_cast<std::size_t>(bucket)]);
-                for (int subcomm_rank = 0; subcomm_rank < subcomm_size; ++subcomm_rank) {
-                    auto const slot =
-                        static_cast<std::size_t>(subcomm_rank) * next_subtree_size + static_cast<std::size_t>(bucket);
-                    int const cnt = recv_meta[slot];
-                    if (cnt > 0) {
-                        auto const from = static_cast<std::size_t>(read_off[slot]);
-                        std::copy_n(
-                            src.begin() + static_cast<std::ptrdiff_t>(from),
-                            cnt,
-                            dst.begin() + static_cast<std::ptrdiff_t>(write)
-                        );
-                        write += static_cast<std::size_t>(cnt);
+        chunked_for(
+            ParallelRebin,
+            static_cast<std::ptrdiff_t>(next_subtree_size),
+            [&](std::ptrdiff_t lo, std::ptrdiff_t hi) {
+                for (std::ptrdiff_t bucket = lo; bucket < hi; ++bucket) {
+                    auto write = static_cast<std::size_t>(new_displs[static_cast<std::size_t>(bucket)]);
+                    for (int subcomm_rank = 0; subcomm_rank < subcomm_size; ++subcomm_rank) {
+                        auto const slot = static_cast<std::size_t>(subcomm_rank) * next_subtree_size
+                                          + static_cast<std::size_t>(bucket);
+                        int const  cnt  = recv_meta[slot];
+                        if (cnt > 0) {
+                            auto const from = static_cast<std::size_t>(read_off[slot]);
+                            std::copy_n(
+                                src.begin() + static_cast<std::ptrdiff_t>(from),
+                                cnt,
+                                dst.begin() + static_cast<std::ptrdiff_t>(write)
+                            );
+                            write += static_cast<std::size_t>(cnt);
+                        }
                     }
                 }
             }
-        });
+        );
         return dst;
     };
 
@@ -242,12 +411,23 @@ void route_phase(routing_state<T>& state, std::size_t dim_size, MPI_Datatype dt,
     state.dest_counts = std::move(next_dest_counts);
 }
 
-/// Core implementation shared by the free function and the member entry points.
-template <execution_policy Exec, typename Order, grid_send_buffer SBuf, grid_recv_buffer RBuf>
-void grid_alltoallv_impl(SBuf const& sbuf, RBuf& rbuf, grid_comm<Exec> const& grid, Order /* order */) {
-    using T = element_t<SBuf>;
+} // namespace detail
+
+/// Drop-in grid all-to-all-v (D1). The call site matches the flat KaMPIng v2 alltoallv; only the
+/// communicator changes from a flat comm to a `grid_comm`. The send buffer is a standard variadic
+/// `send_buffer_v` (`data | with_counts | with_displs`). The recv buffer constraint depends on the
+/// ordering (see `grid_recv_buffer`): `ordered_by_source` needs a variadic recv buffer (`recv_buffer_v`,
+/// e.g. `views::auto_recv_v`) to carry the per-source counts; `unordered` accepts any `recv_buffer`
+/// (e.g. a plain `std::vector<T>` or `views::resize`).
+///
+/// @tparam Order Recv ordering tag: `unordered` (default) or `ordered_by_source`.
+template <grid_send_buffer SBuf, typename RBuf, execution_policy Exec, recv_ordering Order = unordered>
+    requires grid_recv_buffer<RBuf, Order>
+auto alltoallv(SBuf&& sbuf, RBuf&& rbuf, grid_comm<Exec> const& grid, [[maybe_unused]] Order order = {})
+    -> kamping::v2::result<SBuf, RBuf> {
+    using T = detail::element_t<SBuf>;
     static_assert(
-        std::is_same_v<T, std::ranges::range_value_t<RBuf>>,
+        std::is_same_v<T, detail::recv_element_t<RBuf>>,
         "dstl::alltoallv: send and recv buffers must have the same element type."
     );
     constexpr bool ordered  = std::is_same_v<Order, ordered_by_source>;
@@ -256,8 +436,8 @@ void grid_alltoallv_impl(SBuf const& sbuf, RBuf& rbuf, grid_comm<Exec> const& gr
     auto const p  = static_cast<std::size_t>(grid.size());
     auto const dt = mpi::experimental::type(sbuf);
 
-    auto const  send_counts = mpi::experimental::counts(sbuf); // span<int const>, size p
-    auto const  send_displs = mpi::experimental::displs(sbuf); // span<int const>, size p
+    auto const  send_counts = mpi::experimental::counts(sbuf); // contiguous range of int, size p
+    auto const  send_displs = mpi::experimental::displs(sbuf); // contiguous range of int, size p
     auto const* src         = mpi::experimental::ptr(sbuf);    // T const*
 
     // Initial state: compact the send buffer into the count-tree's leaf order. With the row-major
@@ -278,7 +458,7 @@ void grid_alltoallv_impl(SBuf const& sbuf, RBuf& rbuf, grid_comm<Exec> const& gr
     //         whose most-significant digit is the most-remote dimension, so this reorder is the price
     //         of going the other way.)
     //      2. Iterate the phase loop and subcommunicators in reverse (i = k-1 … 0).
-    routing_state<T> state;
+    detail::routing_state<T> state;
     state.dest_counts.assign(send_counts.begin(), send_counts.end());
     int total_send = 0;
     for (std::size_t d = 0; d < p; ++d) {
@@ -299,48 +479,21 @@ void grid_alltoallv_impl(SBuf const& sbuf, RBuf& rbuf, grid_comm<Exec> const& gr
         state.source_rank.assign(static_cast<std::size_t>(total_send), grid.rank());
     }
 
-    // k phases, remote dimension first (dimension 0 → k-1).
-    for (std::size_t i = 0; i < grid.num_dims(); ++i) {
-        route_phase<T, ordered, parallel>(state, grid.dim_size(i), dt, grid.subcomm(i).mpi_handle());
+    // k phases, remote dimension first (dimension 0 → k-1). The last phase sizes rbuf and deposits the
+    // routed result straight into it (D8) — there is no separate post-loop sizing or copy.
+    auto const num_dims = grid.num_dims();
+    for (std::size_t i = 0; i < num_dims; ++i) {
+        detail::route_phase<T, ordered, parallel>(
+            state,
+            grid.dim_size(i),
+            dt,
+            grid.subcomm(i),
+            rbuf,
+            /*is_last=*/i + 1 == num_dims,
+            static_cast<int>(p)
+        );
     }
 
-    int const total_recv = state.dest_counts.empty() ? 0 : state.dest_counts[0];
-
-    // Deposit into the recv buffer (resize + one contiguous write).
-    rbuf.resize(static_cast<std::size_t>(total_recv));
-    auto* out = std::ranges::data(rbuf);
-    if constexpr (ordered) {
-        // Group by global source rank, preserving within-source order (stable) so the layout is
-        // byte-identical to a flat MPI_Alltoallv.
-        std::vector<int> order_idx(static_cast<std::size_t>(total_recv));
-        std::iota(order_idx.begin(), order_idx.end(), 0);
-        std::ranges::stable_sort(order_idx, [&](int a, int b) {
-            return state.source_rank[static_cast<std::size_t>(a)] < state.source_rank[static_cast<std::size_t>(b)];
-        });
-        for (std::size_t pos = 0; pos < order_idx.size(); ++pos) {
-            out[pos] = state.data[static_cast<std::size_t>(order_idx[pos])];
-        }
-    } else {
-        // Flat contiguous deposit: each chunk memcpys its own disjoint slice via std::copy_n.
-        chunked_for(parallel, static_cast<std::ptrdiff_t>(total_recv), [&](std::ptrdiff_t lo, std::ptrdiff_t hi) {
-            std::copy_n(state.data.begin() + lo, hi - lo, out + lo);
-        });
-    }
-}
-
-} // namespace detail
-
-/// Drop-in grid all-to-all-v (D1). The call site matches the flat KaMPIng v2 alltoallv; only the
-/// communicator changes from a flat comm to a `grid_comm`. The send buffer is a standard variadic
-/// `send_buffer_v` (`data | with_counts | with_displs`); the recv buffer is any resizable contiguous
-/// range (e.g. a plain `std::vector<T>`).
-///
-/// @tparam Order Recv ordering tag: `unordered` (default) or `ordered_by_source`.
-template <grid_send_buffer SBuf, grid_recv_buffer RBuf, execution_policy Exec, recv_ordering Order = unordered>
-auto alltoallv(SBuf&& sbuf, RBuf&& rbuf, grid_comm<Exec> const& grid, Order order = {})
-    -> kamping::v2::result<SBuf, RBuf> {
-    kamping::v2::result<SBuf, RBuf> res{std::forward<SBuf>(sbuf), std::forward<RBuf>(rbuf)};
-    detail::grid_alltoallv_impl(res.send, res.recv, grid, order);
-    return res;
+    return kamping::v2::result<SBuf, RBuf>{std::forward<SBuf>(sbuf), std::forward<RBuf>(rbuf)};
 }
 } // namespace dstl
