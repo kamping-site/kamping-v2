@@ -101,15 +101,6 @@ if (NOT TARGET kamping::types)
   FetchContent_MakeAvailable(kamping_types)
 endif ()
 
-# Declare KaTestrophe once here so every test subdirectory shares the same version.
-# FetchContent_Declare uses "first declaration wins" semantics: the subdirectories only
-# call FetchContent_MakeAvailable(KaTestrophe) and inherit these details.
-FetchContent_Declare(
-    KaTestrophe
-    GIT_REPOSITORY https://github.com/kamping-site/KaTestrophe.cmake
-    GIT_TAG a7d27ca
-)
-
 add_subdirectory(mpi-core)
 add_subdirectory(kamping-v2)
 

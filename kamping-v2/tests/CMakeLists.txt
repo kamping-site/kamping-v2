@@ -1,7 +1,11 @@
 include(FetchContent)
 include(GoogleTest)
 
-# KaTestrophe is declared once in the top-level CMakeLists.txt; just make it available here.
+FetchContent_Declare(
+    KaTestrophe
+    GIT_REPOSITORY https://github.com/kamping-site/KaTestrophe.cmake
+    GIT_TAG v1.1.0
+)
 FetchContent_MakeAvailable(KaTestrophe)
 
 # Unit tests (no MPI)
