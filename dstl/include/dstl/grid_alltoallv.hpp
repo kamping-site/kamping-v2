@@ -142,50 +142,173 @@ void try_resize(RBuf& rbuf, int total_recv) {
     }
 }
 
-/// Group the routed elements by their global source rank into `rbuf`, byte-identical to a flat
-/// MPI_Alltoallv. This is a stable counting sort (O(n), not O(n log n)): histogram the source labels,
-/// exclusive-scan into per-source write offsets, then scatter each element into its source's block —
-/// elements of the same source keep their arrival order.
-///
-/// The histogram *is* a variadic recv buffer's per-source `recv_counts`, and the scanned offsets *are*
-/// its displacements, so for a `deferred_recv_buf_v` (`views::auto_recv_v`) we write the histogram
-/// straight into the buffer's counts and reuse the displacements `materialize()` derives as the scatter
-/// offsets — sizing the buffer and computing the offsets in one pass. For any other buffer the histogram
-/// and offsets are local and the buffer is sized to the total via `try_resize`.
-template <typename T, typename RBuf>
-void deposit_by_source(
-    RBuf& rbuf, std::span<T const> recv_data, std::span<int const> recv_source_rank, int global_size
-) {
-    using clean_rbuf      = std::remove_cvref_t<RBuf>;
-    auto const total_recv = static_cast<int>(recv_data.size());
-
-    // write_pos[s] starts at the offset of source s's block and is bumped as elements are placed.
-    std::vector<int> write_pos;
+/// Size `rbuf` from the per-source recv counts and return each source's base write offset (its
+/// displacement). For a variadic deferred buffer (`deferred_recv_buf_v`, e.g. `views::auto_recv_v`) the
+/// histogram *is* the buffer's `recv_counts`, so we write it straight in, then `commit_counts()` +
+/// `materialize()` size the buffer and derive the displacements we hand back — counts and offsets in one
+/// pass. For any other buffer the buffer is sized to the total via `try_resize` and the offsets are an
+/// exclusive scan of the counts.
+template <typename RBuf>
+std::vector<int> size_from_source_counts(RBuf& rbuf, std::span<int const> per_source_counts, int total_recv) {
+    using clean_rbuf = std::remove_cvref_t<RBuf>;
     if constexpr (kamping::v2::deferred_recv_buf_v<clean_rbuf>) {
-        rbuf.set_comm_size(global_size);
+        rbuf.set_comm_size(static_cast<int>(per_source_counts.size()));
         auto recv_counts = mpi::experimental::counts(rbuf); // mutable per-source counts buffer
-        std::fill(std::ranges::begin(recv_counts), std::ranges::end(recv_counts), 0);
-        for (auto const s: recv_source_rank) {
-            ++recv_counts[static_cast<std::size_t>(s)];
-        }
+        std::copy(per_source_counts.begin(), per_source_counts.end(), std::ranges::begin(recv_counts));
         rbuf.commit_counts();
         kamping::v2::materialize(rbuf); // resizes + derives the displacements from the counts above
         auto recv_displs = mpi::experimental::displs(rbuf);
-        write_pos.assign(std::ranges::begin(recv_displs), std::ranges::end(recv_displs));
+        return std::vector<int>(std::ranges::begin(recv_displs), std::ranges::end(recv_displs));
     } else {
-        std::vector<int> counts(static_cast<std::size_t>(global_size), 0);
-        for (auto const s: recv_source_rank) {
-            ++counts[static_cast<std::size_t>(s)];
-        }
-        write_pos = exclusive_scan_int(counts);
         try_resize(rbuf, total_recv);
+        return exclusive_scan_int(per_source_counts);
+    }
+}
+
+/// Group the routed elements by their global source rank into `rbuf`, byte-identical to a flat
+/// MPI_Alltoallv. This is a stable counting sort (O(n), not O(n log n)): histogram the source labels,
+/// turn the per-source totals into base write offsets (`size_from_source_counts`), then scatter each
+/// element into its source's block — elements of the same source keep their arrival order.
+///
+/// `Parallel` selects an OpenMP two-pass kernel over a fixed `chunking` of the input. The chunk *index*
+/// — not the thread id — keys the per-chunk histograms and write cursors, and `chunking` recomputes the
+/// chunk bounds identically in both passes, so correctness does not depend on the OpenMP schedule (a
+/// count/write thread mismatch under e.g. `dynamic` is harmless). Within a source, chunk `c` writes after
+/// every earlier chunk's elements of that source, so chunks stay ordered and the sort is stable. To avoid
+/// false sharing, each chunk's hot count/scatter loop touches only a thread-private vector (`local`
+/// histogram / `cursor` copy), never memory shared with a sibling.
+template <typename T, bool Parallel, typename RBuf>
+void reorder_by_source_rank(
+    RBuf& rbuf, std::span<T const> recv_data, std::span<int const> recv_source_rank, int global_size
+) {
+    auto const     total_recv = static_cast<int>(recv_data.size());
+    chunking const chunks{Parallel, static_cast<std::ptrdiff_t>(total_recv)};
+
+    // Pass 1 — per-chunk source-label histograms. Each chunk counts into its own thread-private vector
+    // and only stores it (by move) afterwards, so the hot loop never shares a cache line with a sibling.
+    std::vector<std::vector<int>> chunk_counts(static_cast<std::size_t>(chunks.count()));
+    chunks.for_each_chunk([&](int c, std::ptrdiff_t lo, std::ptrdiff_t hi) {
+        std::vector<int> local(static_cast<std::size_t>(global_size), 0);
+        for (auto j = lo; j < hi; ++j) {
+            ++local[static_cast<std::size_t>(recv_source_rank[static_cast<std::size_t>(j)])];
+        }
+        chunk_counts[static_cast<std::size_t>(c)] = std::move(local);
+    });
+
+    // Global per-source totals (= the variadic recv buffer's recv_counts).
+    std::vector<int> totals(static_cast<std::size_t>(global_size), 0);
+    for (int c = 0; c < chunks.count(); ++c) {
+        for (int s = 0; s < global_size; ++s) {
+            totals[static_cast<std::size_t>(s)] +=
+                chunk_counts[static_cast<std::size_t>(c)][static_cast<std::size_t>(s)];
+        }
     }
 
-    auto* out = mpi::experimental::ptr(rbuf);
-    for (int j = 0; j < total_recv; ++j) {
-        auto const s = static_cast<std::size_t>(recv_source_rank[static_cast<std::size_t>(j)]);
-        out[static_cast<std::size_t>(write_pos[s]++)] = recv_data[static_cast<std::size_t>(j)];
+    // Size rbuf and obtain each source's base write offset (its displacement).
+    std::vector<int> const base = size_from_source_counts(rbuf, std::span<int const>{totals}, total_recv);
+
+    // Per-chunk write cursors: within each source, chunk c starts after all earlier chunks' elements of
+    // that source (a prefix sum over chunks), keeping chunks ordered for a stable result.
+    std::vector<std::vector<int>> write_pos(
+        static_cast<std::size_t>(chunks.count()), std::vector<int>(static_cast<std::size_t>(global_size))
+    );
+    for (int s = 0; s < global_size; ++s) {
+        int running = base[static_cast<std::size_t>(s)];
+        for (int c = 0; c < chunks.count(); ++c) {
+            write_pos[static_cast<std::size_t>(c)][static_cast<std::size_t>(s)] = running;
+            running += chunk_counts[static_cast<std::size_t>(c)][static_cast<std::size_t>(s)];
+        }
     }
+
+    // Pass 2 — scatter. Each chunk copies its cursors into a thread-private vector first, so the
+    // per-element cursor increments never share a cache line with another thread.
+    auto* out = mpi::experimental::ptr(rbuf);
+    chunks.for_each_chunk([&](int c, std::ptrdiff_t lo, std::ptrdiff_t hi) {
+        std::vector<int> cursor = write_pos[static_cast<std::size_t>(c)];
+        for (auto j = lo; j < hi; ++j) {
+            auto const s = static_cast<std::size_t>(recv_source_rank[static_cast<std::size_t>(j)]);
+            out[static_cast<std::size_t>(cursor[s]++)] = recv_data[static_cast<std::size_t>(j)];
+        }
+    });
+}
+
+/// Rebin a phase's received blocks back into remaining-destination-index order: the alltoallv delivers
+/// data keyed by source rank (each source's block holding its `next_subtree_size` buckets in order), and
+/// this transposes source<->bucket so the result is keyed by the next count-tree level (the bucket),
+/// concatenating each bucket across all sources. Writes the rebinned data (and, when `Ordered`, the
+/// source labels) and the next tree level back into `state`. `recv_meta[src * next_subtree_size + bucket]`
+/// is the element count of that (source, bucket) sub-block and `recv_displs[src]` the base offset of
+/// source `src`'s received block. This is the execution-policy hotspot: each bucket writes its own
+/// disjoint output slice (`new_displs[bucket]…`), so `ParallelRebin` splits the buckets into one
+/// contiguous chunk per OpenMP thread.
+template <typename T, bool Ordered, bool ParallelRebin>
+void rebin(
+    routing_state<T>&         state,
+    uninit_vector<T> const&   recv_data,
+    uninit_vector<int> const& recv_source_rank,
+    std::span<int const>      recv_meta,
+    std::span<int const>      recv_displs,
+    int                       subcomm_size,
+    std::size_t               next_subtree_size,
+    int                       total_recv
+) {
+    std::size_t const subtree_size = static_cast<std::size_t>(subcomm_size) * next_subtree_size;
+
+    std::vector<int> next_dest_counts(next_subtree_size, 0);
+    for (std::size_t subcomm_rank = 0; subcomm_rank < static_cast<std::size_t>(subcomm_size); ++subcomm_rank) {
+        for (std::size_t bucket = 0; bucket < next_subtree_size; ++bucket) {
+            next_dest_counts[bucket] += recv_meta[subcomm_rank * next_subtree_size + bucket];
+        }
+    }
+    std::vector<int> new_displs = exclusive_scan_int(next_dest_counts);
+
+    // Read offset (in elements) of the (source rank, bucket) sub-block within the received block.
+    std::vector<int> read_off(subtree_size, 0);
+    for (int subcomm_rank = 0; subcomm_rank < subcomm_size; ++subcomm_rank) {
+        int cursor = recv_displs[static_cast<std::size_t>(subcomm_rank)];
+        for (std::size_t bucket = 0; bucket < next_subtree_size; ++bucket) {
+            auto const slot = static_cast<std::size_t>(subcomm_rank) * next_subtree_size + bucket;
+            read_off[slot]  = cursor;
+            cursor += recv_meta[slot];
+        }
+    }
+
+    auto merge = [&]<typename Src>(Src const& src) {
+        using U = std::ranges::range_value_t<Src>;
+        uninit_vector<U> dst(static_cast<std::size_t>(total_recv));
+        // Each bucket writes its own disjoint output slice (new_displs[bucket]…), so the buckets split
+        // safely into one contiguous chunk per thread.
+        chunked_for(
+            ParallelRebin,
+            static_cast<std::ptrdiff_t>(next_subtree_size),
+            [&](std::ptrdiff_t lo, std::ptrdiff_t hi) {
+                for (std::ptrdiff_t bucket = lo; bucket < hi; ++bucket) {
+                    auto write = static_cast<std::size_t>(new_displs[static_cast<std::size_t>(bucket)]);
+                    for (int subcomm_rank = 0; subcomm_rank < subcomm_size; ++subcomm_rank) {
+                        auto const slot = static_cast<std::size_t>(subcomm_rank) * next_subtree_size
+                                          + static_cast<std::size_t>(bucket);
+                        int const cnt = recv_meta[slot];
+                        if (cnt > 0) {
+                            auto const from = static_cast<std::size_t>(read_off[slot]);
+                            std::copy_n(
+                                src.begin() + static_cast<std::ptrdiff_t>(from),
+                                cnt,
+                                dst.begin() + static_cast<std::ptrdiff_t>(write)
+                            );
+                            write += static_cast<std::size_t>(cnt);
+                        }
+                    }
+                }
+            }
+        );
+        return dst;
+    };
+
+    state.data = merge(recv_data);
+    if constexpr (Ordered) {
+        state.source_rank = merge(recv_source_rank);
+    }
+    state.dest_counts = std::move(next_dest_counts);
 }
 
 /// Run one phase (dimension `i`) of the grid routing: exchange the next count-tree level and the
@@ -324,7 +447,7 @@ void route_phase(
                 recv_source_rank | views::with_counts(recv_counts) | views::with_displs(recv_displs),
                 subcomm
             );
-            deposit_by_source<T>(
+            reorder_by_source_rank<T, ParallelRebin>(
                 rbuf,
                 std::span<T const>{recv_data},
                 std::span<int const>{recv_source_rank},
@@ -352,63 +475,12 @@ void route_phase(
         );
     }
 
-    // Rebin: merge the per-source-rank blocks back into remaining-index order. This is the
-    // execution-policy hotspot; each bucket is written independently.
-    std::vector<int> next_dest_counts(next_subtree_size, 0);
-    for (std::size_t subcomm_rank = 0; subcomm_rank < static_cast<std::size_t>(subcomm_size); ++subcomm_rank) {
-        for (std::size_t bucket = 0; bucket < next_subtree_size; ++bucket) {
-            next_dest_counts[bucket] += recv_meta[subcomm_rank * next_subtree_size + bucket];
-        }
-    }
-    std::vector<int> new_displs = exclusive_scan_int(next_dest_counts);
-
-    // Read offset (in elements) of the (source rank, bucket) sub-block within the received block.
-    std::vector<int> read_off(subtree_size, 0);
-    for (int subcomm_rank = 0; subcomm_rank < subcomm_size; ++subcomm_rank) {
-        int cursor = recv_displs[static_cast<std::size_t>(subcomm_rank)];
-        for (std::size_t bucket = 0; bucket < next_subtree_size; ++bucket) {
-            auto const slot = static_cast<std::size_t>(subcomm_rank) * next_subtree_size + bucket;
-            read_off[slot]  = cursor;
-            cursor += recv_meta[slot];
-        }
-    }
-
-    auto merge = [&]<typename Src>(Src const& src) {
-        using U = std::ranges::range_value_t<Src>;
-        uninit_vector<U> dst(static_cast<std::size_t>(total_recv));
-        // Each bucket writes its own disjoint output slice (new_displs[bucket]…), so the buckets split
-        // safely into one contiguous chunk per thread.
-        chunked_for(
-            ParallelRebin,
-            static_cast<std::ptrdiff_t>(next_subtree_size),
-            [&](std::ptrdiff_t lo, std::ptrdiff_t hi) {
-                for (std::ptrdiff_t bucket = lo; bucket < hi; ++bucket) {
-                    auto write = static_cast<std::size_t>(new_displs[static_cast<std::size_t>(bucket)]);
-                    for (int subcomm_rank = 0; subcomm_rank < subcomm_size; ++subcomm_rank) {
-                        auto const slot = static_cast<std::size_t>(subcomm_rank) * next_subtree_size
-                                          + static_cast<std::size_t>(bucket);
-                        int const  cnt  = recv_meta[slot];
-                        if (cnt > 0) {
-                            auto const from = static_cast<std::size_t>(read_off[slot]);
-                            std::copy_n(
-                                src.begin() + static_cast<std::ptrdiff_t>(from),
-                                cnt,
-                                dst.begin() + static_cast<std::ptrdiff_t>(write)
-                            );
-                            write += static_cast<std::size_t>(cnt);
-                        }
-                    }
-                }
-            }
-        );
-        return dst;
-    };
-
-    state.data = merge(recv_data);
-    if constexpr (Ordered) {
-        state.source_rank = merge(recv_source_rank);
-    }
-    state.dest_counts = std::move(next_dest_counts);
+    // Rebin the received blocks back into remaining-destination-index order (transpose source<->bucket),
+    // writing the next tree level and data — and, when ordering by source, the source labels — to state.
+    rebin<T, Ordered, ParallelRebin>(
+        state, recv_data, recv_source_rank, std::span<int const>{recv_meta}, std::span<int const>{recv_displs},
+        subcomm_size, next_subtree_size, total_recv
+    );
 }
 
 } // namespace detail
