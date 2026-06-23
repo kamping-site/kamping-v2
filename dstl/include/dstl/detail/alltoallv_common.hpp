@@ -25,18 +25,6 @@
 
 namespace dstl::detail {
 
-/// The C++ element type behind a buffer: `ptr()` returns a typed pointer, e.g. `int const*` → `int`.
-template <typename Buf>
-using element_t = std::remove_cv_t<
-    std::remove_pointer_t<decltype(mpi::experimental::ptr(std::declval<std::remove_cvref_t<Buf> const&>()))>>;
-
-/// Exclusive prefix sum (displacements) of a counts array, in element units.
-inline std::vector<int> exclusive_scan_int(std::span<int const> counts) {
-    std::vector<int> displs(counts.size());
-    std::exclusive_scan(counts.begin(), counts.end(), displs.begin(), 0);
-    return displs;
-}
-
 /// Apply `body(lo, hi)` over contiguous chunks of `[0, n)` (TBB `blocked_range` style: each invocation
 /// owns a disjoint slice). When `parallel` is set the range is split into one contiguous chunk per
 /// OpenMP thread and the chunks run concurrently; otherwise `body` runs once over the whole range. The
