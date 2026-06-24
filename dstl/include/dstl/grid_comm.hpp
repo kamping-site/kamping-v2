@@ -3,10 +3,11 @@
 
 #pragma once
 
+#include <concepts>
 #include <cstddef>
 #include <functional>
 #include <numeric>
-#include <span>
+#include <ranges>
 #include <vector>
 
 #include <mpi.h>
@@ -15,6 +16,8 @@
 #include "dstl/tags.hpp"
 #include "kamping/kassert/kassert.hpp"
 #include "mpi/comm.hpp"
+#include "mpi/environment.hpp"
+#include "mpi/thread_level.hpp"
 
 /// @file
 /// dstl::grid_comm — a k-dimensional grid communicator built from k iterated splits of a
@@ -70,11 +73,17 @@ public:
         build();
     }
 
-    /// Build a grid over `global` with explicit dimensions. The product of `dims` must equal
-    /// the size of `global` (a complete grid).
-    grid_comm(mpi::experimental::comm_view global, std::span<std::size_t const> dims)
-        : _global(global),
-          _dims(dims.begin(), dims.end()) {
+    /// Build a grid over `global` with explicit dimensions. `dims` is any input range of values
+    /// convertible to `std::size_t`; the product of `dims` must equal the size of `global` (a complete grid).
+    template <std::ranges::input_range R>
+        requires std::convertible_to<std::ranges::range_value_t<R>, std::size_t>
+    grid_comm(mpi::experimental::comm_view global, R&& dims) : _global(global) {
+        if constexpr (std::ranges::sized_range<R>) {
+            _dims.reserve(std::ranges::size(dims));
+        }
+        for (auto const& d: dims) {
+            _dims.push_back(static_cast<std::size_t>(d));
+        }
         build();
     }
 
@@ -105,13 +114,22 @@ public:
         return _global.mpi_handle();
     }
 
-    /// Decompose a global rank into its mixed-radix coordinates (c_0 most significant).
-    void coords(int rank, std::span<std::size_t> out) const {
-        KAMPING_V2_ASSERT(out.size() == _dims.size(), "coords output span must have size num_dims()");
-        auto r = static_cast<std::size_t>(rank);
-        for (std::size_t i = 0; i < _dims.size(); ++i) {
-            out[i] = (r / _strides[i]) % _dims[i];
+    /// Decompose a global rank into its mixed-radix coordinates (c_0 most significant), writing the
+    /// `num_dims()` coordinates into the output range `out`. For a sized range, asserts it holds exactly
+    /// `num_dims()` elements; for an unbounded sink (e.g. `std::views::counted` of a back-inserter) the
+    /// caller is responsible for capacity.
+    /// @return The iterator one past the last written coordinate.
+    template <std::ranges::output_range<std::size_t> R>
+    std::ranges::borrowed_iterator_t<R> coords(int rank, R&& out) const {
+        if constexpr (std::ranges::sized_range<R>) {
+            KAMPING_V2_ASSERT(std::ranges::size(out) == _dims.size(), "coords output range must have size num_dims()");
         }
+        auto it = std::ranges::begin(out);
+        auto r  = static_cast<std::size_t>(rank);
+        for (std::size_t i = 0; i < _dims.size(); ++i) {
+            *it++ = (r / _strides[i]) % _dims[i];
+        }
+        return it;
     }
 
     /// @return The mixed-radix coordinates of a global rank as a vector.
@@ -121,13 +139,21 @@ public:
         return out;
     }
 
-    /// Compose mixed-radix coordinates back into a global rank.
-    [[nodiscard]] int rank_of(std::span<std::size_t const> coords) const {
-        KAMPING_V2_ASSERT(coords.size() == _dims.size(), "coords span must have size num_dims()");
-        std::size_t r = 0;
-        for (std::size_t i = 0; i < _dims.size(); ++i) {
-            r += coords[i] * _strides[i];
+    /// Compose mixed-radix coordinates (c_0 most significant) back into a global rank. `coords` is any
+    /// input range of exactly `num_dims()` values yielding the coordinates in dimension order.
+    template <std::ranges::input_range R>
+        requires std::convertible_to<std::ranges::range_value_t<R>, std::size_t>
+    [[nodiscard]] int rank_of(R&& coords) const {
+        if constexpr (std::ranges::sized_range<R>) {
+            KAMPING_V2_ASSERT(std::ranges::size(coords) == _dims.size(), "coords range must have size num_dims()");
         }
+        std::size_t r = 0;
+        std::size_t i = 0;
+        for (std::size_t const c: coords) {
+            KAMPING_V2_ASSERT(i < _dims.size(), "coords range must have size num_dims()");
+            r += c * _strides[i++];
+        }
+        KAMPING_V2_ASSERT(i == _dims.size(), "coords range must have size num_dims()");
         return static_cast<int>(r);
     }
 
@@ -184,11 +210,11 @@ private:
         if constexpr (std::is_same_v<Exec, execution_policy::seq>) {
             return;
         } else {
-            int provided = MPI_THREAD_SINGLE;
-            MPI_Query_thread(&provided);
-            int required = std::is_same_v<Exec, execution_policy::par_comm> ? MPI_THREAD_MULTIPLE : MPI_THREAD_FUNNELED;
+            using mpi::experimental::ThreadLevel;
+            ThreadLevel const required =
+                std::is_same_v<Exec, execution_policy::par_comm> ? ThreadLevel::multiple : ThreadLevel::funneled;
             KAMPING_V2_ASSERT(
-                provided >= required,
+                mpi::experimental::environment::thread_level() >= required,
                 "grid_comm: the MPI runtime does not provide the thread support level required by this execution policy"
             );
         }
