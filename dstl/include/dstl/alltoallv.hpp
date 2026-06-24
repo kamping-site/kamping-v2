@@ -5,8 +5,8 @@
 
 /// @file
 /// Umbrella header for the dstl all-to-all-v wrappers. Pulls in both the grid (message-combining)
-/// variant dispatched on `dstl::grid_comm` and the flat (single-exchange) variant dispatched on
-/// `dstl::thread_multiple_comm`. Include this to get every `dstl::alltoallv` overload.
+/// variant `dstl::grid_alltoallv` dispatched on `dstl::grid_comm` and the flat (single-exchange)
+/// variant `dstl::alltoallv` dispatched on `dstl::thread_multiple_comm`.
 
 #include "dstl/flat_alltoallv.hpp"
 #include "dstl/grid_alltoallv.hpp"

@@ -28,7 +28,7 @@
 
 int main(int argc, char** argv) {
     // dstl::execution_policy::par needs MPI_THREAD_FUNNELED: the main thread issues every MPI call while the OpenMP
-    // threads only do node-local work (the rebin / final deposit in dstl::alltoallv).
+    // threads only do node-local work (the rebin / final deposit in dstl::grid_alltoallv).
     kamping::v2::environment          env(argc, argv, mpi::experimental::ThreadLevel::funneled);
     mpi::experimental::comm_view const world{MPI_COMM_WORLD};
     int const                         rank = world.rank();

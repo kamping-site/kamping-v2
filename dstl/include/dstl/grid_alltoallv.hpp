@@ -34,7 +34,7 @@
 #include "mpi/comm.hpp"
 
 /// @file
-/// dstl::alltoallv — a k-dimensional grid (message-combining) all-to-all-v.
+/// dstl::grid_alltoallv — a k-dimensional grid (message-combining) all-to-all-v.
 ///
 /// The routing replaces the p−1 direct messages per PE of a flat MPI_Alltoallv with k phases of
 /// Σs_i messages, routed through the grid's subcommunicators. The flat per-destination send counts
@@ -145,7 +145,7 @@ void ensure_recv_capacity(RBuf& rbuf, int total_recv) {
         );
         KAMPING_V2_ASSERT(
             static_cast<std::size_t>(mpi::experimental::count(rbuf)) >= static_cast<std::size_t>(total_recv),
-            "dstl::alltoallv: non-resizable recv buffer is smaller than the received element total; pass "
+            "dstl::grid_alltoallv: non-resizable recv buffer is smaller than the received element total; pass "
             "views::resize to opt into automatic resizing."
         );
     }
@@ -516,7 +516,7 @@ void route_phase(
 } // namespace detail
 
 /// Drop-in grid all-to-all-v (D1). The call site matches the flat KaMPIng v2 alltoallv; only the
-/// communicator changes from a flat comm to a `grid_comm`. The send buffer is a standard variadic
+/// function name and communicator change — a `grid_comm` instead of a flat comm. The send buffer is a standard variadic
 /// `send_buffer_v` (`data | with_counts | with_displs`). The recv buffer constraint depends on the
 /// ordering (see `grid_recv_buffer`): `ordered_by_source` needs a variadic recv buffer (`recv_buffer_v`,
 /// e.g. `views::auto_recv_v`) to carry the per-source counts; `unordered` accepts any `recv_buffer`
@@ -530,7 +530,7 @@ template <grid_send_buffer SBuf, typename RBuf, is_execution_policy Exec, grid_c
              // via MPI (matched by datatype signature), so no such relation is required.
              && (!std::is_same_v<Order, layout::ordered_by_source>
                  || std::indirectly_copyable<std::ranges::iterator_t<SBuf>, std::ranges::iterator_t<RBuf>>)
-auto alltoallv(SBuf&& sbuf, RBuf&& rbuf, grid_comm<Exec> const& grid, [[maybe_unused]] Order order = {})
+auto grid_alltoallv(SBuf&& sbuf, RBuf&& rbuf, grid_comm<Exec> const& grid, [[maybe_unused]] Order order = {})
     -> kamping::v2::result<SBuf, RBuf> {
     using T                 = std::ranges::range_value_t<SBuf>; // send element type; the staging is in T
     constexpr bool ordered  = std::is_same_v<Order, layout::ordered_by_source>;

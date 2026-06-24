@@ -138,11 +138,11 @@ inline std::string render_grid(grid_comm<Exec> const& grid, std::span<int const>
 
 /// Collectively build the grid breakdown for `grid`, annotated with each rank's thread count
 /// (`r(threads)`). Gathers thread counts over the global communicator, then renders the structure.
-/// @note Collective over `grid.global()` — every rank must call it; the result is identical on all ranks.
-/// For a communication-free structural dump use `std::format("{}", grid)` instead.
+/// @note Collective over the grid's global communicator — every rank must call it; the result is
+/// identical on all ranks. For a communication-free structural dump use `std::format("{}", grid)` instead.
 template <is_execution_policy Exec>
 [[nodiscard]] inline std::string as_string(grid_comm<Exec> const& grid) {
-    auto const threads = gather_thread_counts(grid.global());
+    auto const threads = gather_thread_counts(mpi::experimental::comm_view{grid.mpi_handle()});
     return detail::render_grid(grid, threads);
 }
 

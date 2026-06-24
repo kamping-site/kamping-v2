@@ -22,7 +22,7 @@
 /// c_0 the *most* significant digit (row-major): dimension 0 has the largest stride
 /// (s_1·…·s_{k-1}), so subcommunicator 0 groups the most "remote" ranks — {0, s_1·…·s_{k-1}, …} —
 /// while the *last* dimension has stride 1 and groups consecutive ranks. This row-major layout makes
-/// the global-rank order coincide with the radix count-tree's leaf order, so dstl::alltoallv routes
+/// the global-rank order coincide with the radix count-tree's leaf order, so dstl::grid_alltoallv routes
 /// remote-first with no top-level reordering. Subcommunicator i groups all ranks that share every
 /// coordinate except coordinate i and therefore has size s_i.
 ///
@@ -48,7 +48,7 @@ namespace dstl {
 //   subcomm 0 (dimension 0, size 2, stride 3): {0,3} {1,4} {2,5}   ← inter-node (one rank per node)
 //   subcomm 1 (dimension 1, size 3, stride 1): {0,1,2} {3,4,5}     ← intra-node (consecutive ranks)
 //
-// dstl::alltoallv routes over these subcommunicators in natural radix order, REMOTE-first
+// dstl::grid_alltoallv routes over these subcommunicators in natural radix order, REMOTE-first
 // (dimension 0 → k-1): phase 0 exchanges within {0,3}/{1,4}/{2,5} (fixing c0), phase 1 within
 // {0,1,2}/{3,4,5} (fixing c1). Because the layout is row-major, the global-rank order already equals
 // the count-tree's leaf order, so no top-level reorder is needed.
@@ -56,7 +56,7 @@ namespace dstl {
 /// k-dimensional grid communicator. `k` (the number of dimensions) is a runtime value derived
 /// from the factoring strategy; the execution policy `Exec` is a compile-time tag (D2/D3).
 template <is_execution_policy Exec = execution_policy::par>
-class grid_comm {
+class grid_comm : public mpi::experimental::comm_accessors<grid_comm<Exec>> {
 public:
     using execution_policy_type = Exec;
 
@@ -99,19 +99,10 @@ public:
         return _subcomms[i];
     }
 
-    /// @return A view of the underlying global communicator.
-    [[nodiscard]] mpi::experimental::comm_view global() const noexcept {
-        return _global;
-    }
-
-    /// @return The calling rank in the global communicator.
-    [[nodiscard]] int rank() const {
-        return _global.rank();
-    }
-
-    /// @return The global communicator size p.
-    [[nodiscard]] int size() const {
-        return _global.size();
+    /// @return The underlying global `MPI_Comm` (drives `comm_accessors` and `handle()` dispatch, so
+    /// `.rank()`, `.size()`, `.group()`, `.dup()`, `.split()` operate on the global communicator).
+    [[nodiscard]] MPI_Comm mpi_handle() const noexcept {
+        return _global.mpi_handle();
     }
 
     /// Decompose a global rank into its mixed-radix coordinates (c_0 most significant).
