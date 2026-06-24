@@ -116,7 +116,7 @@ public:
 
     /// Decompose a global rank into its mixed-radix coordinates (c_0 most significant).
     void coords(int rank, std::span<std::size_t> out) const {
-        KAMPING_ASSERT(out.size() == _dims.size(), "coords output span must have size num_dims()");
+        KAMPING_V2_ASSERT(out.size() == _dims.size(), "coords output span must have size num_dims()");
         auto r = static_cast<std::size_t>(rank);
         for (std::size_t i = 0; i < _dims.size(); ++i) {
             out[i] = (r / _strides[i]) % _dims[i];
@@ -132,7 +132,7 @@ public:
 
     /// Compose mixed-radix coordinates back into a global rank.
     [[nodiscard]] int rank_of(std::span<std::size_t const> coords) const {
-        KAMPING_ASSERT(coords.size() == _dims.size(), "coords span must have size num_dims()");
+        KAMPING_V2_ASSERT(coords.size() == _dims.size(), "coords span must have size num_dims()");
         std::size_t r = 0;
         for (std::size_t i = 0; i < _dims.size(); ++i) {
             r += coords[i] * _strides[i];
@@ -157,9 +157,9 @@ private:
     void build() {
         check_thread_level();
         auto p = static_cast<std::size_t>(_global.size());
-        KAMPING_ASSERT(!_dims.empty(), "grid must have at least one dimension");
+        KAMPING_V2_ASSERT(!_dims.empty(), "grid must have at least one dimension");
         std::size_t product = std::accumulate(_dims.begin(), _dims.end(), std::size_t{1}, std::multiplies<>{});
-        KAMPING_ASSERT(
+        KAMPING_V2_ASSERT(
             product == p,
             "grid_comm: product of dimensions must equal the global communicator size (only complete grids are "
             "supported in this first cut)"
@@ -196,7 +196,7 @@ private:
             int provided = MPI_THREAD_SINGLE;
             MPI_Query_thread(&provided);
             int required = std::is_same_v<Exec, par_comm> ? MPI_THREAD_MULTIPLE : MPI_THREAD_FUNNELED;
-            KAMPING_ASSERT(
+            KAMPING_V2_ASSERT(
                 provided >= required,
                 "grid_comm: the MPI runtime does not provide the thread support level required by this execution policy"
             );

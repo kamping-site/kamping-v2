@@ -137,7 +137,7 @@ void ensure_recv_capacity(RBuf& rbuf, int total_recv) {
             "unordered grid alltoallv cannot fill a variadic recv buffer's per-source counts; pass a "
             "non-variadic recv buffer (e.g. views::resize) or use ordered_by_source."
         );
-        KAMPING_ASSERT(
+        KAMPING_V2_ASSERT(
             static_cast<std::size_t>(mpi::experimental::count(rbuf)) >= static_cast<std::size_t>(total_recv),
             "dstl::alltoallv: non-resizable recv buffer is smaller than the received element total; pass "
             "views::resize to opt into automatic resizing."
