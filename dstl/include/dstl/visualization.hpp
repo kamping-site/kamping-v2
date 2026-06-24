@@ -76,7 +76,7 @@ inline int rank_width(std::size_t p) noexcept {
     return width;
 }
 
-template <execution_policy Exec>
+template <is_execution_policy Exec>
 inline std::string render_grid(grid_comm<Exec> const& grid, std::span<int const> threads) {
     auto const        p = static_cast<std::size_t>(grid.size());
     std::size_t const k = grid.num_dims();
@@ -140,7 +140,7 @@ inline std::string render_grid(grid_comm<Exec> const& grid, std::span<int const>
 /// (`r(threads)`). Gathers thread counts over the global communicator, then renders the structure.
 /// @note Collective over `grid.global()` — every rank must call it; the result is identical on all ranks.
 /// For a communication-free structural dump use `std::format("{}", grid)` instead.
-template <execution_policy Exec>
+template <is_execution_policy Exec>
 [[nodiscard]] inline std::string as_string(grid_comm<Exec> const& grid) {
     auto const threads = gather_thread_counts(grid.global());
     return detail::render_grid(grid, threads);
@@ -150,7 +150,7 @@ template <execution_policy Exec>
 
 /// Local (communication-free) `std::format` support for `grid_comm`: renders the dimension-by-dimension
 /// rank breakdown. No per-rank thread counts (those need a gather — see `dstl::as_string`).
-template <dstl::execution_policy Exec>
+template <dstl::is_execution_policy Exec>
 struct std::formatter<dstl::grid_comm<Exec>, char> {
     constexpr auto parse(std::format_parse_context& ctx) {
         return ctx.begin();

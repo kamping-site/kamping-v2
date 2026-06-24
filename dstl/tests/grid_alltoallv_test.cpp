@@ -33,13 +33,13 @@ TEST(GridAlltoallvTest, UnorderedMultisetEqualsFlat) {
 
     std::vector<int> expected = standard_alltoallv(data, counts, displs);
 
-    dstl::grid_comm<dstl::seq> grid{comm_view{MPI_COMM_WORLD}};
+    dstl::grid_comm<dstl::execution_policy::seq> grid{comm_view{MPI_COMM_WORLD}};
     std::vector<int>           recv;
     dstl::alltoallv(
         data | kamping::v2::views::with_counts(counts) | kamping::v2::views::with_displs(displs),
         recv | views::resize, // opt into automatic resizing (bare buffers are assumed pre-sized)
         grid,
-        dstl::unordered{}
+        dstl::layout::unordered{}
     );
 
     EXPECT_EQ(sorted(recv), sorted(expected));
@@ -53,13 +53,13 @@ TEST(GridAlltoallvTest, OrderedEqualsFlatExactly) {
 
     std::vector<int> expected = standard_alltoallv(data, counts, displs);
 
-    dstl::grid_comm<dstl::seq> grid{comm_view{MPI_COMM_WORLD}};
+    dstl::grid_comm<dstl::execution_policy::seq> grid{comm_view{MPI_COMM_WORLD}};
     std::vector<int>           recv;
     dstl::alltoallv(
         data | kamping::v2::views::with_counts(counts) | kamping::v2::views::with_displs(displs),
         recv | views::auto_recv_v,
         grid,
-        dstl::ordered_by_source{}
+        dstl::layout::ordered_by_source{}
     );
 
     EXPECT_EQ(recv, expected);
@@ -73,12 +73,12 @@ TEST(GridAlltoallvTest, OwnedRecvBuffer) {
 
     std::vector<int> expected = standard_alltoallv(data, counts, displs);
 
-    dstl::grid_comm<dstl::seq> grid{comm_view{MPI_COMM_WORLD}};
+    dstl::grid_comm<dstl::execution_policy::seq> grid{comm_view{MPI_COMM_WORLD}};
     auto                       res = dstl::alltoallv(
         data | kamping::v2::views::with_counts(counts) | kamping::v2::views::with_displs(displs),
         std::vector<int>{} | views::auto_recv_v,
         grid,
-        dstl::ordered_by_source{}
+        dstl::layout::ordered_by_source{}
     );
 
     EXPECT_EQ(res.recv.underlying(), expected);
@@ -93,13 +93,13 @@ TEST(GridAlltoallvTest, UniformSingleElement) {
     std::vector<int> displs(static_cast<std::size_t>(size));
     std::iota(displs.begin(), displs.end(), 0);
 
-    dstl::grid_comm<dstl::seq> grid{comm_view{MPI_COMM_WORLD}};
+    dstl::grid_comm<dstl::execution_policy::seq> grid{comm_view{MPI_COMM_WORLD}};
     std::vector<int>           recv;
     dstl::alltoallv(
         data | kamping::v2::views::with_counts(counts) | kamping::v2::views::with_displs(displs),
         recv | views::auto_recv_v,
         grid,
-        dstl::ordered_by_source{}
+        dstl::layout::ordered_by_source{}
     );
 
     std::vector<int> expected(static_cast<std::size_t>(size));
@@ -113,7 +113,7 @@ TEST(GridAlltoallvTest, AllEmpty) {
     std::vector<int>           data;
     std::vector<int>           counts(static_cast<std::size_t>(size), 0);
     std::vector<int>           displs(static_cast<std::size_t>(size), 0);
-    dstl::grid_comm<dstl::seq> grid{comm_view{MPI_COMM_WORLD}};
+    dstl::grid_comm<dstl::execution_policy::seq> grid{comm_view{MPI_COMM_WORLD}};
     std::vector<int>           recv;
     dstl::alltoallv(
         data | kamping::v2::views::with_counts(counts) | kamping::v2::views::with_displs(displs),
@@ -131,9 +131,9 @@ TEST(GridAlltoallvTest, PreSizedBareRecvBuffer) {
 
     std::vector<int> expected = standard_alltoallv(data, counts, displs);
 
-    dstl::grid_comm<dstl::seq> grid{comm_view{MPI_COMM_WORLD}};
+    dstl::grid_comm<dstl::execution_policy::seq> grid{comm_view{MPI_COMM_WORLD}};
     std::vector<int>           recv(expected.size()); // caller pre-sizes; no views::resize
-    dstl::alltoallv(data | views::with_counts(counts) | views::with_displs(displs), recv, grid, dstl::unordered{});
+    dstl::alltoallv(data | views::with_counts(counts) | views::with_displs(displs), recv, grid, dstl::layout::unordered{});
 
     EXPECT_EQ(sorted(recv), sorted(expected));
 }
@@ -182,13 +182,13 @@ TEST(GridAlltoallvTest, MixedGappedSendPackedRecv) {
     std::vector<int> displs(static_cast<std::size_t>(size));
     std::iota(displs.begin(), displs.end(), 0);
 
-    dstl::grid_comm<dstl::seq> grid{comm_view{MPI_COMM_WORLD}};
+    dstl::grid_comm<dstl::execution_policy::seq> grid{comm_view{MPI_COMM_WORLD}};
     std::vector<RecvS>         recv;
     dstl::alltoallv(
         data | views::with_type(dt_send) | views::with_counts(counts) | views::with_displs(displs),
         recv | views::with_type(dt_recv) | views::resize,
         grid,
-        dstl::unordered{}
+        dstl::layout::unordered{}
     );
 
     // Rank d receives one element from each source r: (a, b) = (r*100 + d, r*1000 + d), gap dropped.
@@ -226,13 +226,13 @@ TEST(GridAlltoallvTest, ExplicitFactorizations) {
     }
 
     for (auto const& dims: factorings) {
-        dstl::grid_comm<dstl::seq> grid{comm_view{MPI_COMM_WORLD}, std::span<std::size_t const>{dims}};
+        dstl::grid_comm<dstl::execution_policy::seq> grid{comm_view{MPI_COMM_WORLD}, std::span<std::size_t const>{dims}};
         std::vector<int>           recv;
         dstl::alltoallv(
             data | kamping::v2::views::with_counts(counts) | kamping::v2::views::with_displs(displs),
             recv | views::auto_recv_v,
             grid,
-            dstl::ordered_by_source{}
+            dstl::layout::ordered_by_source{}
         );
         EXPECT_EQ(recv, expected) << "factorization with k=" << dims.size();
     }

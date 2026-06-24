@@ -51,7 +51,7 @@ namespace dstl {
 /// run, one per thread.
 class thread_multiple_comm : public mpi::experimental::comm_accessors<thread_multiple_comm> {
 public:
-    using execution_policy_type = par_comm;
+    using execution_policy_type = execution_policy::par_comm;
 
     /// Borrow `global` and duplicate `t` communicators (collective). Asserts that the runtime
     /// provides MPI_THREAD_MULTIPLE.

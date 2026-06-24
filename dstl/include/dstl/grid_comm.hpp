@@ -55,7 +55,7 @@ namespace dstl {
 //
 /// k-dimensional grid communicator. `k` (the number of dimensions) is a runtime value derived
 /// from the factoring strategy; the execution policy `Exec` is a compile-time tag (D2/D3).
-template <execution_policy Exec = par>
+template <is_execution_policy Exec = execution_policy::par>
 class grid_comm {
 public:
     using execution_policy_type = Exec;
@@ -190,12 +190,12 @@ private:
     }
 
     static void check_thread_level() {
-        if constexpr (std::is_same_v<Exec, seq>) {
+        if constexpr (std::is_same_v<Exec, execution_policy::seq>) {
             return;
         } else {
             int provided = MPI_THREAD_SINGLE;
             MPI_Query_thread(&provided);
-            int required = std::is_same_v<Exec, par_comm> ? MPI_THREAD_MULTIPLE : MPI_THREAD_FUNNELED;
+            int required = std::is_same_v<Exec, execution_policy::par_comm> ? MPI_THREAD_MULTIPLE : MPI_THREAD_FUNNELED;
             KAMPING_V2_ASSERT(
                 provided >= required,
                 "grid_comm: the MPI runtime does not provide the thread support level required by this execution policy"

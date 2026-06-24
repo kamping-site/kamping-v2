@@ -77,6 +77,12 @@ template <typename SBuf>
 concept grid_send_buffer = mpi::experimental::send_buffer_v<SBuf> && std::ranges::contiguous_range<SBuf>
                            && detail::grid_element<std::ranges::range_value_t<SBuf>>;
 
+/// Concept: a recv-layout tag the grid alltoallv knows how to produce — either `layout::unordered`
+/// (multiset-correct, grouped by routing path) or `layout::ordered_by_source` (flat-identical).
+template <typename T>
+concept grid_compatible_output_layout =
+    std::is_same_v<T, layout::unordered> || std::is_same_v<T, layout::ordered_by_source>;
+
 /// Recv buffer accepted by the grid alltoallv, constrained by the recv ordering. In `ordered_by_source`
 /// mode the result is a genuine alltoallv with well-defined per-source counts, so the recv buffer must be
 /// a *variadic* recv buffer (`recv_buffer_v`) able to carry them (e.g. `views::auto_recv_v`); in
@@ -92,8 +98,8 @@ concept grid_send_buffer = mpi::experimental::send_buffer_v<SBuf> && std::ranges
 /// machinery in the body (see `ensure_recv_capacity` / `size_from_source_counts`).
 template <typename RBuf, typename Order>
 concept grid_recv_buffer = std::ranges::contiguous_range<RBuf>
-                           && ((std::is_same_v<Order, ordered_by_source> && mpi::experimental::recv_buffer_v<RBuf>)
-                               || (!std::is_same_v<Order, ordered_by_source> && mpi::experimental::recv_buffer<RBuf>))
+                           && ((std::is_same_v<Order, layout::ordered_by_source> && mpi::experimental::recv_buffer_v<RBuf>)
+                               || (!std::is_same_v<Order, layout::ordered_by_source> && mpi::experimental::recv_buffer<RBuf>))
                            && detail::grid_element<std::ranges::range_value_t<RBuf>>;
 
 namespace detail {
@@ -517,18 +523,18 @@ void route_phase(
 /// (e.g. a plain `std::vector<T>` or `views::resize`).
 ///
 /// @tparam Order Recv ordering tag: `unordered` (default) or `ordered_by_source`.
-template <grid_send_buffer SBuf, typename RBuf, execution_policy Exec, recv_ordering Order = unordered>
+template <grid_send_buffer SBuf, typename RBuf, is_execution_policy Exec, grid_compatible_output_layout Order = layout::unordered>
     requires grid_recv_buffer<RBuf, Order>
              // ordered_by_source regroups the routed elements into rbuf with a local counting-sort copy
              // (T_send staging -> rbuf), so it needs a host-side conversion; unordered fills rbuf directly
              // via MPI (matched by datatype signature), so no such relation is required.
-             && (!std::is_same_v<Order, ordered_by_source>
+             && (!std::is_same_v<Order, layout::ordered_by_source>
                  || std::indirectly_copyable<std::ranges::iterator_t<SBuf>, std::ranges::iterator_t<RBuf>>)
 auto alltoallv(SBuf&& sbuf, RBuf&& rbuf, grid_comm<Exec> const& grid, [[maybe_unused]] Order order = {})
     -> kamping::v2::result<SBuf, RBuf> {
     using T                 = std::ranges::range_value_t<SBuf>; // send element type; the staging is in T
-    constexpr bool ordered  = std::is_same_v<Order, ordered_by_source>;
-    constexpr bool parallel = !std::is_same_v<Exec, seq>;
+    constexpr bool ordered  = std::is_same_v<Order, layout::ordered_by_source>;
+    constexpr bool parallel = !std::is_same_v<Exec, execution_policy::seq>;
 
     auto const p  = static_cast<std::size_t>(grid.size());
     auto const dt = mpi::experimental::type(sbuf); // dt_send: drives every staging exchange

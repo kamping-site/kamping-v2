@@ -41,12 +41,6 @@
 
 namespace dstl {
 
-/// Recv buffer accepted by the flat alltoallv: a resizable, contiguous range whose element type
-/// matches the send buffer's. The total is computed locally and written as one contiguous block.
-template <typename RBuf>
-concept flat_recv_buffer =
-    mpi::experimental::send_buffer_v<RBuf> && std::copyable<std::ranges::range_value_t<std::remove_cvref_t<RBuf>>>;
-
 namespace detail {
 
 template <typename F>
@@ -76,7 +70,7 @@ inline void for_each_thread([[maybe_unused]] int nthreads, F&& body) {
 ///
 /// Unlike the grid wrapper there is no recv-ordering tag: the per-thread recv displacements already
 /// reassemble each source's block in rank order, so the result is always flat-identical.
-template <mpi::experimental::send_buffer_v SBuf, flat_recv_buffer RBuf>
+template <mpi::experimental::send_buffer_v SBuf, mpi::experimental::recv_buffer_v RBuf>
 auto alltoallv(SBuf&& sbuf, RBuf&& rbuf, thread_multiple_comm const& fc) -> kamping::v2::result<SBuf, RBuf> {
     namespace views = kamping::v2::views;
 
@@ -121,10 +115,12 @@ auto alltoallv(SBuf&& sbuf, RBuf&& rbuf, thread_multiple_comm const& fc) -> kamp
             }
         }
         rbuf.commit_counts();
-        kamping::v2::materialize(
-            rbuf
-        ); // triggers resizing; cannot be done in the alltoallv via infer as this would be a data race
     }
+    // Materialize up front: triggers resizing / lazy recv-displ computation. Must happen here rather
+    // than inside the alltoallv via infer, where multiple threads would race on it. For a non-deferred
+    // buffer this is a no-op; a buffer that lazily computes recv displacements is also not deferred, so
+    // it would otherwise only be materialized inside the threaded alltoallv.
+    kamping::v2::materialize(rbuf);
     // Per-thread recv displacements: within each source's block the threads' contributions are laid
     // out in thread order, so the source's block ends up contiguous and in its original element order.
     std::vector<std::vector<int>> thread_recv_displs(nthreads, std::vector<int>(p, 0));

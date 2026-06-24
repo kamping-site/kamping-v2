@@ -19,6 +19,8 @@ namespace dstl {
 // in *resources*, not just code, so they are bound to the grid_comm type and dispatched via
 // `if constexpr` in the re-bin kernel.
 
+namespace execution_policy {
+
 /// Sequential policy: a single thread performs the re-bin and issues all MPI, with one communicator
 /// per dimension. Safe at any MPI threading level (needs no more than MPI_THREAD_SINGLE).
 struct seq {};
@@ -34,11 +36,18 @@ struct par {};
 /// thread_multiple exchange does). Requires — and asserts — MPI initialized with MPI_THREAD_MULTIPLE.
 struct par_comm {};
 
+} // namespace execution_policy
+
 /// Concept: one of the execution policy tags above.
 template <typename T>
-concept execution_policy = std::is_same_v<T, seq> || std::is_same_v<T, par> || std::is_same_v<T, par_comm>;
+concept is_execution_policy = std::is_same_v<T, execution_policy::seq> ||
+                              std::is_same_v<T, execution_policy::par> ||
+                              std::is_same_v<T, execution_policy::par_comm>;
 
 // Recv ordering (D5)
+
+namespace layout {
+
 /// Default: the recv buffer holds the correct *multiset*, grouped by routing path.
 /// This is where the speedup lives — restoring global-source order is extra work.
 struct unordered {};
@@ -48,8 +57,6 @@ struct unordered {};
 /// every hop and performs a final local stable sort.
 struct ordered_by_source {};
 
-/// Concept: one of the ordering tags above.
-template <typename T>
-concept recv_ordering = std::is_same_v<T, unordered> || std::is_same_v<T, ordered_by_source>;
+} // namespace layout
 
 } // namespace dstl
