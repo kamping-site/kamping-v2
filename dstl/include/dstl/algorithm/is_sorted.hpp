@@ -27,14 +27,18 @@ namespace dstl {
 ///   2. For every adjacent pair of non-empty ranks, the last element of the
 ///      left rank is not greater than the first element of the right rank.
 ///
+/// R must be a bidirectional_range (to access the last element in O(1) via
+/// std::prev) with a deducible MPI element type. The range itself is never
+/// passed to MPI; only a single stack-allocated boundary element is exchanged.
+///
 /// Empty ranks are skipped via with_subset: the sub-communicator of non-empty
 /// ranks checks their pair-wise boundaries with a single shift_right exchange.
 template <
-    std::ranges::forward_range                             R,
+    std::ranges::bidirectional_range                        R,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm                            = MPI_Comm,
     class Proj                                                                             = std::identity,
     std::indirect_strict_weak_order<std::projected<std::ranges::iterator_t<R>, Proj>> Comp = std::ranges::less>
-    requires mpi::experimental::send_buffer<R>
+    requires mpi::experimental::has_mpi_type<R>
 bool is_sorted(R&& r, Comm const& comm = MPI_COMM_WORLD, Comp comp = {}, Proj proj = {}) {
     kamping::v2::comm_view const cv{mpi::experimental::handle(comm)};
     bool                         result = std::ranges::is_sorted(r, std::ref(comp), std::ref(proj));
@@ -48,7 +52,7 @@ bool is_sorted(R&& r, Comm const& comm = MPI_COMM_WORLD, Comp comp = {}, Proj pr
         // Put this rank's last element in a stack scalar; shift_right by 1
         // delivers it to the next rank's boundary via a zero-allocation sendrecv.
         MPI_Datatype const mpi_type = mpi::experimental::type(r);
-        value_t boundary{std::ranges::data(r)[std::ranges::size(r) - 1]};
+        value_t boundary{*std::prev(std::ranges::end(r))};
         shift_right(
             kamping::v2::views::ref_single(boundary) | kamping::v2::views::with_type(mpi_type),
             1,
