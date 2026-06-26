@@ -14,4 +14,5 @@
 #include "dstl/tags.hpp"                // IWYU pragma: export
 #include "dstl/visualization.hpp"       // IWYU pragma: export
 #include "dstl/algorithm.hpp"           // IWYU pragma: export
+#include "dstl/redistribute.hpp"        // IWYU pragma: export
 #include "dstl/with_subset.hpp"         // IWYU pragma: export
