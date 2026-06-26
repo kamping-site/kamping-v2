@@ -3,7 +3,7 @@ include(FetchContent)
 FetchContent_Declare(
         KaTestrophe
         GIT_REPOSITORY https://github.com/kamping-site/KaTestrophe.cmake
-        GIT_TAG v1.0.2
+        GIT_TAG v1.1.0
 )
 FetchContent_MakeAvailable(KaTestrophe)
 
