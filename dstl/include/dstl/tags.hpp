@@ -59,4 +59,11 @@ struct ordered_by_source {};
 
 } // namespace layout
 
+/// Concept: a recv-ordering tag — `layout::unordered` or `layout::ordered_by_source`. Shared by the grid
+/// alltoallv (`grid_compatible_output_layout`) and the request_reply output (which reuses the same two
+/// tags: `unordered` → a plain `recv_buffer`, `ordered_by_source` → a variadic `recv_buffer_v`).
+template <typename T>
+concept is_output_layout =
+    std::is_same_v<T, layout::unordered> || std::is_same_v<T, layout::ordered_by_source>;
+
 } // namespace dstl
