@@ -8,5 +8,5 @@
 /// variant `dstl::grid_alltoallv` dispatched on `dstl::grid_comm` and the flat (single-exchange)
 /// variant `dstl::alltoallv` dispatched on `dstl::thread_multiple_comm`.
 
-#include "dstl/flat_alltoallv.hpp"
-#include "dstl/grid_alltoallv.hpp"
+#include "dstl/flat_alltoallv.hpp" // IWYU pragma: export
+#include "dstl/grid_alltoallv.hpp" // IWYU pragma: export

@@ -27,3 +27,11 @@ katestrophe_add_mpi_test(test_dstl_thread_multiple_comm CORES 1 2 4 8)
 add_executable(test_dstl_flat_alltoallv flat_alltoallv_test.cpp)
 target_link_libraries(test_dstl_flat_alltoallv PRIVATE dstl kamping_v2_warnings KaTestrophe::main_thread_multiple)
 katestrophe_add_mpi_test(test_dstl_flat_alltoallv CORES 1 2 4 8)
+
+add_executable(test_dstl_is_sorted dstl_is_sorted_test.cpp)
+target_link_libraries(test_dstl_is_sorted PRIVATE dstl kamping_v2_warnings KaTestrophe::main_thread_single)
+katestrophe_add_mpi_test(test_dstl_is_sorted CORES 1 2 4)
+
+add_executable(test_dstl_shift dstl_shift_test.cpp)
+target_link_libraries(test_dstl_shift PRIVATE dstl kamping_v2_warnings KaTestrophe::main_thread_single)
+katestrophe_add_mpi_test(test_dstl_shift CORES 1 2 4)
