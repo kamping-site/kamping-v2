@@ -35,3 +35,7 @@ katestrophe_add_mpi_test(test_dstl_is_sorted CORES 1 2 4)
 add_executable(test_dstl_shift dstl_shift_test.cpp)
 target_link_libraries(test_dstl_shift PRIVATE dstl kamping_v2_warnings KaTestrophe::main_thread_single)
 katestrophe_add_mpi_test(test_dstl_shift CORES 1 2 4)
+
+add_executable(test_dstl_redistribute dstl_redistribute_test.cpp)
+target_link_libraries(test_dstl_redistribute PRIVATE dstl kamping_v2_warnings KaTestrophe::main_thread_single)
+katestrophe_add_mpi_test(test_dstl_redistribute CORES 1 2 4)
