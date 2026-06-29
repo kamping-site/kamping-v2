@@ -22,6 +22,7 @@
 
 #include "dstl/default_init_allocator.hpp"
 #include "dstl/detail/alltoallv_common.hpp"
+#include "dstl/detail/recv_buffer_utils.hpp"
 #include "dstl/grid_comm.hpp"
 #include "dstl/tags.hpp"
 #include "kamping/kassert/kassert.hpp"
@@ -121,65 +122,9 @@ struct routing_state {
 };
 // See grid_comm.hpp for a k = 2 diagram of how ranks map onto the grid and its subcommunicators, and
 // the remote-first routing order this algorithm follows over them.
-
-/// Ensure a non-variadic recv buffer has room for `total_recv` elements ahead of the final-phase deposit.
-/// Resizing is *opt-in*, matching the kamping v2 convention (only deferred buffers are sized; `infer()`
-/// likewise only ever calls `set_recv_count` on a `deferred_recv_buf`):
-///   * a deferred recv buffer (`views::resize`) records the size via `set_recv_count`; the actual
-///     allocation is deferred to the buffer's first `ptr()` access (the alltoallv that receives into it),
-///     so there is no eager `materialize` here.
-///   * any other buffer — a plain `std::vector`, a span, a `vec<S> | with_auto_pool` — is assumed
-///     pre-sized by the caller and only checked. (Pass `views::resize` to opt into automatic resizing.)
-/// A *variadic* deferred buffer is rejected: its per-source counts are unknown without source labels, so
-/// the ordered path sizes such buffers itself. `deferred_recv_buf` is satisfied on reference types, so no
-/// `remove_cvref` is needed.
-template <typename RBuf>
-void ensure_recv_capacity(RBuf& rbuf, int total_recv) {
-    if constexpr (kamping::v2::deferred_recv_buf<RBuf>) {
-        rbuf.set_recv_count(static_cast<std::ptrdiff_t>(total_recv));
-    } else {
-        static_assert(
-            !kamping::v2::deferred_recv_buf_v<RBuf>,
-            "unordered grid alltoallv cannot fill a variadic recv buffer's per-source counts; pass a "
-            "non-variadic recv buffer (e.g. views::resize) or use ordered_by_source."
-        );
-        KAMPING_V2_ASSERT(
-            static_cast<std::size_t>(mpi::experimental::count(rbuf)) >= static_cast<std::size_t>(total_recv),
-            "dstl::grid_alltoallv: non-resizable recv buffer is smaller than the received element total; pass "
-            "views::resize to opt into automatic resizing."
-        );
-    }
-}
-
-/// Size `rbuf` from the per-source recv counts and return each source's base write offset (its
-/// displacement). For a variadic deferred buffer (`deferred_recv_buf_v`, e.g. `views::auto_recv_v`) the
-/// histogram *is* the buffer's `recv_counts`, so we write it straight in, then `commit_counts()` +
-/// `materialize()` size the buffer and derive the displacements we hand back — counts and offsets in one
-/// pass. For any other buffer the buffer is sized to the total via `ensure_recv_capacity` and the offsets
-/// are an exclusive scan of the counts.
-template <typename RBuf>
-std::vector<int> size_from_source_counts(RBuf& rbuf, std::span<int const> per_source_counts, int total_recv) {
-    if constexpr (kamping::v2::deferred_recv_buf_v<RBuf>) {
-        rbuf.set_comm_size(static_cast<int>(per_source_counts.size()));
-        auto recv_counts = mpi::experimental::counts(rbuf); // mutable per-source counts buffer
-        std::ranges::copy(per_source_counts, std::ranges::begin(recv_counts));
-        rbuf.commit_counts();
-        // Deliberate eager realization — NOT a strict correctness need (the lazy accessors self-realize:
-        // auto_displs computes displs on read, resize_v resizes on ptr). But the ordered counting-sort
-        // scatter that follows is parallel and consumes the buffer's OWN derived displs() + ptr() storage
-        // directly in host code, so we force the counts->displs derivation and the resize here, once and
-        // single-threaded, before for_each_chunk — making that region race-free regardless of where the
-        // accessors are first touched.
-        kamping::v2::materialize(rbuf);
-        auto recv_displs = mpi::experimental::displs(rbuf); // derived from the counts written above
-        return std::vector<int>(std::ranges::begin(recv_displs), std::ranges::end(recv_displs));
-    } else {
-        ensure_recv_capacity(rbuf, total_recv);
-        std::vector<int> displs(per_source_counts.size());
-        std::exclusive_scan(per_source_counts.begin(), per_source_counts.end(), displs.begin(), 0);
-        return displs;
-    }
-}
+//
+// The recv-buffer sizing helpers `ensure_recv_capacity` and `size_from_source_counts` live in
+// dstl/detail/recv_buffer_utils.hpp (shared with the reversible exchange / request_reply path).
 
 /// Group the routed elements by their global source rank into `rbuf`, byte-identical to a flat
 /// MPI_Alltoallv. This is a stable counting sort (O(n), not O(n log n)): histogram the source labels,
