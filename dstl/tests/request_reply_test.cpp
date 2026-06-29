@@ -13,21 +13,19 @@
 
 #include "dstl/dstl.hpp"
 #include "kamping/v2/views.hpp"
+#include "mpi/comm.hpp"
 
 namespace views = kamping::v2::views;
+using mpi::experimental::comm_view;
 
 namespace {
 
 int world_size() {
-    int s = 0;
-    MPI_Comm_size(MPI_COMM_WORLD, &s);
-    return s;
+    return comm_view{MPI_COMM_WORLD}.size();
 }
 
 int world_rank() {
-    int r = 0;
-    MPI_Comm_rank(MPI_COMM_WORLD, &r);
-    return r;
+    return comm_view{MPI_COMM_WORLD}.rank();
 }
 
 /// An interleaved (not destination-grouped) request set: rank r issues `3*size + r` requests, the k-th
@@ -167,22 +165,6 @@ TEST(RequestReply, OrderedVariadic) {
                         dstl::layout::ordered_by_source{});
 
     EXPECT_EQ(result, (expected_grouped<int>(reqs, size, reply)));
-}
-
-// ── source-rank arity ────────────────────────────────────────────────────────────────────────────────
-
-// The reply sees the origin rank, which for this rank's requests is this rank.
-TEST(RequestReply, Sourced) {
-    int  rank  = world_rank();
-    int  size  = world_size();
-    auto reqs  = build_pairs(rank, size);
-    auto reply = [](int v, int src) { return v * 2 + src; };
-
-    std::vector<int> result;
-    dstl::request_reply(reqs, result | views::resize, reply);
-
-    auto expected = expected_grouped<int>(reqs, size, [&](int v) { return v * 2 + rank; });
-    EXPECT_EQ(result, expected);
 }
 
 // ── par policy: element-identical to seq ────────────────────────────────────────────────────────────

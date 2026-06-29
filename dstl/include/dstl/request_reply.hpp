@@ -37,83 +37,27 @@ namespace dstl {
 
 namespace detail {
 
-/// Whether the `par` policy should actually run the local loops in parallel: `par` does, but only when
-/// the translation unit is compiled with OpenMP. Without OpenMP `par` falls back to serial execution
-/// (mirroring the flat alltoallv `par` policy), so the parallel kernels never assert.
-template <typename Exec>
-inline constexpr bool want_parallel =
-#ifdef _OPENMP
-    std::is_same_v<Exec, execution_policy::par>;
-#else
-    false;
-#endif
-
-/// True when `make_reply` takes the source rank as a second argument (`Reply(Value const&, int)`). When it
-/// does, request_reply hands it the origin rank, recovered for free from the forward recv counts.
+/// The reply element type produced by `make_reply` for a request `Value` — the element-wise result type.
 template <typename F, typename Value>
-inline constexpr bool is_sourced_reply = std::is_invocable_v<F const&, Value const&, int>;
+using reply_t = std::remove_cvref_t<std::invoke_result_t<F const&, Value const&>>;
 
-/// The reply element type produced by `make_reply` for a given request `Value`: the result of the
-/// source-rank arity when that one applies, otherwise of the element-wise arity. A lazy partial
-/// specialization (rather than `conditional_t`) so the arity that does *not* apply is never instantiated —
-/// a source-rank-only functor has no element-wise `invoke_result`, and vice versa.
-template <typename F, typename Value, bool Sourced = is_sourced_reply<F, Value>>
-struct reply_type {
-    using type = std::remove_cvref_t<std::invoke_result_t<F const&, Value const&>>;
-};
-
+/// Concept: a valid reply functor for a request `Value` — element-wise invocable, producing a
+/// trivially-copyable reply (it rides MPI back).
 template <typename F, typename Value>
-struct reply_type<F, Value, true> {
-    using type = std::remove_cvref_t<std::invoke_result_t<F const&, Value const&, int>>;
-};
-
-template <typename F, typename Value>
-using reply_t = typename reply_type<F, Value>::type;
-
-/// Concept: a valid reply functor for a request `Value` — element-wise or source-rank invocable, producing
-/// a trivially-copyable reply (it rides MPI back).
-template <typename F, typename Value>
-concept reply_fn = (std::is_invocable_v<F const&, Value const&> || std::is_invocable_v<F const&, Value const&, int>)
-                   && std::is_trivially_copyable_v<reply_t<F, Value>>;
+concept reply_fn = std::is_invocable_v<F const&, Value const&> && std::is_trivially_copyable_v<reply_t<F, Value>>;
 
 /// Run `make_reply` over the received requests, 1:1, into a fresh reply vector. The reply buffer is sized
 /// to the received-request count (`> p`) and every slot is written, so it uses `uninit_vector` to skip the
 /// value-initialization. The loop is OpenMP-parallel when `parallel` is set (via `chunked_for`); reply
-/// generation is embarrassingly parallel. When `make_reply` takes a source rank, a per-element source label
-/// is expanded once from `recv_counts`.
+/// generation is embarrassingly parallel.
 template <typename Reply, typename Value, typename F>
-uninit_vector<Reply>
-make_replies(std::span<Value const> recv, std::span<int const> recv_counts, F const& make_reply, bool parallel) {
+uninit_vector<Reply> make_replies(std::span<Value const> recv, F const& make_reply, bool parallel) {
     uninit_vector<Reply> replies(recv.size());
-    if constexpr (is_sourced_reply<F, Value>) {
-        std::vector<int> source(recv.size());
-        std::ptrdiff_t   pos = 0;
-        for (std::size_t s = 0; s < recv_counts.size(); ++s) {
-            for (int k = 0; k < recv_counts[s]; ++k) {
-                source[static_cast<std::size_t>(pos++)] = static_cast<int>(s);
-            }
+    detail::chunked_for(parallel, static_cast<std::ptrdiff_t>(recv.size()), [&](std::ptrdiff_t lo, std::ptrdiff_t hi) {
+        for (std::ptrdiff_t i = lo; i < hi; ++i) {
+            replies[static_cast<std::size_t>(i)] = make_reply(recv[static_cast<std::size_t>(i)]);
         }
-        detail::chunked_for(
-            parallel,
-            static_cast<std::ptrdiff_t>(recv.size()),
-            [&](std::ptrdiff_t lo, std::ptrdiff_t hi) {
-                for (std::ptrdiff_t i = lo; i < hi; ++i) {
-                    replies[static_cast<std::size_t>(i)] =
-                        make_reply(recv[static_cast<std::size_t>(i)], source[static_cast<std::size_t>(i)]);
-                }
-            }
-        );
-    } else {
-        detail::chunked_for(
-            parallel,
-            static_cast<std::ptrdiff_t>(recv.size()),
-            [&](std::ptrdiff_t lo, std::ptrdiff_t hi) {
-                for (std::ptrdiff_t i = lo; i < hi; ++i) {
-                    replies[static_cast<std::size_t>(i)] = make_reply(recv[static_cast<std::size_t>(i)]);
-                }
-            }
-        );
-    }
+    });
     return replies;
 }
 
@@ -221,9 +165,8 @@ counting_sort_pack(chunking const& chunks, int nbuckets, std::ptrdiff_t n, KeyFn
 ///                   (a plain `std::vector<Reply>` or `vec | views::resize`); for `ordered_by_source` a
 ///                   `recv_buffer_v` (e.g. `views::auto_recv_v`). Deferred/resizable buffers are sized
 ///                   automatically; a fixed buffer must already hold this rank's total reply count.
-/// @param make_reply Element-wise `Reply(Value const&)`, or the source-rank arity `Reply(Value const&,
-///                   int source)` (the origin rank is recovered for free). The reply must be trivially
-///                   copyable — it rides MPI back.
+/// @param make_reply Element-wise `Reply(Value const&)`. The reply must be trivially copyable — it rides
+///                   MPI back.
 /// @param comm      A plain `MPI_Comm` (or anything convertible to one).
 /// @tparam Exec     `execution_policy::seq` (default) or `::par`. `par` OpenMP-parallelizes only the local
 ///                  loops (bucketing pack, `make_reply`); the MPI exchange is single-threaded in both.
@@ -261,7 +204,7 @@ auto request_reply(
         !std::is_same_v<Exec, execution_policy::par_comm>,
         "request_reply: par_comm is not supported by the flat path; use execution_policy::seq or ::par."
     );
-    bool const     parallel = detail::want_parallel<Exec>;
+    constexpr bool parallel = !std::is_same_v<Exec, execution_policy::seq>;
     MPI_Comm const c        = mpi::experimental::handle(comm);
     int            p        = 0;
     MPI_Comm_size(c, &p);
@@ -298,7 +241,7 @@ auto request_reply(
 
     // Answer each received request locally, 1:1, in forward recv order.
     std::span<Value const> const recv{recv_requests.data(), recv_requests.size()};
-    auto replies = detail::make_replies<Reply, Value>(recv, layout.recv_counts, make_reply, parallel);
+    auto replies = detail::make_replies<Reply, Value>(recv, make_reply, parallel);
 
     // Transpose return: ship the replies back along the inverse route. The reversed layout's send side
     // groups the replies as the forward recv layout, so they land grouped by responder rank (displs ==
