@@ -5,23 +5,17 @@
 
 #include <algorithm>
 #include <cstddef>
-#include <numeric>
-#include <span>
-#include <type_traits>
-#include <utility>
-#include <vector>
 
 #ifdef _OPENMP
     #include <omp.h>
 #endif
 
 #include "kamping/kassert/kassert.hpp"
-#include "mpi/buffer.hpp"
 
 /// @file
-/// Detail helpers shared by the grid (dstl/grid_alltoallv.hpp) and flat (dstl/flat_alltoallv.hpp)
-/// all-to-all-v implementations: the buffer element-type trait, an exclusive-scan helper for
-/// displacements, and the OpenMP `chunked_for` work-splitting kernel.
+/// The OpenMP work-splitting kernels shared by the dstl collectives — `chunked_for` (split-by-thread-id
+/// inside one parallel region) and `chunking` (a fixed split-by-chunk-index partition). Used by the grid
+/// (dstl/grid_alltoallv.hpp), flat (dstl/flat_alltoallv.hpp), and request_reply bucketing.
 
 namespace dstl::detail {
 
