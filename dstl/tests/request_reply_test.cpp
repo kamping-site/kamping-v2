@@ -11,12 +11,27 @@
 #include <gtest/gtest.h>
 #include <mpi.h>
 
+#include <kamping/types/contiguous_type.hpp>
+#include <kamping/types/mpi_type_traits.hpp>
+
 #include "dstl/dstl.hpp"
+#include "kamping/v2/type_pool.hpp"
 #include "kamping/v2/views.hpp"
 #include "mpi/comm.hpp"
 
 namespace views = kamping::v2::views;
 using mpi::experimental::comm_view;
+
+// A custom request value type. It carries no datatype on the pair-range input, so request_reply requires
+// the MPI_Datatype overload; the datatype is built by registering the type (made known to kamping-types via
+// the byte_serialized trait specialization below) in a type_pool.
+struct MyStruct {
+    int    x;
+    double y;
+};
+
+template <>
+struct kamping::types::mpi_type_traits<MyStruct> : public kamping::types::byte_serialized<MyStruct> {};
 
 namespace {
 
@@ -211,6 +226,43 @@ TEST(RequestReply, StructReplyTypeFromBuffer) {
     EXPECT_EQ(result, expected);
 
     MPI_Type_free(&pair_dt);
+}
+
+// The request value is a custom (non-builtin) struct. The builtin overload does not match it, so the
+// datatype overload is used with an MPI_Datatype obtained from a type_pool.
+TEST(RequestReply, StructRequestWithDatatype) {
+    int rank = world_rank();
+    int size = world_size();
+
+    kamping::v2::type_pool pool;
+    MPI_Datatype           registered = pool.register_type<MyStruct>();
+    ASSERT_NE(registered, MPI_DATATYPE_NULL);
+    auto found = pool.find<MyStruct>();
+    ASSERT_TRUE(found.has_value());
+
+    auto reply = [](MyStruct const& s) { return s.x + static_cast<int>(s.y); }; // builtin (int) reply
+
+    std::vector<std::pair<MyStruct, int>> reqs;
+    for (int k = 0; k < 3 * size + rank; ++k) {
+        int const target = (rank + k) % size;
+        reqs.emplace_back(MyStruct{rank * 100 + k, static_cast<double>(k)}, target);
+    }
+
+    std::vector<int> result;
+    dstl::request_reply(reqs, registered, result | views::resize, reply);
+
+    // Responder-grouped oracle over the struct requests.
+    std::vector<int> counts(static_cast<std::size_t>(size), 0);
+    for (auto const& [v, d]: reqs) {
+        ++counts[static_cast<std::size_t>(d)];
+    }
+    std::vector<int> cursor(static_cast<std::size_t>(size));
+    std::exclusive_scan(counts.begin(), counts.end(), cursor.begin(), 0);
+    std::vector<int> expected(reqs.size());
+    for (auto const& [v, d]: reqs) {
+        expected[static_cast<std::size_t>(cursor[static_cast<std::size_t>(d)]++)] = reply(v);
+    }
+    EXPECT_EQ(result, expected);
 }
 
 // ── edge cases ──────────────────────────────────────────────────────────────────────────────────────
