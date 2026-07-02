@@ -96,20 +96,23 @@ void infer(comm_op::alltoall, SBuf const& sbuf, RBuf& rbuf, MPI_Comm /* comm */)
 }
 
 template <mpi::experimental::send_buffer_v SBuf, mpi::experimental::recv_buffer_v RBuf>
+    requires(!kamping::v2::deferred_send_buf_v<SBuf>)
 void infer(comm_op::alltoallv, SBuf const& sbuf, RBuf& rbuf, MPI_Comm comm) {
-    if constexpr (kamping::v2::deferred_send_buf_v<SBuf> || kamping::v2::deferred_recv_buf_v<RBuf>) {
+    if constexpr (kamping::v2::deferred_recv_buf_v<RBuf>) {
         int comm_size = mpi::experimental::comm_view{comm}.size();
-        // Lay out the send-side counts/displs/data over all comm_size ranks before
-        // they are read (sparse/flattened send buffers need this).
-        if constexpr (kamping::v2::deferred_send_buf_v<SBuf>) {
-            sbuf.set_comm_size(comm_size);
-        }
-        if constexpr (kamping::v2::deferred_recv_buf_v<RBuf>) {
-            rbuf.set_comm_size(comm_size);
-            mpi::experimental::alltoall(mpi::experimental::counts(sbuf), mpi::experimental::counts(rbuf), comm);
-            rbuf.commit_counts();
-        }
+        rbuf.set_comm_size(comm_size);
+        mpi::experimental::alltoall(mpi::experimental::counts(sbuf), mpi::experimental::counts(rbuf), comm);
+        rbuf.commit_counts();
     }
+}
+
+// Deferred send buffers (e.g. flatten_v_view) must be laid out before their counts can be
+// read, so sbuf cannot be const. Set comm_size first, then delegate to the non-deferred
+// overload for the recv side.
+template <kamping::v2::deferred_send_buf_v SBuf, mpi::experimental::recv_buffer_v RBuf>
+void infer(comm_op::alltoallv, SBuf& sbuf, RBuf& rbuf, MPI_Comm comm) {
+    sbuf.set_comm_size(mpi::experimental::comm_view{comm}.size());
+    infer(comm_op::alltoallv{}, std::as_const(sbuf), rbuf, comm);
 }
 
 template <mpi::experimental::send_buffer SBuf, mpi::experimental::recv_buffer RBuf>
@@ -187,20 +190,24 @@ void infer(comm_op::scatter, SBuf const& sbuf, RBuf& rbuf, int root, MPI_Comm co
 }
 
 template <mpi::experimental::send_buffer_v SBuf, mpi::experimental::recv_buffer RBuf>
+    requires(!kamping::v2::deferred_send_buf_v<SBuf>)
 void infer(comm_op::scatterv, SBuf const& sbuf, RBuf& rbuf, int root, MPI_Comm comm) {
-    if constexpr (kamping::v2::deferred_send_buf_v<SBuf>) {
-        // Only root holds a meaningful variadic send buffer; lay out its
-        // counts/displs/data over all comm_size ranks before they are read.
-        mpi::experimental::comm_view cv{comm};
-        if (cv.rank() == root) {
-            sbuf.set_comm_size(cv.size());
-        }
-    }
     if constexpr (kamping::v2::deferred_recv_buf<RBuf>) {
         int recv_count = 0;
         mpi::experimental::scatter(mpi::experimental::counts(sbuf), v2::views::ref_single(recv_count), root, comm);
         rbuf.set_recv_count(static_cast<std::ptrdiff_t>(recv_count));
     }
+}
+
+// Only root holds a meaningful variadic send buffer; lay out its counts/displs/data before
+// they are read. sbuf cannot be const because set_comm_size mutates the deferred layout.
+template <kamping::v2::deferred_send_buf_v SBuf, mpi::experimental::recv_buffer RBuf>
+void infer(comm_op::scatterv, SBuf& sbuf, RBuf& rbuf, int root, MPI_Comm comm) {
+    mpi::experimental::comm_view cv{comm};
+    if (cv.rank() == root) {
+        sbuf.set_comm_size(cv.size());
+    }
+    infer(comm_op::scatterv{}, std::as_const(sbuf), rbuf, root, comm);
 }
 
 template <mpi::experimental::send_buffer SBuf, mpi::experimental::recv_buffer RBuf>
