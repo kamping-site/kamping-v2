@@ -95,12 +95,13 @@ void infer(comm_op::alltoall, SBuf const& sbuf, RBuf& rbuf, MPI_Comm /* comm */)
     }
 }
 
+// Deferred send buffers (e.g. flatten_v_view wrapped in with_type_view) must be laid out
+// via set_comm_size() before their counts can be read, so sbuf cannot be const here.
+// Non-deferred send buffers are also accepted (the constraint check is a no-op for them).
 template <mpi::experimental::send_buffer_v SBuf, mpi::experimental::recv_buffer_v RBuf>
-void infer(comm_op::alltoallv, SBuf const& sbuf, RBuf& rbuf, MPI_Comm comm) {
+void infer(comm_op::alltoallv, SBuf& sbuf, RBuf& rbuf, MPI_Comm comm) {
     if constexpr (kamping::v2::deferred_send_buf_v<SBuf> || kamping::v2::deferred_recv_buf_v<RBuf>) {
         int comm_size = mpi::experimental::comm_view{comm}.size();
-        // Lay out the send-side counts/displs/data over all comm_size ranks before
-        // they are read (sparse/flattened send buffers need this).
         if constexpr (kamping::v2::deferred_send_buf_v<SBuf>) {
             sbuf.set_comm_size(comm_size);
         }
@@ -186,11 +187,13 @@ void infer(comm_op::scatter, SBuf const& sbuf, RBuf& rbuf, int root, MPI_Comm co
     }
 }
 
+// Deferred send buffers (e.g. flatten_v_view wrapped in with_type_view) must be laid out
+// via set_comm_size() before their counts can be read, so sbuf cannot be const here.
+// Non-deferred send buffers are also accepted (the constraint check is a no-op for them).
+// Only root holds a meaningful variadic send buffer; non-root passes null_buf_v.
 template <mpi::experimental::send_buffer_v SBuf, mpi::experimental::recv_buffer RBuf>
-void infer(comm_op::scatterv, SBuf const& sbuf, RBuf& rbuf, int root, MPI_Comm comm) {
+void infer(comm_op::scatterv, SBuf& sbuf, RBuf& rbuf, int root, MPI_Comm comm) {
     if constexpr (kamping::v2::deferred_send_buf_v<SBuf>) {
-        // Only root holds a meaningful variadic send buffer; lay out its
-        // counts/displs/data over all comm_size ranks before they are read.
         mpi::experimental::comm_view cv{comm};
         if (cv.rank() == root) {
             sbuf.set_comm_size(cv.size());
