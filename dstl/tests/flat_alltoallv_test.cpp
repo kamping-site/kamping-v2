@@ -88,6 +88,32 @@ TEST(FlatAlltoallvTest, UniformSingleElement) {
     EXPECT_EQ(recv, expected);
 }
 
+// Deferred send buffer: sparse flatten_v() sends require set_comm_size() before counts/displs are
+// read. Without the fix, ensure_flattened() would assert comm_size_.has_value() and abort.
+TEST(FlatAlltoallvTest, DeferredSendBuf_SparseFlattenV) {
+    if (mpi::experimental::environment::thread_level() < mpi::experimental::ThreadLevel::multiple) {
+        GTEST_SKIP() << "runtime does not provide MPI_THREAD_MULTIPLE";
+    }
+    int rank                    = world_rank();
+    int size                    = world_size();
+    auto [data, counts, displs] = build_send(rank, size);
+    std::vector<int> expected   = standard_alltoallv(data, counts, displs);
+
+    // Same send pattern as build_send but packaged as sparse (destination, buffer) pairs in
+    // reverse rank order — this triggers the sparse path in flatten_v_view that requires
+    // set_comm_size() before it can lay out counts/displs/data.
+    std::vector<std::pair<int, std::vector<int>>> per_dest;
+    for (int j = size - 1; j >= 0; --j) {
+        per_dest.emplace_back(j, std::vector<int>(static_cast<std::size_t>(rank + 1), rank * 10 + j));
+    }
+
+    dstl::thread_multiple_comm fc{comm_view{MPI_COMM_WORLD}};
+    std::vector<int>           recv;
+    dstl::alltoallv(per_dest | views::flatten_v(), recv | views::auto_recv_v, fc);
+
+    EXPECT_EQ(recv, expected);
+}
+
 // Degenerate: every rank sends nothing.
 TEST(FlatAlltoallvTest, AllEmpty) {
     if (mpi::experimental::environment::thread_level() < mpi::experimental::ThreadLevel::multiple) {
