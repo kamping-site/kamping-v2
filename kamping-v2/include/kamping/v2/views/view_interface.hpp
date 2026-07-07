@@ -258,6 +258,18 @@ struct view_interface : public view_interface_base, public std::ranges::view_int
             return derived().base();
         }
     }
+
+    /// Rvalue overload of underlying(): moves out of the innermost base, enabling
+    /// zero-copy extraction from temporaries (e.g. result.recv.underlying()).
+    constexpr auto underlying() &&
+        requires detail::has_base<Derived>
+    {
+        if constexpr (std::derived_from<std::remove_cvref_t<decltype(derived().base())>, view_interface_base>) {
+            return std::move(derived().base()).underlying();
+        } else {
+            return std::move(derived().base());
+        }
+    }
 };
 
 // Propagate supports_matched_probe through kamping view layers one step at a time via base().
