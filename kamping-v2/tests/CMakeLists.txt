@@ -25,6 +25,10 @@ add_executable(test_v2_materialize materialize_test.cpp)
 target_link_libraries(test_v2_materialize PRIVATE kamping_v2 kamping_v2_warnings GTest::gtest_main GTest::gmock)
 gtest_discover_tests(test_v2_materialize)
 
+add_executable(test_v2_view_interface_underlying view_interface_underlying_test.cpp)
+target_link_libraries(test_v2_view_interface_underlying PRIVATE kamping_v2 kamping_v2_warnings GTest::gtest_main)
+gtest_discover_tests(test_v2_view_interface_underlying)
+
 # MPI tests
 add_executable(test_v2_type_pool v2_type_pool_test.cpp)
 target_link_libraries(test_v2_type_pool PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
