@@ -537,6 +537,11 @@ auto grid_alltoallv(SBuf&& sbuf, RBuf&& rbuf, grid_comm<Exec> const& grid, [[may
     constexpr bool parallel = !std::is_same_v<Exec, execution_policy::seq>;
 
     auto const p  = static_cast<std::size_t>(grid.size());
+
+    if constexpr (kamping::v2::deferred_send_buf_v<std::remove_cvref_t<SBuf>>) {
+        sbuf.set_comm_size(static_cast<int>(p));
+    }
+
     auto const dt = mpi::experimental::type(sbuf); // dt_send: drives every staging exchange
 
     auto&&      send_counts = mpi::experimental::counts(sbuf); // contiguous range of int, size p

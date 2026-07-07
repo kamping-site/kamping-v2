@@ -208,6 +208,29 @@ TEST(GridAlltoallvTest, MixedGappedSendPackedRecv) {
     MPI_Type_free(&dt_recv);
 }
 
+// Deferred send buffer: sparse flatten_v() sends require set_comm_size() before counts/displs are
+// read. Without the fix, ensure_flattened() would assert comm_size_.has_value() and abort.
+TEST(GridAlltoallvTest, DeferredSendBuf_SparseFlattenV) {
+    int rank                    = world_rank();
+    int size                    = world_size();
+    auto [data, counts, displs] = build_send(rank, size);
+    std::vector<int> expected   = standard_alltoallv(data, counts, displs);
+
+    // Same send pattern as build_send but packaged as sparse (destination, buffer) pairs in
+    // reverse rank order — this triggers the sparse path in flatten_v_view that requires
+    // set_comm_size() before it can lay out counts/displs/data.
+    std::vector<std::pair<int, std::vector<int>>> per_dest;
+    for (int j = size - 1; j >= 0; --j) {
+        per_dest.emplace_back(j, std::vector<int>(static_cast<std::size_t>(rank + 1), rank * 10 + j));
+    }
+
+    dstl::grid_comm<dstl::execution_policy::seq> grid{comm_view{MPI_COMM_WORLD}};
+    std::vector<int>           recv;
+    dstl::grid_alltoallv(per_dest | views::flatten_v(), recv | views::resize, grid, dstl::layout::unordered{});
+
+    EXPECT_EQ(sorted(recv), sorted(expected));
+}
+
 // Explicit non-default factorizations produce the same result (exercises different k / dims).
 TEST(GridAlltoallvTest, ExplicitFactorizations) {
     int rank                    = world_rank();
