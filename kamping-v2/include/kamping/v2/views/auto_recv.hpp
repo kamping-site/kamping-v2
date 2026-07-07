@@ -41,4 +41,19 @@ auto auto_recv(type_pool& pool) {
     return Cont{} | views::with_auto_pool(pool) | kamping::v2::views::resize;
 }
 
+/// @brief Convenience factory accepting a @ref comm_view_with_pool instead of a bare pool.
+///
+/// Equivalent to `auto_recv<T>(env.pool())`.
+///
+///   v2::recv(v2::auto_recv<MyStruct>(comm), 0, comm);
+///
+/// @tparam T    Element type satisfying `has_static_type_v`.
+/// @tparam Cont Container type (must support `resize(n)` and `data()`).
+/// @param env   Pooled communicator view; the pool is used to commit and cache the MPI datatype for `T`.
+template <typename T, typename Cont = std::vector<T>, typename Env>
+    requires has_pool<std::remove_cvref_t<Env>>
+auto auto_recv(Env&& env) {
+    return auto_recv<T, Cont>(env.pool());
+}
+
 } // namespace kamping::v2

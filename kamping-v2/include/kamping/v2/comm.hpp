@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "kamping/v2/comm_view_with_pool.hpp" // IWYU pragma: export
 #include <mpi/comm.hpp>
 
 namespace kamping::v2 {

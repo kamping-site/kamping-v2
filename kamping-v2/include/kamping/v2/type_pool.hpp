@@ -110,6 +110,15 @@ public:
     }
 };
 
+/// @brief Concept matching any type that exposes a `pool()` method returning a `type_pool&`.
+///
+/// Satisfied by @ref comm_view_with_pool, enabling `views::with_auto_pool(env)` and
+/// `views::with_pool(env)` to accept a pooled communicator directly.
+template <typename T>
+concept has_pool = requires(T& t) {
+    { t.pool() } -> std::same_as<type_pool&>;
+};
+
 namespace views {
 namespace detail {
 struct with_pool_fn {
@@ -125,6 +134,15 @@ struct with_pool_fn {
         KAMPING_V2_ASSERT(dt.has_value(), "Type not registered in pool; call register_type<T>() first.");
         return kamping::v2::with_type_view(std::forward<R>(r), *dt);
     }
+
+    /// Overload accepting any type satisfying @ref has_pool (e.g. `comm_view_with_pool`).
+    template <typename R, typename Env>
+        requires has_pool<std::remove_cvref_t<Env>>
+                 && requires { typename kamping::v2::detail::mpi_element_type_t<std::remove_cvref_t<R>>; }
+                 && kamping::types::has_static_type_v<kamping::v2::detail::mpi_element_type_t<std::remove_cvref_t<R>>>
+    auto operator()(R&& r, Env&& env) {
+        return (*this)(std::forward<R>(r), env.pool());
+    }
 };
 
 struct with_auto_pool_fn {
@@ -136,6 +154,15 @@ struct with_auto_pool_fn {
     auto operator()(R&& r, type_pool& pool) {
         using elem_t = kamping::v2::detail::mpi_element_type_t<std::remove_cvref_t<R>>;
         return kamping::v2::with_type_view(std::forward<R>(r), pool.register_type<elem_t>());
+    }
+
+    /// Overload accepting any type satisfying @ref has_pool (e.g. `comm_view_with_pool`).
+    template <typename R, typename Env>
+        requires has_pool<std::remove_cvref_t<Env>>
+                 && requires { typename kamping::v2::detail::mpi_element_type_t<std::remove_cvref_t<R>>; }
+                 && kamping::types::has_static_type_v<kamping::v2::detail::mpi_element_type_t<std::remove_cvref_t<R>>>
+    auto operator()(R&& r, Env&& env) {
+        return (*this)(std::forward<R>(r), env.pool());
     }
 };
 } // namespace detail
