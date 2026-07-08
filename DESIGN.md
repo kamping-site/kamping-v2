@@ -333,6 +333,79 @@ void allgatherv(SBuf&& sbuf, RBuf&& rbuf, MPI_Comm comm) {
 
 ---
 
+## Reduction Operations (`make_op`)
+
+Reduce-like collectives (`reduce`, `allreduce`, `scan`, `exscan`) take an **operation** argument alongside their buffers. Operations follow the same **core-layer, traits-dispatched** design as buffers and handles — everything lives in `include/mpi/ops.hpp` (`mpi::experimental`), with the `kamping::v2` layer only re-exporting the user-facing names.
+
+### Operation dispatch (`as_mpi_op`)
+
+**File:** `include/mpi/ops.hpp`
+
+Every reduce-like wrapper resolves its operation argument to a raw `MPI_Op` via `mpi::experimental::as_mpi_op(op, sbuf, rbuf)`, with a 3-tier priority mirroring the buffer/handle accessors:
+
+1. **`op_traits<Op, SBuf, RBuf>` specialization** — non-intrusive, for op types you don't own
+2. **Builtin `MPI_Op` handle** — anything convertible to `MPI_Op` via `handle()` passes through (raw `MPI_SUM`, and the scoped op handles below)
+3. **Builtin range op** — maps a functor like `std::plus<>` on the buffer's element type to a predefined constant (`MPI_SUM`, …) via `kamping::types::mpi_operation_traits`
+
+The `valid_op<Op, SBuf, RBuf>` concept is simply "`as_mpi_op(op, sbuf, rbuf)` is well-formed"; reduce-like wrappers constrain their `Op` template parameter on it and pass `op` by `const&` throughout (so a move-only op handle is never copied).
+
+### `make_op` — constructing user-defined operations
+
+For operations that aren't builtin, `mpi::experimental::make_op(...)` (re-exported as `kamping::v2::make_op`) creates an RAII `MPI_Op` from the kamping-types dependency. It is a **thin factory** — the element-wise reduction logic lives in `kamping::types::ScopedFunctorOp` / `ScopedCallbackOp`, not here — that does a single `MPI_Op_create` ("one MPI call, no inference"), which is why it belongs in the core layer next to `as_mpi_op` rather than in the bindings layer.
+
+Two overloads:
+
+```cpp
+// (a) default-constructible binary functor / captureless lambda → ScopedFunctorOp.
+//     Element type T is explicit; the functor must be callable as T(T const&, T const&).
+auto op = kamping::v2::make_op<int>([](int a, int b) { return a + b; });
+
+// (b) raw MPI callback void(void*, void*, int*, MPI_Datatype*) → ScopedCallbackOp.
+//     No element type needed — the callback is already type-erased.
+auto op = kamping::v2::make_op(&my_mpi_callback);
+
+kamping::v2::reduce(data, recv, op, /*root=*/0, comm);
+```
+
+**Commutativity** is an optional trailing argument (`kamping::v2::commutative` / `non_commutative`, re-exported from `kamping::ops`), defaulting to `non_commutative` — the correctness-safe choice, since MPI never reorders a non-commutative op. Opt in for performance:
+
+```cpp
+auto op = kamping::v2::make_op<int>(std::plus<int>{}, kamping::v2::commutative);
+```
+
+Overload (a) is constrained on `is_default_constructible_v<Op> && is_invocable_r_v<T, Op, T const&, T const&>`, so a bad functor is a clean overload-resolution failure instead of a hard error inside the dependency. Stateful (capturing) lambdas are intentionally unsupported — they are neither default-constructible nor convertible to a raw callback; wrap the state in a functor, or build the callback yourself and use overload (b).
+
+### Making the result flow through collectives
+
+`make_op` returns `ScopedFunctorOp` / `ScopedCallbackOp`, which expose their `MPI_Op` via `.get()` but have no `mpi_handle()` member. Two `handle_traits` specializations (also in `include/mpi/ops.hpp`) bridge that gap:
+
+```cpp
+template <bool Commutative, typename T, typename Op>
+struct mpi::experimental::handle_traits<kamping::types::ScopedFunctorOp<Commutative, T, Op>> {
+    static MPI_Op handle(kamping::types::ScopedFunctorOp<Commutative, T, Op> const& op) noexcept {
+        return op.get();
+    }
+};
+// ... and the analogous ScopedCallbackOp specialization.
+```
+
+This makes any scoped op satisfy `convertible_to_mpi_handle<MPI_Op>`, so `as_mpi_op` tier 2 picks it up automatically — the op flows into every reduce-like collective with **no per-collective wiring**, however it was constructed.
+
+### Adding a custom operation type non-intrusively
+
+To adapt an op type you don't own (e.g. one that already knows its own `MPI_Op`), specialize `op_traits` — the tier-1 hook:
+
+```cpp
+template <>
+struct mpi::experimental::op_traits<MyOp, std::vector<int>, std::vector<int>> {
+    static MPI_Op op(MyOp const& o, std::vector<int> const&, std::vector<int> const&) {
+        return o.to_mpi_op();
+    }
+};
+```
+
+---
+
 ## Non-Blocking Operations
 
 Non-blocking MPI calls return `iresult<Buf>` (or `iresult<SBuf, RBuf>` for sendrecv):
@@ -526,6 +599,8 @@ ctest --test-dir build -R test_v2_allgather  # Runs with 1, 2, 4, 8 ranks
 | New view adaptor | `include/kamping/v2/views/*.hpp` | Derive from `view_interface<Derived>`, implement `base()` |
 | Custom buffer | User code | Specialize `buffer_traits<T>` or provide `mpi_count()`, `mpi_ptr()`, `mpi_type()` |
 | Custom handle | User code | Specialize `handle_traits<T>` or provide `mpi_handle()` |
+| Reduction operation | `include/mpi/ops.hpp` (core), re-exported in `include/kamping/v2/ops.hpp` | `mpi::experimental::make_op()`, `as_mpi_op()`, `valid_op` |
+| Custom operation type | User code | Specialize `op_traits<Op, SBuf, RBuf>` (or make it convertible to `MPI_Op` via `handle()`) |
 | Non-blocking variant | Same files as blocking | Return `iresult<Buf>` instead of `void` |
 
 ---
