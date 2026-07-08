@@ -8,6 +8,7 @@
 #include "kamping/v2/collectives/alltoallv.hpp"
 #include "kamping/v2/collectives/bcast.hpp"
 #include "kamping/v2/comm.hpp"
+#include "kamping/v2/comm_view_with_pool.hpp"
 #include "kamping/v2/type_pool.hpp"
 #include "kamping/v2/views.hpp"
 #include "mpi/comm.hpp"
