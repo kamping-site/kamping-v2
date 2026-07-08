@@ -84,7 +84,7 @@ public:
 class comm_view : public comm_accessors<comm_view> {
 public:
     /// @brief Construct from a raw `MPI_Comm`. The communicator must outlive this view.
-    explicit comm_view(MPI_Comm c) noexcept : _comm(c) {}
+    comm_view(MPI_Comm c) noexcept : _comm(c) {}
 
     /// @return The underlying `MPI_Comm` (for `handle()` dispatch).
     [[nodiscard]] MPI_Comm mpi_handle() const noexcept {
