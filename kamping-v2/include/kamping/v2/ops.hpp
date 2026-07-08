@@ -75,8 +75,7 @@ using op_callback_t = void (*)(void*, void*, int*, MPI_Datatype*);
 /// @param commutativity `kamping::v2::commutative` or `kamping::v2::non_commutative`.
 /// @return A `kamping::types::ScopedCallbackOp` owning the freshly created `MPI_Op`.
 template <commutativity_tag Commutativity = non_commutative_tag>
-[[nodiscard]] auto make_op(detail::op_callback_t callback, Commutativity commutativity = {}) {
-    static_cast<void>(commutativity);
+[[nodiscard]] auto make_op(detail::op_callback_t callback, Commutativity = {}) {
     return kamping::types::ScopedCallbackOp<detail::is_commutative_v<Commutativity>>{callback};
 }
 
@@ -100,8 +99,7 @@ template <commutativity_tag Commutativity = non_commutative_tag>
 template <typename T, typename Op, commutativity_tag Commutativity = non_commutative_tag>
     requires std::is_default_constructible_v<std::remove_cvref_t<Op>>
              && std::is_invocable_r_v<T, std::remove_cvref_t<Op>, T const&, T const&>
-[[nodiscard]] auto make_op(Op&& op, Commutativity commutativity = {}) {
-    static_cast<void>(commutativity);
+[[nodiscard]] auto make_op(Op&& op, Commutativity = {}) {
     return kamping::types::ScopedFunctorOp<detail::is_commutative_v<Commutativity>, T, std::remove_cvref_t<Op>>{
         std::forward<Op>(op)
     };
