@@ -70,6 +70,64 @@ TEST(Reduce, ForwardRangeInput) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// dstl::reduce_to_root
+// ─────────────────────────────────────────────────────────────────────────────
+
+TEST(ReduceToRoot, Sum) {
+    // Root receives the global sum; all other ranks get nullopt.
+    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
+    int const                    n   = 4;
+    auto const                   vec = iota_vec(comm.rank() * n, n);
+    int const                    p   = comm.size();
+
+    auto const result   = dstl::reduce_to_root(vec, 0, std::plus<int>{}, 0, comm);
+    int const  expected = n * p * (n * p - 1) / 2;
+
+    if (comm.rank() == 0) {
+        ASSERT_TRUE(result.has_value());
+        EXPECT_EQ(*result, expected);
+    } else {
+        EXPECT_FALSE(result.has_value());
+    }
+}
+
+TEST(ReduceToRoot, WithInit) {
+    // init is added once to the global sum, only on root.
+    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
+    int const                    n   = 2;
+    auto const                   vec = iota_vec(comm.rank() * n, n);
+    int const                    p   = comm.size();
+
+    auto const result = dstl::reduce_to_root(vec, 100, std::plus<int>{}, 0, comm);
+    int const  total  = n * p * (n * p - 1) / 2;
+
+    if (comm.rank() == 0) {
+        ASSERT_TRUE(result.has_value());
+        EXPECT_EQ(*result, 100 + total);
+    } else {
+        EXPECT_FALSE(result.has_value());
+    }
+}
+
+TEST(ReduceToRoot, NonDefaultRoot) {
+    // Last rank is root.
+    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
+    int const                    root = comm.size() - 1;
+    auto const                   vec  = iota_vec(comm.rank() * 2, 2);
+    int const                    p    = comm.size();
+
+    auto const result   = dstl::reduce_to_root(vec, 0, std::plus<int>{}, root, comm);
+    int const  expected = 2 * p * (2 * p - 1) / 2;
+
+    if (comm.rank() == root) {
+        ASSERT_TRUE(result.has_value());
+        EXPECT_EQ(*result, expected);
+    } else {
+        EXPECT_FALSE(result.has_value());
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // dstl::exclusive_scan
 // ─────────────────────────────────────────────────────────────────────────────
 
