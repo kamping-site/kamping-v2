@@ -3,8 +3,8 @@
 
 #pragma once
 
+#include "kamping/v2/comm.hpp"
 #include "kamping/v2/type_pool.hpp"
-#include "mpi/comm.hpp"
 
 namespace kamping::v2 {
 
@@ -19,9 +19,8 @@ namespace kamping::v2 {
 /// can be passed directly to any `kamping::v2::` collective or point-to-point
 /// wrapper.
 ///
-/// Construct from any combination of an existing communicator handle and a
-/// pool, or implicitly from a `comm_view` + `type_pool&` pair.  The pointed-to
-/// pool must outlive this view.
+/// Construct from a `comm_view` (or implicitly from `MPI_Comm`) and a
+/// `type_pool&`.  The pointed-to pool must outlive this view.
 ///
 /// @code
 /// // Typical class member pattern:
@@ -42,18 +41,23 @@ namespace kamping::v2 {
 /// @endcode
 class comm_view_with_pool : public mpi::experimental::comm_accessors<comm_view_with_pool> {
 public:
-    /// @brief Construct from a raw `MPI_Comm` and an existing pool.
-    ///
-    /// Both must outlive this view.
-    comm_view_with_pool(MPI_Comm comm, type_pool& pool) noexcept : _comm{comm}, _pool{&pool} {}
-
     /// @brief Construct from a `comm_view` and an existing pool.
-    comm_view_with_pool(mpi::experimental::comm_view comm, type_pool& pool) noexcept
-        : _comm{comm.mpi_handle()},
+    ///
+    /// Both must outlive this view. Accepts `MPI_Comm` implicitly via `comm_view`'s
+    /// non-explicit constructor, so `MPI_COMM_WORLD` can be passed directly.
+    comm_view_with_pool(kamping::v2::comm_view comm, type_pool& pool) noexcept
+        : _comm{comm},
           _pool{&pool} {}
 
     /// @return The underlying `MPI_Comm` (for `handle()` dispatch).
     [[nodiscard]] MPI_Comm mpi_handle() const noexcept {
+        return _comm.mpi_handle();
+    }
+
+    /// @brief Implicit conversion to a non-owning `comm_view`.
+    ///
+    /// Allows passing a `comm_view_with_pool` wherever a `comm_view` is expected.
+    operator kamping::v2::comm_view() const noexcept {
         return _comm;
     }
 
@@ -63,8 +67,8 @@ public:
     }
 
 private:
-    MPI_Comm   _comm;
-    type_pool* _pool;
+    kamping::v2::comm_view _comm;
+    type_pool*             _pool;
 };
 
 } // namespace kamping::v2
