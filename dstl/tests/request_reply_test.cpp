@@ -258,8 +258,9 @@ TEST(RequestReply, StructReplyTypeFromBuffer) {
     MPI_Type_free(&pair_dt);
 }
 
-// The request value is a custom (non-builtin) struct. The builtin overload does not match it, so the
-// datatype overload is used with an MPI_Datatype obtained from a type_pool.
+// The request value is a custom (non-builtin) struct, so value_type()'s builtin fallback does not apply;
+// the datatype is attached to the request buffer's value-type channel via views::with_value_pool, backed
+// by a type_pool that already has MyStruct registered.
 TEST(RequestReply, StructRequestWithDatatype) {
     int rank = world_rank();
     int size = world_size();
@@ -279,7 +280,7 @@ TEST(RequestReply, StructRequestWithDatatype) {
     }
 
     std::vector<int> result;
-    dstl::request_reply(reqs, registered, result | views::resize, reply);
+    dstl::request_reply(reqs | views::with_value_pool(pool), result | views::resize, reply);
 
     // Responder-grouped oracle over the struct requests.
     std::vector<int> counts(static_cast<std::size_t>(size), 0);

@@ -12,7 +12,6 @@
 #include <utility>
 #include <vector>
 
-#include <kamping/types/builtin_types.hpp>
 #include <mpi.h>
 
 #include "dstl/default_init_allocator.hpp"
@@ -47,18 +46,19 @@ using reply_t = std::remove_cvref_t<std::invoke_result_t<F const&, Value const&>
 template <typename F, typename Value>
 concept reply_fn = std::is_invocable_v<F const&, Value const&> && std::is_trivially_copyable_v<reply_t<F, Value>>;
 
-/// Concept: the shared requirements both request_reply overloads place on their range arguments — a sized
+/// Concept: the shared requirements request_reply places on its range arguments — a sized
 /// random-access request range (the bucketing pack indexes it directly), a contiguous output range whose
 /// buffer-ness matches the ordering (`recv_buffer_v` for `ordered_by_source`, plain `recv_buffer`
-/// otherwise), a trivially-copyable request value, and a valid reply functor.
+/// otherwise), a trivially-copyable request value, and a valid reply functor. The request datatype itself
+/// is resolved separately via `kamping::v2::has_mpi_value_type` / `kamping::v2::value_type` (see below).
 template <typename Requests, typename RBuf, typename MakeReply, typename Order>
 concept request_reply_args =
     std::ranges::sized_range<Requests> && std::ranges::random_access_range<Requests>
     && std::ranges::contiguous_range<RBuf>
     && ((std::is_same_v<Order, layout::ordered_by_source> && mpi::experimental::recv_buffer_v<RBuf>)
         || (!std::is_same_v<Order, layout::ordered_by_source> && mpi::experimental::recv_buffer<RBuf>))
-    && std::is_trivially_copyable_v<kamping::v2::flat_element_t<Requests>>
-    && reply_fn<MakeReply, kamping::v2::flat_element_t<Requests>>;
+    && std::is_trivially_copyable_v<kamping::v2::payload_element_t<Requests>>
+    && reply_fn<MakeReply, kamping::v2::payload_element_t<Requests>>;
 
 /// Run `make_reply` over the received requests, 1:1, into a fresh reply vector. The reply buffer is sized
 /// to the received-request count (`> p`) and every slot is written, so it uses `uninit_vector` to skip the
@@ -181,15 +181,18 @@ packed_buffer<T> counting_sort_pack(chunking const& chunks, int nbuckets, std::p
 ///                   automatically; a fixed buffer must already hold this rank's total reply count.
 /// @param make_reply  Element-wise `Reply(Value const&)`. The reply must be trivially copyable — it rides
 ///                    MPI back.
-/// @param request_type The MPI datatype of the request value. The pair-range input carries no datatype, so
-///                    a non-builtin (custom) value type must supply it here (e.g. from a
-///                    `kamping::v2::type_pool`). The builtin overload omits this and deduces it.
 /// @param comm        A plain `MPI_Comm` (or anything convertible to one).
 /// @tparam Exec       `execution_policy::seq` (default) or `::par`. `par` OpenMP-parallelizes only the local
 ///                    loops (bucketing pack, `make_reply`); the MPI exchange is single-threaded in both.
 ///                    `par_comm` is rejected.
 /// @tparam Order      `layout::unordered` (default) or `layout::ordered_by_source` (see above).
 /// @return The `result` buffer, forwarded (an lvalue is returned by reference, an rvalue by value).
+///
+/// The request datatype is resolved from `requests` itself via `kamping::v2::value_type()`, not a separate
+/// positional argument: the pair-range input carries no datatype on its own, so a non-builtin (custom)
+/// request value must attach one on the buffer — `requests | kamping::v2::views::with_value_type(dt)` or
+/// `| kamping::v2::views::with_auto_value_pool(pool)` — before calling. A builtin request value (e.g. `int`)
+/// needs no annotation; `value_type()`'s own builtin fallback covers it.
 template <
     kamping::v2::value_destination_pair_buffer Requests,
     typename RBuf,
@@ -197,20 +200,20 @@ template <
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm  = MPI_Comm,
     is_execution_policy                                    Exec  = execution_policy::seq,
     is_output_layout                                       Order = layout::unordered>
-    requires detail::request_reply_args<Requests, RBuf, MakeReply, Order>
+    requires detail::request_reply_args<Requests, RBuf, MakeReply, Order> && kamping::v2::has_mpi_value_type<Requests>
 auto request_reply(
     Requests&&             requests,
-    MPI_Datatype           request_type,
     RBuf&&                 result,
     MakeReply&&            make_reply,
     Comm const&            comm  = MPI_COMM_WORLD,
     [[maybe_unused]] Exec  exec  = {},
     [[maybe_unused]] Order order = {}
 ) -> RBuf {
-    namespace views        = kamping::v2::views;
-    using Value            = kamping::v2::flat_element_t<Requests>;
-    using Reply            = std::ranges::range_value_t<RBuf>;
-    constexpr bool ordered = std::is_same_v<Order, layout::ordered_by_source>;
+    namespace views                 = kamping::v2::views;
+    using Value                     = kamping::v2::payload_element_t<Requests>;
+    using Reply                     = std::ranges::range_value_t<RBuf>;
+    constexpr bool     ordered      = std::is_same_v<Order, layout::ordered_by_source>;
+    MPI_Datatype const request_type = kamping::v2::value_type(requests);
     static_assert(
         !std::is_same_v<Exec, execution_policy::par_comm>,
         "request_reply: par_comm is not supported by the flat path; use execution_policy::seq or ::par."
@@ -278,38 +281,6 @@ auto request_reply(
     }
 
     return std::forward<RBuf>(result);
-}
-
-/// Overload for a request value type the buffer protocol can deduce a datatype for — i.e. a builtin MPI
-/// type (e.g. `int`). Deduces the request datatype and forwards to the explicit-datatype overload above. A
-/// non-builtin (custom) request value does not match this overload, so the caller must use the
-/// `MPI_Datatype` overload and supply the datatype (e.g. from a `kamping::v2::type_pool`).
-template <
-    kamping::v2::value_destination_pair_buffer Requests,
-    typename RBuf,
-    typename MakeReply,
-    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm  = MPI_Comm,
-    is_execution_policy                                    Exec  = execution_policy::seq,
-    is_output_layout                                       Order = layout::unordered>
-    requires detail::request_reply_args<Requests, RBuf, MakeReply, Order>
-             && kamping::types::is_builtin_type_v<kamping::v2::flat_element_t<Requests>>
-auto request_reply(
-    Requests&&  requests,
-    RBuf&&      result,
-    MakeReply&& make_reply,
-    Comm const& comm  = MPI_COMM_WORLD,
-    Exec        exec  = {},
-    Order       order = {}
-) -> RBuf {
-    return request_reply(
-        std::forward<Requests>(requests),
-        kamping::types::builtin_type<kamping::v2::flat_element_t<Requests>>::data_type(),
-        std::forward<RBuf>(result),
-        std::forward<MakeReply>(make_reply),
-        comm,
-        exec,
-        order
-    );
 }
 
 } // namespace dstl
