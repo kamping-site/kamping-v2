@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Karlsruhe Institute of Technology
 // SPDX-License-Identifier: BSL-1.0
 
+#include <algorithm>
+#include <cstdint>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -9,6 +12,7 @@
 
 #include "kamping/types/contiguous_type.hpp"
 #include "kamping/types/mpi_type_traits.hpp"
+#include "kamping/types/std/unsafe/utility.hpp"
 #include "kamping/v2/collectives/alltoallv.hpp"
 #include "kamping/v2/type_pool.hpp"
 #include "kamping/v2/views.hpp"
@@ -254,4 +258,50 @@ TEST(ValueTypeEndToEndTest, SparseFlattenWithValuePoolThroughAlltoallv) {
         EXPECT_EQ(recv_data[i].x, expected[i].x);
         EXPECT_DOUBLE_EQ(recv_data[i].y, expected[i].y);
     }
+}
+
+// Regression: a value_destination_pair source whose payload is itself an (integral, integral)
+// pair -- e.g. std::pair<std::int64_t, std::int64_t>, the shape a reduce-by-key key/value
+// contribution naturally takes -- must survive flatten_v() | with_auto_pool() intact. Once
+// flattened, the flat buffer's own element type (the pair) structurally *also* matches
+// value_destination_pair (its second field satisfies the `rank` concept just by being an
+// integer). with_pool/with_auto_pool must therefore resolve via flat_element_t (always "this
+// buffer's own element type"), not payload_element_t (which would reinterpret the already-flat
+// buffer as another layer of (value, destination) pairs and truncate the payload to just the
+// pair's first field, corrupting every element on the wire) -- see flat_element_t's doc comment
+// in payload.hpp.
+TEST(ValueTypeEndToEndTest, FlattenedIntPairPayloadSurvivesWithAutoPool) {
+    using Pair = std::pair<std::int64_t, std::int64_t>;
+
+    int rank = 0, size = 0;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    kamping::v2::type_pool pool;
+
+    // Every rank sends one (key, value) = (rank, rank * 100 + j) pair to every rank j.
+    std::vector<std::pair<Pair, int>> msgs;
+    for (int j = 0; j < size; ++j) {
+        msgs.emplace_back(Pair{rank, rank * 100 + j}, j);
+    }
+
+    static_assert(std::is_same_v<kamping::v2::payload_element_t<decltype(msgs)>, Pair>);
+    auto flattened = msgs | views::flatten_v();
+    // with_auto_pool (the plain buffer-type channel) resolves via flat_element_t, not
+    // payload_element_t -- see flat_element_t's doc comment for why the two must differ here.
+    static_assert(std::is_same_v<kamping::v2::flat_element_t<decltype(flattened)>, Pair>);
+
+    std::vector<Pair> recv_data;
+    kamping::v2::alltoallv(
+        flattened | views::with_auto_pool(pool),
+        recv_data | views::with_auto_pool(pool) | views::auto_recv_v
+    );
+
+    std::vector<Pair> expected;
+    for (int i = 0; i < size; ++i) {
+        expected.emplace_back(i, i * 100 + rank);
+    }
+    std::ranges::sort(recv_data);
+    std::ranges::sort(expected);
+    EXPECT_EQ(recv_data, expected);
 }

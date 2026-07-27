@@ -108,6 +108,43 @@ template <typename R>
 using payload_element_t = typename payload_element<R>::type;
 
 // ──────────────────────────────────────────────────────────────────────────────
+// flat_element_t — the buffer's OWN element type, unconditionally. No structural
+// nested/sparse/value_destination_pair detection.
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Resolves a buffer's own element type, always treating it as already flat — unlike
+/// `payload_element_t`, this never reinterprets `R` as a still-structured
+/// (nested/sparse/value_destination_pair) source. Priority: `std::ranges::range_value_t<R>`
+/// for standard ranges, else a public `R::value_type` member (kokkos_view, sycl_view, …).
+///
+/// `payload_element_t` and `flat_element_t` agree for a genuinely flat buffer, but diverge
+/// whenever `R`'s element type structurally *resembles* a flattenable shape by coincidence —
+/// e.g. a plain `std::vector<std::pair<VId, VId>>` (an ordinary flat key/value buffer) whose
+/// second field happens to satisfy the `rank` concept just by being an integer, which
+/// `payload_element_t` would misclassify as a value_destination_pair_buffer and resolve to
+/// just the pair's first field. `with_pool`/`with_auto_pool` (the plain buffer-type channel,
+/// `mpi::experimental::type()`) always mean "this buffer's own element type" and must use
+/// `flat_element_t`; `with_value_pool`/`with_auto_value_pool` (the payload/value-type channel
+/// feeding flatten_v_view and dstl::request_reply) mean "the payload of a possibly still-
+/// structured source" and must keep using `payload_element_t`.
+template <typename R>
+struct flat_element {};
+
+template <std::ranges::range R>
+struct flat_element<R> {
+    using type = std::ranges::range_value_t<R>;
+};
+
+template <typename R>
+    requires(!std::ranges::range<R>) && requires { typename R::value_type; }
+struct flat_element<R> {
+    using type = typename R::value_type;
+};
+
+template <typename R>
+using flat_element_t = typename flat_element<R>::type;
+
+// ──────────────────────────────────────────────────────────────────────────────
 // value_type() — the payload/value-type channel. New vocabulary, NOT part of the
 // mpi::experimental:: buffer protocol (see file header). Three-tier dispatch mirroring
 // mpi::experimental::type(), but with its own tier-1 customization point.
