@@ -106,10 +106,23 @@ public:
     /// @return The `MPI_Datatype` for `T`, or `std::nullopt` if not registered.
     template <typename T>
     std::optional<MPI_Datatype> find() const {
-        if constexpr (
-            kamping::types::has_static_type_v<T> && !kamping::types::mpi_type_traits<T>::has_to_be_committed
-        ) {
-            return kamping::types::mpi_type_traits<T>::data_type();
+        // Nested (not combined-&&) on purpose: mpi_type_traits<T>::has_to_be_committed is a hard
+        // error for a genuinely trait-less T (the empty primary template has no such member), and
+        // a single `if constexpr (has_static_type_v<T> && !mpi_type_traits<T>::has_to_be_committed)`
+        // does NOT get concept-style short-circuit treatment — both operands must be well-formed
+        // regardless of the left side's value. Nesting ensures the inner check is only instantiated
+        // once has_static_type_v<T> is already known true.
+        if constexpr (kamping::types::has_static_type_v<T>) {
+            if constexpr (!kamping::types::mpi_type_traits<T>::has_to_be_committed) {
+                return kamping::types::mpi_type_traits<T>::data_type();
+            } else {
+                std::type_index idx = std::type_index(typeid(T));
+                auto            it  = _types.find(idx);
+                if (it == _types.end()) {
+                    return std::nullopt;
+                }
+                return it->second.data_type();
+            }
         } else {
             std::type_index idx = std::type_index(typeid(T));
             auto            it  = _types.find(idx);

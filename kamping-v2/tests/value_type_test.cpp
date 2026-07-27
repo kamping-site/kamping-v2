@@ -26,6 +26,13 @@ struct MyStruct {
 template <>
 struct kamping::types::mpi_type_traits<MyStruct> : public kamping::types::byte_serialized<MyStruct> {};
 
+// Deliberately no kamping::types::mpi_type_traits<TraitlessStruct> specialization anywhere — this is
+// the exact case the one-shot register_type<T>(MPI_Datatype) overload exists for, and find<T>() must
+// not hard-error on it (mpi_type_traits<T> is the empty primary template, with no members at all).
+struct TraitlessStruct {
+    int x;
+};
+
 // ── payload_element_t: the flat fallback subsumes the old mpi_element_type_t ───────────────
 
 TEST(PayloadElementTest, PlainRangeFallsBackToRangeValueType) {
@@ -157,6 +164,25 @@ TEST(TypePoolValueTypeTest, RedundantOneShotRegistrationKeepsFirstAndFreesSecond
     MPI_Datatype second = pool.register_type<MyStruct>(dt2);
 
     EXPECT_EQ(first, second);
+}
+
+// Regression: find<T>() for a T with NO mpi_type_traits<T> specialization at all must not hard-error.
+// (find<T>()'s builtin/no-commit check has to short-circuit via nested if-constexpr, not a combined
+// `has_static_type_v<T> && !mpi_type_traits<T>::has_to_be_committed` — the latter still requires
+// mpi_type_traits<T>::has_to_be_committed to be a well-formed expression even when the left side is
+// false, which it is not for a genuinely trait-less T.)
+TEST(TypePoolValueTypeTest, FindOnTraitlessTypeDoesNotHardError) {
+    kamping::v2::type_pool pool;
+    EXPECT_FALSE(pool.find<TraitlessStruct>().has_value());
+
+    MPI_Datatype dt = MPI_DATATYPE_NULL;
+    MPI_Type_contiguous(static_cast<int>(sizeof(TraitlessStruct)), MPI_BYTE, &dt);
+    MPI_Datatype registered = pool.register_type<TraitlessStruct>(dt);
+    ASSERT_NE(registered, MPI_DATATYPE_NULL);
+
+    auto found = pool.find<TraitlessStruct>();
+    ASSERT_TRUE(found.has_value());
+    EXPECT_EQ(*found, registered);
 }
 
 // ── with_value_pool / with_auto_value_pool: resolve the payload, not the pair ──────────────
