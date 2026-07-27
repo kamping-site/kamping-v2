@@ -53,8 +53,10 @@ concept reply_fn = std::is_invocable_v<F const&, Value const&> && std::is_trivia
 /// otherwise), a trivially-copyable request value, and a valid reply functor.
 template <typename Requests, typename RBuf, typename MakeReply, typename Order>
 concept request_reply_args =
-    ((std::is_same_v<Order, layout::ordered_by_source> && mpi::experimental::recv_buffer_v<RBuf>)
-     || (!std::is_same_v<Order, layout::ordered_by_source> && mpi::experimental::recv_buffer<RBuf>))
+    std::ranges::sized_range<Requests> && std::ranges::random_access_range<Requests>
+    && std::ranges::contiguous_range<RBuf>
+    && ((std::is_same_v<Order, layout::ordered_by_source> && mpi::experimental::recv_buffer_v<RBuf>)
+        || (!std::is_same_v<Order, layout::ordered_by_source> && mpi::experimental::recv_buffer<RBuf>))
     && std::is_trivially_copyable_v<kamping::v2::flat_element_t<Requests>>
     && reply_fn<MakeReply, kamping::v2::flat_element_t<Requests>>;
 

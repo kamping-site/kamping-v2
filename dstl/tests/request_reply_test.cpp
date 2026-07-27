@@ -199,6 +199,36 @@ TEST(RequestReply, ParMatchesSeq) {
     EXPECT_EQ(seq, (expected_grouped<int>(reqs, size, reply)));
 }
 
+// A fixed-size, non-resizable recv_buffer_v: a plain pre-sized vector with pre-computed per-responder
+// counts/displs (this rank's forward per-destination request counts) attached via views::with_counts /
+// views::with_displs — no resize/auto-negotiation — instead of the auto-managed views::auto_recv_v used by
+// OrderedVariadic above.
+TEST(RequestReply, OrderedFixedSizeBuffer) {
+    int  rank  = world_rank();
+    int  size  = world_size();
+    auto reqs  = build_pairs(rank, size);
+    auto reply = [](int v) { return v + 1; };
+
+    std::vector<int> counts(static_cast<std::size_t>(size), 0);
+    for (auto const& [v, d]: reqs) {
+        ++counts[static_cast<std::size_t>(d)];
+    }
+    std::vector<int> displs(static_cast<std::size_t>(size));
+    std::exclusive_scan(counts.begin(), counts.end(), displs.begin(), 0);
+
+    std::vector<int> result(reqs.size());
+    dstl::request_reply(
+        reqs,
+        result | views::with_counts(counts) | views::with_displs(displs),
+        reply,
+        MPI_COMM_WORLD,
+        dstl::execution_policy::seq{},
+        dstl::layout::ordered_by_source{}
+    );
+
+    EXPECT_EQ(result, (expected_grouped<int>(reqs, size, reply)));
+}
+
 // ── datatype: a trivially-copyable struct reply whose MPI type rides on the recv buffer ─────────────
 
 struct Pair {
