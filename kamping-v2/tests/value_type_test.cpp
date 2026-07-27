@@ -9,7 +9,9 @@
 
 #include "kamping/types/contiguous_type.hpp"
 #include "kamping/types/mpi_type_traits.hpp"
+#include "kamping/v2/collectives/alltoallv.hpp"
 #include "kamping/v2/type_pool.hpp"
+#include "kamping/v2/views.hpp"
 #include "kamping/v2/views/flatten_v_view.hpp"
 #include "kamping/v2/views/payload.hpp"
 #include "kamping/v2/views/with_type_view.hpp"
@@ -205,4 +207,51 @@ TEST(TypePoolValueTypeTest, WithValuePoolUsesOneShotRegisteredType) {
     std::vector<std::pair<MyStruct, int>> pairs{{{1, 2.0}, 0}};
     auto                                  view = pairs | views::with_value_pool(pool);
     EXPECT_EQ(kamping::v2::value_type(view), registered);
+}
+
+// ── end-to-end: with_value_type/with_auto_value_pool + flatten_v() through a real alltoallv ────
+//
+// Exercises the composition sparse_alltoall.md's own transform_messages(with_auto_pool(...)) idea
+// is modeled on: a structured (sparse) send buffer carrying a non-builtin payload, annotated on the
+// value-type channel, flattened in-pipeline, and actually sent/received across ranks — not just
+// type-checked in isolation. If flatten_v_view's mpi_type() override (honoring Source's
+// mpi_value_type() instead of the deduced fallback) were wrong, or if the wrong MPI type were used
+// on the wire, the received struct fields would come back corrupted or MPI would reject the
+// mismatched type signature outright.
+TEST(ValueTypeEndToEndTest, SparseFlattenWithValuePoolThroughAlltoallv) {
+    int rank = 0, size = 0;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    kamping::v2::type_pool pool;
+
+    // rank r sends (r+1) copies of MyStruct{r*10+j, r+j} to rank j, as sparse (destination, buffer)
+    // pairs in reverse rank order (exercises out-of-order layout, matching the existing
+    // SparseFlattenSendBuffer / infer()-driven set_comm_size test for the plain-int case).
+    std::vector<std::pair<int, std::vector<MyStruct>>> per_dest;
+    for (int j = size - 1; j >= 0; --j) {
+        std::vector<MyStruct> msgs;
+        for (int k = 0; k < rank + 1; ++k) {
+            msgs.push_back(MyStruct{rank * 10 + j, static_cast<double>(rank + j)});
+        }
+        per_dest.emplace_back(j, std::move(msgs));
+    }
+
+    std::vector<MyStruct> recv_data;
+    kamping::v2::alltoallv(
+        per_dest | views::with_auto_value_pool(pool) | views::flatten_v(),
+        recv_data | views::with_type(pool.register_type<MyStruct>()) | views::auto_recv_v
+    );
+
+    std::vector<MyStruct> expected;
+    for (int i = 0; i < size; ++i) {
+        for (int k = 0; k < i + 1; ++k) {
+            expected.push_back(MyStruct{i * 10 + rank, static_cast<double>(i + rank)});
+        }
+    }
+    ASSERT_EQ(recv_data.size(), expected.size());
+    for (std::size_t i = 0; i < expected.size(); ++i) {
+        EXPECT_EQ(recv_data[i].x, expected[i].x);
+        EXPECT_DOUBLE_EQ(recv_data[i].y, expected[i].y);
+    }
 }
