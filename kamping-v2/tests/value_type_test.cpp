@@ -262,14 +262,21 @@ TEST(ValueTypeEndToEndTest, SparseFlattenWithValuePoolThroughAlltoallv) {
 
 // Regression: a value_destination_pair source whose payload is itself an (integral, integral)
 // pair -- e.g. std::pair<std::int64_t, std::int64_t>, the shape a reduce-by-key key/value
-// contribution naturally takes -- must survive flatten_v() | with_auto_pool() intact. Once
-// flattened, the flat buffer's own element type (the pair) structurally *also* matches
+// contribution naturally takes -- must survive flatten_v() | with_auto_pool() intact. The
+// flattened buffer's own element type (the pair) structurally *also* matches
 // value_destination_pair (its second field satisfies the `rank` concept just by being an
-// integer). with_pool/with_auto_pool must therefore resolve via flat_element_t (always "this
-// buffer's own element type"), not payload_element_t (which would reinterpret the already-flat
-// buffer as another layer of (value, destination) pairs and truncate the payload to just the
-// pair's first field, corrupting every element on the wire) -- see flat_element_t's doc comment
-// in payload.hpp.
+// integer). with_pool/with_auto_pool must therefore resolve via mpi_element_type_t (always "this
+// buffer's own element type"), never payload_element_t (which would otherwise reinterpret the
+// already-flat buffer as another layer of (value, destination) pairs and truncate the payload to
+// just the pair's first field, corrupting every element on the wire) -- see
+// mpi_element_type_t's doc comment in payload.hpp.
+//
+// Also covers the complementary type-safety fix: a flatten_v_view must never again satisfy
+// nested/sparse/value_destination_pair_buffer (already_flat_buffer, payload.hpp) regardless of
+// its flattened element shape, and must never answer has_mpi_value_type (the deleted
+// mpi_value_type() shadow in flatten_v_view.hpp) -- both closing paths by which a flatten_v_view
+// could otherwise masquerade as a still-structured source (e.g. wrongly satisfying
+// dstl::request_reply's `value_destination_pair_buffer Requests` constraint).
 TEST(ValueTypeEndToEndTest, FlattenedIntPairPayloadSurvivesWithAutoPool) {
     using Pair = std::pair<std::int64_t, std::int64_t>;
 
@@ -287,9 +294,16 @@ TEST(ValueTypeEndToEndTest, FlattenedIntPairPayloadSurvivesWithAutoPool) {
 
     static_assert(std::is_same_v<kamping::v2::payload_element_t<decltype(msgs)>, Pair>);
     auto flattened = msgs | views::flatten_v();
-    // with_auto_pool (the plain buffer-type channel) resolves via flat_element_t, not
-    // payload_element_t -- see flat_element_t's doc comment for why the two must differ here.
-    static_assert(std::is_same_v<kamping::v2::flat_element_t<decltype(flattened)>, Pair>);
+    using Flattened = decltype(flattened);
+
+    // A flatten_v_view is already-flat: both resolvers must now agree (payload_element_t no
+    // longer misfires on it, per already_flat_buffer), and it must no longer satisfy any of the
+    // still-structured concepts it flattened away from.
+    static_assert(std::is_same_v<kamping::v2::mpi_element_type_t<Flattened>, Pair>);
+    static_assert(std::is_same_v<kamping::v2::payload_element_t<Flattened>, Pair>);
+    static_assert(!kamping::v2::flattenable_send_buffer<Flattened>);
+    static_assert(!kamping::v2::value_destination_pair_buffer<Flattened>);
+    static_assert(!kamping::v2::has_mpi_value_type<Flattened>);
 
     std::vector<Pair> recv_data;
     kamping::v2::alltoallv(
