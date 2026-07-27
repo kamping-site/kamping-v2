@@ -9,8 +9,8 @@
 
 #include <mpi.h>
 
-#include "kamping/types/builtin_types.hpp"
 #include "kamping/v2/views/concepts.hpp"
+#include "kamping/v2/views/payload.hpp"
 
 namespace kamping::v2 {
 
@@ -131,6 +131,18 @@ struct view_interface : public view_interface_base, public std::ranges::view_int
         requires mpi::experimental::has_mpi_type<decltype(std::declval<Self const&>().base())>
     {
         return mpi::experimental::type(derived().base());
+    }
+
+    /// Forwards the value-type channel (kamping::v2::value_type(), NOT mpi::experimental::type())
+    /// from base(), so a with_value_type annotation survives further wrapping
+    /// (e.g. `... | with_value_type(dt) | resize`). Without this forwarder an outer view would
+    /// shadow the channel and structured consumers (flatten_v_view, dstl::request_reply) would
+    /// silently fall back to builtin deduction instead of seeing the annotation.
+    template <typename Self = Derived>
+    auto mpi_value_type() const
+        requires kamping::v2::has_mpi_value_type<decltype(std::declval<Self const&>().base())>
+    {
+        return kamping::v2::value_type(derived().base());
     }
 
     template <typename Self = Derived>

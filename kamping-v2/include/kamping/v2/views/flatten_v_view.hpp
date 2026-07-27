@@ -15,6 +15,7 @@
 #include "kamping/v2/views/adaptor.hpp"
 #include "kamping/v2/views/all.hpp"
 #include "kamping/v2/views/concepts.hpp"
+#include "kamping/v2/views/payload.hpp"
 #include "kamping/v2/views/view_interface.hpp"
 #include "mpi/handle.hpp"
 
@@ -24,64 +25,6 @@ namespace kamping::v2 {
 /// must depend on a template parameter, otherwise the assertion fires unconditionally).
 template <typename>
 inline constexpr bool always_false = false;
-
-template <typename R>
-concept nested_send_buffer = std::ranges::forward_range<R> && std::ranges::sized_range<R>
-                             && std::ranges::input_range<std::ranges::range_value_t<R>>
-                             && std::ranges::sized_range<std::ranges::range_value_t<R>>;
-
-template <typename T>
-concept pair_like = requires(T t) { std::tuple_size<T>::value == 2; };
-
-template <typename T>
-concept destination_buffer_pair =
-    pair_like<T> && mpi::experimental::rank<std::tuple_element_t<0, T>>
-    && std::ranges::input_range<std::tuple_element_t<1, T>> && std::ranges::sized_range<std::tuple_element_t<1, T>>;
-
-template <typename R>
-concept sparse_nested_send_buffer =
-    std::ranges::forward_range<R> && destination_buffer_pair<std::ranges::range_value_t<R>>;
-
-// The value slot (element 0) must not itself be a range. A range-valued payload means
-// "multiple elements for this rank" and belongs to the buffer path
-// (destination_buffer_pair), not the single-value path. Without this exclusion a
-// (range, rank) pair would match here and the whole range would be copied into a single
-// element slot. Such a pair now matches no flattenable concept and fails to compile.
-template <typename T>
-concept value_destination_pair = pair_like<T> && mpi::experimental::rank<std::tuple_element_t<1, T>>
-                                 && !std::ranges::input_range<std::tuple_element_t<0, T>>;
-
-template <typename R>
-concept value_destination_pair_buffer =
-    std::ranges::forward_range<R> && value_destination_pair<std::ranges::range_value_t<R>>;
-
-template <typename R>
-struct flat_element {};
-
-template <nested_send_buffer R>
-struct flat_element<R> {
-    using type = std::ranges::range_value_t<std::ranges::range_value_t<R>>;
-};
-
-template <sparse_nested_send_buffer R>
-struct flat_element<R> {
-    using type = std::ranges::range_value_t<std::tuple_element_t<1, std::ranges::range_value_t<R>>>;
-};
-
-template <value_destination_pair_buffer R>
-struct flat_element<R> {
-    // remove_cvref: the value slot may be a reference — e.g. a (value, rank) pair built
-    // lazily to carry the payload by reference and avoid a copy — but the MPI element type
-    // must be a plain value.
-    using type = std::remove_cvref_t<std::tuple_element_t<0, std::ranges::range_value_t<R>>>;
-};
-
-template <typename R>
-using flat_element_t = flat_element<R>::type;
-
-template <typename R>
-concept flattenable_send_buffer =
-    nested_send_buffer<R> || sparse_nested_send_buffer<R> || value_destination_pair_buffer<R>;
 
 /// Flattens a range-of-ranges into a contiguous MPI buffer with per-rank counts
 /// and displacements.
@@ -195,7 +138,7 @@ class flatten_v_view
         if constexpr (resize_buf) {
             kamping::v2::resize_for_receive(flat_buf_, total_size);
         }
-        using elem_t      = flat_element_t<Source>;
+        using elem_t      = payload_element_t<Source>;
         elem_t* flat_data = std::ranges::data(flat_buf_);
         if constexpr (nested_send_buffer<Source>) {
             elem_t* dest = flat_data;
@@ -238,6 +181,20 @@ public:
     FlatBuf& base() & {
         ensure_flattened();
         return flat_buf_;
+    }
+
+    /// Reports the flattened buffer's element type. If Source carries a value_type()
+    /// annotation (via views::with_value_type / with_auto_value_pool), that payload type is
+    /// honored here — the sender's per-element payload, not the deduced flat element type.
+    /// Otherwise falls back to FlatBuf's own type (builtin deduction or with_type on FlatBuf).
+    constexpr auto mpi_type() const
+        requires kamping::v2::has_mpi_value_type<Source> || mpi::experimental::has_mpi_type<FlatBuf>
+    {
+        if constexpr (kamping::v2::has_mpi_value_type<Source>) {
+            return kamping::v2::value_type(source_);
+        } else {
+            return mpi::experimental::type(base());
+        }
     }
 
     template <typename S, typename F, typename C, typename D>
@@ -314,7 +271,7 @@ template <
     typename DisplsContainer                     = std::vector<int>>
 constexpr auto flatten_v() {
     return kamping::v2::adaptor<0, decltype([](auto&& source) {
-                                    using elem_t = flat_element_t<std::remove_cvref_t<decltype(source)>>;
+                                    using elem_t = payload_element_t<std::remove_cvref_t<decltype(source)>>;
                                     using S      = kamping::v2::all_t<decltype(source)>;
                                     using F      = kamping::v2::owning_view<FlatTemplate<elem_t>>;
                                     using C      = kamping::v2::owning_view<CountsContainer>;
