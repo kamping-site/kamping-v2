@@ -197,6 +197,19 @@ public:
         }
     }
 
+    /// Hides view_interface's generic mpi_value_type() forwarder (which would otherwise reach
+    /// into base(), i.e. FlatBuf, and re-derive a value-type-channel answer from it). A
+    /// flatten_v_view is architecturally a resolved, flat send_buffer -- mpi_type() above is the
+    /// only channel it should ever answer on. It is not "further wrapping" something upstream
+    /// that a with_value_type annotation should survive through (that's what the forwarder is
+    /// for, e.g. `... | with_value_type(dt) | resize`); it is the terminal consumer of that
+    /// annotation, already folded into mpi_type() above. Declaring (and deleting) the name here
+    /// hides the inherited template member regardless of signature, so
+    /// has_mpi_value_type<flatten_v_view<...>> is unconditionally false -- otherwise it would
+    /// silently re-derive via FlatBuf's own (possibly misleading, see already_flat_buffer above)
+    /// payload_element_t, e.g. for FlatBuf = std::vector<std::pair<VId, VId>>.
+    void mpi_value_type() const = delete;
+
     template <typename S, typename F, typename C, typename D>
     flatten_v_view(S&& source, F&& flat_buf, C&& counts, D&& displs)
         : source_(kamping::v2::all(std::forward<S>(source))),
@@ -256,6 +269,17 @@ flatten_v_view(S&&, F&&, C&&, D&&)
 template <typename Source, typename FlatBuf, typename Counts, typename Displs, bool rb, bool rc, bool rd>
 inline constexpr bool enable_borrowed_buffer<flatten_v_view<Source, FlatBuf, Counts, Displs, rb, rc, rd>> =
     enable_borrowed_buffer<FlatBuf> && enable_borrowed_buffer<Counts> && enable_borrowed_buffer<Displs>;
+
+/// A flatten_v_view is already flat and resolved: it must never again satisfy
+/// nested_send_buffer / sparse_nested_send_buffer / value_destination_pair_buffer, regardless of
+/// what its own (flattened) element type happens to look like structurally -- see
+/// already_flat_buffer's doc comment in payload.hpp. Without this, a flatten_v_view of e.g.
+/// std::pair<VId, VId> would itself satisfy value_destination_pair_buffer (coincidence: its
+/// second field is an integer, which is all the `rank` concept checks for), letting
+/// payload_element_t misresolve to just the pair's first field, and letting a flatten_v_view
+/// wrongly satisfy dstl::request_reply's `value_destination_pair_buffer Requests` constraint.
+template <typename Source, typename FlatBuf, typename Counts, typename Displs, bool rb, bool rc, bool rd>
+inline constexpr bool already_flat_buffer<flatten_v_view<Source, FlatBuf, Counts, Displs, rb, rc, rd>> = true;
 
 } // namespace kamping::v2
 

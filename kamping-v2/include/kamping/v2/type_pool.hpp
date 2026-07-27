@@ -149,11 +149,16 @@ struct with_pool_fn {
     /// Attaches the MPI datatype for the buffer's element type from a pre-populated pool.
     /// Works with standard ranges and any buffer type exposing a public `value_type` member.
     /// Asserts that the type has been registered; call `pool.register_type<T>()` beforehand.
+    ///
+    /// Uses `mpi_element_type_t`, not `payload_element_t`: `R` is always taken to be an already-flat
+    /// buffer here (this is the plain buffer-type channel, `mpi::experimental::type()`), never
+    /// reinterpreted as a still-structured (nested/sparse/value_destination_pair) source — see
+    /// mpi_element_type_t's doc comment in payload.hpp for why that distinction matters.
     template <typename R>
-        requires requires { typename kamping::v2::payload_element_t<std::remove_cvref_t<R>>; }
-                 && kamping::types::has_static_type_v<kamping::v2::payload_element_t<std::remove_cvref_t<R>>>
+        requires requires { typename kamping::v2::mpi_element_type_t<std::remove_cvref_t<R>>; }
+                 && kamping::types::has_static_type_v<kamping::v2::mpi_element_type_t<std::remove_cvref_t<R>>>
     auto operator()(R&& r, type_pool const& pool) {
-        using elem_t = kamping::v2::payload_element_t<std::remove_cvref_t<R>>;
+        using elem_t = kamping::v2::mpi_element_type_t<std::remove_cvref_t<R>>;
         auto dt      = pool.find<elem_t>();
         KAMPING_V2_ASSERT(dt.has_value(), "Type not registered in pool; call register_type<T>() first.");
         return kamping::v2::with_type_view(std::forward<R>(r), *dt);
@@ -162,8 +167,8 @@ struct with_pool_fn {
     /// Overload accepting any type satisfying @ref has_pool (e.g. `comm_view_with_pool`).
     template <typename R, typename Env>
         requires has_pool<std::remove_cvref_t<Env>>
-                 && requires { typename kamping::v2::payload_element_t<std::remove_cvref_t<R>>; }
-                 && kamping::types::has_static_type_v<kamping::v2::payload_element_t<std::remove_cvref_t<R>>>
+                 && requires { typename kamping::v2::mpi_element_type_t<std::remove_cvref_t<R>>; }
+                 && kamping::types::has_static_type_v<kamping::v2::mpi_element_type_t<std::remove_cvref_t<R>>>
     auto operator()(R&& r, Env&& env) {
         return (*this)(std::forward<R>(r), env.pool());
     }
@@ -172,19 +177,21 @@ struct with_pool_fn {
 struct with_auto_pool_fn {
     /// Attaches the MPI datatype for the buffer's element type, registering it in the pool if needed.
     /// Works with standard ranges and any buffer type exposing a public `value_type` member.
+    ///
+    /// Uses `mpi_element_type_t`, not `payload_element_t` — see @ref with_pool_fn.
     template <typename R>
-        requires requires { typename kamping::v2::payload_element_t<std::remove_cvref_t<R>>; }
-                 && kamping::types::has_static_type_v<kamping::v2::payload_element_t<std::remove_cvref_t<R>>>
+        requires requires { typename kamping::v2::mpi_element_type_t<std::remove_cvref_t<R>>; }
+                 && kamping::types::has_static_type_v<kamping::v2::mpi_element_type_t<std::remove_cvref_t<R>>>
     auto operator()(R&& r, type_pool& pool) {
-        using elem_t = kamping::v2::payload_element_t<std::remove_cvref_t<R>>;
+        using elem_t = kamping::v2::mpi_element_type_t<std::remove_cvref_t<R>>;
         return kamping::v2::with_type_view(std::forward<R>(r), pool.register_type<elem_t>());
     }
 
     /// Overload accepting any type satisfying @ref has_pool (e.g. `comm_view_with_pool`).
     template <typename R, typename Env>
         requires has_pool<std::remove_cvref_t<Env>>
-                 && requires { typename kamping::v2::payload_element_t<std::remove_cvref_t<R>>; }
-                 && kamping::types::has_static_type_v<kamping::v2::payload_element_t<std::remove_cvref_t<R>>>
+                 && requires { typename kamping::v2::mpi_element_type_t<std::remove_cvref_t<R>>; }
+                 && kamping::types::has_static_type_v<kamping::v2::mpi_element_type_t<std::remove_cvref_t<R>>>
     auto operator()(R&& r, Env&& env) {
         return (*this)(std::forward<R>(r), env.pool());
     }

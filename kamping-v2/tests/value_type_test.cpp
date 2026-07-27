@@ -1,6 +1,9 @@
 // Copyright (c) 2026 Karlsruhe Institute of Technology
 // SPDX-License-Identifier: BSL-1.0
 
+#include <algorithm>
+#include <cstdint>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -9,6 +12,7 @@
 
 #include "kamping/types/contiguous_type.hpp"
 #include "kamping/types/mpi_type_traits.hpp"
+#include "kamping/types/std/unsafe/utility.hpp"
 #include "kamping/v2/collectives/alltoallv.hpp"
 #include "kamping/v2/type_pool.hpp"
 #include "kamping/v2/views.hpp"
@@ -254,4 +258,64 @@ TEST(ValueTypeEndToEndTest, SparseFlattenWithValuePoolThroughAlltoallv) {
         EXPECT_EQ(recv_data[i].x, expected[i].x);
         EXPECT_DOUBLE_EQ(recv_data[i].y, expected[i].y);
     }
+}
+
+// Regression: a value_destination_pair source whose payload is itself an (integral, integral)
+// pair -- e.g. std::pair<std::int64_t, std::int64_t>, the shape a reduce-by-key key/value
+// contribution naturally takes -- must survive flatten_v() | with_auto_pool() intact. The
+// flattened buffer's own element type (the pair) structurally *also* matches
+// value_destination_pair (its second field satisfies the `rank` concept just by being an
+// integer). with_pool/with_auto_pool must therefore resolve via mpi_element_type_t (always "this
+// buffer's own element type"), never payload_element_t (which would otherwise reinterpret the
+// already-flat buffer as another layer of (value, destination) pairs and truncate the payload to
+// just the pair's first field, corrupting every element on the wire) -- see
+// mpi_element_type_t's doc comment in payload.hpp.
+//
+// Also covers the complementary type-safety fix: a flatten_v_view must never again satisfy
+// nested/sparse/value_destination_pair_buffer (already_flat_buffer, payload.hpp) regardless of
+// its flattened element shape, and must never answer has_mpi_value_type (the deleted
+// mpi_value_type() shadow in flatten_v_view.hpp) -- both closing paths by which a flatten_v_view
+// could otherwise masquerade as a still-structured source (e.g. wrongly satisfying
+// dstl::request_reply's `value_destination_pair_buffer Requests` constraint).
+TEST(ValueTypeEndToEndTest, FlattenedIntPairPayloadSurvivesWithAutoPool) {
+    using Pair = std::pair<std::int64_t, std::int64_t>;
+
+    int rank = 0, size = 0;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    kamping::v2::type_pool pool;
+
+    // Every rank sends one (key, value) = (rank, rank * 100 + j) pair to every rank j.
+    std::vector<std::pair<Pair, int>> msgs;
+    for (int j = 0; j < size; ++j) {
+        msgs.emplace_back(Pair{rank, rank * 100 + j}, j);
+    }
+
+    static_assert(std::is_same_v<kamping::v2::payload_element_t<decltype(msgs)>, Pair>);
+    auto flattened = msgs | views::flatten_v();
+    using Flattened = decltype(flattened);
+
+    // A flatten_v_view is already-flat: both resolvers must now agree (payload_element_t no
+    // longer misfires on it, per already_flat_buffer), and it must no longer satisfy any of the
+    // still-structured concepts it flattened away from.
+    static_assert(std::is_same_v<kamping::v2::mpi_element_type_t<Flattened>, Pair>);
+    static_assert(std::is_same_v<kamping::v2::payload_element_t<Flattened>, Pair>);
+    static_assert(!kamping::v2::flattenable_send_buffer<Flattened>);
+    static_assert(!kamping::v2::value_destination_pair_buffer<Flattened>);
+    static_assert(!kamping::v2::has_mpi_value_type<Flattened>);
+
+    std::vector<Pair> recv_data;
+    kamping::v2::alltoallv(
+        flattened | views::with_auto_pool(pool),
+        recv_data | views::with_auto_pool(pool) | views::auto_recv_v
+    );
+
+    std::vector<Pair> expected;
+    for (int i = 0; i < size; ++i) {
+        expected.emplace_back(i, i * 100 + rank);
+    }
+    std::ranges::sort(recv_data);
+    std::ranges::sort(expected);
+    EXPECT_EQ(recv_data, expected);
 }
