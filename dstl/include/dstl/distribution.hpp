@@ -75,6 +75,13 @@ public:
         return std::views::iota(0, size()) | std::views::transform([this](int rank) { return local_size(rank); });
     }
 
+    /// @brief Lazy view of each rank's displacement (== index_range_begin(rank)), in rank order.
+    /// Monotonically increasing by construction — pairs with counts() to back a variadic buffer.
+    [[nodiscard]] auto displs() const {
+        return std::views::iota(0, size())
+               | std::views::transform([this](int rank) { return index_range_begin(rank); });
+    }
+
     /// @brief First global index owned by `rank`.
     [[nodiscard]] auto index_range_begin(int rank) const -> std::size_t {
         return offset_[static_cast<std::size_t>(rank)];

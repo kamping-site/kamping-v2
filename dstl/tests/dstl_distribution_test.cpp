@@ -185,3 +185,28 @@ TEST(Distribution, Counts) {
         EXPECT_EQ(counts[static_cast<std::size_t>(r)], dist.local_size(r));
     }
 }
+
+TEST(Distribution, Displs) {
+    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
+    int const                    p = comm.size();
+
+    dstl::distribution const dist(triangular_local_size(comm.rank()), comm);
+
+    auto const               displs_view = dist.displs();
+    std::vector<std::size_t> displs(displs_view.begin(), displs_view.end());
+    ASSERT_EQ(displs.size(), static_cast<std::size_t>(p));
+
+    EXPECT_TRUE(std::ranges::is_sorted(displs));
+    for (int r = 0; r < p; ++r) {
+        EXPECT_EQ(displs[static_cast<std::size_t>(r)], triangular_offset(r));
+        EXPECT_EQ(displs[static_cast<std::size_t>(r)], dist.index_range_begin(r));
+    }
+
+    // displs + counts must reconstruct index_range_end for every rank (the counts/displs pairing
+    // that backs a variadic buffer).
+    auto const               counts_view = dist.counts();
+    std::vector<std::size_t> counts(counts_view.begin(), counts_view.end());
+    for (int r = 0; r < p; ++r) {
+        EXPECT_EQ(displs[static_cast<std::size_t>(r)] + counts[static_cast<std::size_t>(r)], dist.index_range_end(r));
+    }
+}
