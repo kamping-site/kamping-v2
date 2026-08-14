@@ -29,8 +29,15 @@ namespace detail {
 /// @brief Stateless combine functor: picks the greater of two values under Comp/Proj.
 ///
 /// Used to build a custom MPI_Op via make_op() for the generic (non-default Comp/Proj) case.
-/// Comp and Proj are default-constructed on every invocation — matching make_op()'s existing
-/// contract that only stateless functors survive the trip through MPI_Op_create.
+/// Comp and Proj are default-constructed on every invocation — matching make_op()'s contract
+/// that only stateless functors survive the trip through MPI_Op_create.
+///
+/// Since kamping-types#808, ScopedFunctorOp (which make_op<T>() below builds on) combines by
+/// copy-construction, not assignment, so T only needs to be copy-constructible here -- e.g.
+/// std::pair<const K, V> (a std::map's/flat_hash_map's value type) works despite having a
+/// deleted operator=. Deliberately not gated on std::is_trivially_copyable_v<T> either: even an
+/// ordinary std::pair<int, int> is never trivially copyable (see
+/// https://stackoverflow.com/q/58283694), so requiring it would reject the common case.
 template <typename T, typename Comp, typename Proj>
 struct max_combine {
     T operator()(T const& a, T const& b) const {
@@ -59,7 +66,11 @@ concept has_builtin_max = std::same_as<Comp, std::ranges::less> && std::same_as<
 /// which requires them to be stateless (default-constructible, as they already must be to have
 /// default arguments here).
 ///
-/// R must be a forward_range with a deducible MPI element type.
+/// R must be a forward_range with a deducible MPI element type, and its value type T must be
+/// copy-constructible (`std::copy_constructible<T>`). Notably T need not be assignable, so this
+/// works directly on e.g. `std::pair<const K, V>` (the value type of iterating a std::map) --
+/// see detail::max_combine's comment for why this is not additionally gated on
+/// std::is_trivially_copyable_v<T>.
 ///
 /// @param sentinel Value contributed on behalf of a rank whose local range is empty; must
 ///   compare not-greater than every real element under comp/proj. Defaults to
@@ -74,7 +85,7 @@ template <
     class Proj                                                                             = std::identity,
     std::indirect_strict_weak_order<std::projected<std::ranges::iterator_t<R>, Proj>> Comp = std::ranges::less,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>                            Comm = MPI_Comm>
-    requires mpi::experimental::has_mpi_type<R>
+    requires mpi::experimental::has_mpi_type<R> && std::copy_constructible<std::ranges::range_value_t<R>>
 auto max(R&& r, Comp comp, Proj proj, Comm const& comm, std::ranges::range_value_t<R> sentinel)
     -> std::ranges::range_value_t<R> {
     using T = std::ranges::range_value_t<R>;
@@ -117,6 +128,7 @@ template <
     std::indirect_strict_weak_order<std::projected<std::ranges::iterator_t<R>, Proj>> Comp = std::ranges::less,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>                            Comm = MPI_Comm>
     requires mpi::experimental::has_mpi_type<R> && std::numeric_limits<std::ranges::range_value_t<R>>::is_specialized
+             && std::copy_constructible<std::ranges::range_value_t<R>>
 auto max(R&& r, Comp comp = {}, Proj proj = {}, Comm const& comm = MPI_COMM_WORLD) -> std::ranges::range_value_t<R> {
     return max(
         std::forward<R>(r),

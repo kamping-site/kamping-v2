@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: BSL-1.0
 
 #include <algorithm>
+#include <compare>
 #include <functional>
 #include <limits>
 #include <numeric>
@@ -12,6 +13,7 @@
 
 #include "dstl/algorithm/min.hpp"
 #include "kamping/v2/comm.hpp"
+#include "kamping/v2/views/with_type_view.hpp"
 
 namespace {
 std::vector<int> iota_vec(int start, int n) {
@@ -19,6 +21,19 @@ std::vector<int> iota_vec(int start, int n) {
     std::iota(v.begin(), v.end(), start);
     return v;
 }
+
+// Copy-constructible but not assignable (mirrors std::map's/absl::flat_hash_map's value type,
+// std::pair<const K, V>). The generic (non-builtin-op) combine path combines by
+// copy-construction, not assignment (see dstl/include/dstl/algorithm/README.md), so this type
+// must work end-to-end through an actual reduction, not merely be accepted at the call site.
+struct NonAssignable {
+    int value;
+    NonAssignable(int v) : value(v) {}
+    NonAssignable(NonAssignable const&)            = default;
+    NonAssignable& operator=(NonAssignable const&) = delete;
+    NonAssignable& operator=(NonAssignable&&)      = delete;
+    auto           operator<=>(NonAssignable const&) const = default;
+};
 } // namespace
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -105,6 +120,23 @@ TEST(Min, ProjectionNegate) {
     EXPECT_EQ(dstl::min(vec, std::ranges::less{}, neg, comm, std::numeric_limits<int>::min()), n * p - 1);
 }
 
+// An ordinary, non-const std::pair<int, int> must keep working. std::pair is never
+// std::is_trivially_copyable_v (its assignment operators aren't specified as defaulted/trivial,
+// even for two ints -- see https://stackoverflow.com/q/58283694), so dstl::min must not gate on
+// that trait, only on std::copy_constructible.
+TEST(Min, OrdinaryPairValueType) {
+    kamping::v2::comm_view const     comm{MPI_COMM_WORLD};
+    std::vector<std::pair<int, int>> data   = {{comm.rank(), 0}};
+    auto const                       winner = dstl::min(
+        data | kamping::v2::views::with_type(MPI_INT),
+        std::ranges::less{},
+        [](auto const& p) { return p.first; },
+        comm,
+        std::pair<int, int>{1'000'000, 0}
+    );
+    EXPECT_EQ(winner.first, 0);
+}
+
 // With p == 1 the distributed result must match std::ranges::min.
 TEST(Min, SingleRankMatchesStd) {
     kamping::v2::comm_view const comm{MPI_COMM_WORLD};
@@ -113,4 +145,22 @@ TEST(Min, SingleRankMatchesStd) {
     }
     std::vector<int> const data = {3, 1, 4, 1, 5, 9, 2, 6};
     EXPECT_EQ(dstl::min(data, std::ranges::less{}, std::identity{}, comm), std::ranges::min(data));
+}
+
+// Rank r contributes NonAssignable{r}; the winner must be NonAssignable{0}. Exercises the
+// generic (non-builtin-op) combine path end-to-end for a value type that only the
+// copy-construct fix (not the old assignment-based one) can handle.
+TEST(Min, NonAssignableValueType) {
+    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
+    std::vector<NonAssignable>   data = {NonAssignable{comm.rank()}};
+
+    auto const winner = dstl::min(
+        data | kamping::v2::views::with_type(MPI_INT),
+        std::ranges::less{},
+        std::identity{},
+        comm,
+        NonAssignable{1'000'000}
+    );
+
+    EXPECT_EQ(winner.value, 0);
 }
