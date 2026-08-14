@@ -59,7 +59,11 @@ concept has_builtin_max = std::same_as<Comp, std::ranges::less> && std::same_as<
 /// which requires them to be stateless (default-constructible, as they already must be to have
 /// default arguments here).
 ///
-/// R must be a forward_range with a deducible MPI element type.
+/// R must be a forward_range with a deducible MPI element type, and its value type T must be
+/// assignable (`std::assignable_from<T&, T>`) — the generic (non-builtin-op) combine path
+/// assigns the winner back into the MPI reduction's accumulator, so e.g. `std::pair<const K, V>`
+/// (the value type of iterating a std::map directly) does not qualify even though it is
+/// copy-constructible.
 ///
 /// @param sentinel Value contributed on behalf of a rank whose local range is empty; must
 ///   compare not-greater than every real element under comp/proj. Defaults to
@@ -75,6 +79,7 @@ template <
     std::indirect_strict_weak_order<std::projected<std::ranges::iterator_t<R>, Proj>> Comp = std::ranges::less,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>                            Comm = MPI_Comm>
     requires mpi::experimental::has_mpi_type<R>
+             && std::assignable_from<std::ranges::range_value_t<R>&, std::ranges::range_value_t<R>>
 auto max(R&& r, Comp comp, Proj proj, Comm const& comm, std::ranges::range_value_t<R> sentinel)
     -> std::ranges::range_value_t<R> {
     using T = std::ranges::range_value_t<R>;
@@ -117,6 +122,7 @@ template <
     std::indirect_strict_weak_order<std::projected<std::ranges::iterator_t<R>, Proj>> Comp = std::ranges::less,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>                            Comm = MPI_Comm>
     requires mpi::experimental::has_mpi_type<R> && std::numeric_limits<std::ranges::range_value_t<R>>::is_specialized
+             && std::assignable_from<std::ranges::range_value_t<R>&, std::ranges::range_value_t<R>>
 auto max(R&& r, Comp comp = {}, Proj proj = {}, Comm const& comm = MPI_COMM_WORLD) -> std::ranges::range_value_t<R> {
     return max(
         std::forward<R>(r),
