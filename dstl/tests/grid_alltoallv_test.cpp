@@ -3,6 +3,10 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
 #include <numeric>
 #include <span>
 #include <utility>
@@ -259,4 +263,135 @@ TEST(GridAlltoallvTest, ExplicitFactorizations) {
         );
         EXPECT_EQ(recv, expected) << "factorization with k=" << dims.size();
     }
+}
+
+// Isolated reproducer for the SuperMUC/Intel-MPI grid_alltoallv bug tracked on KaCCv2's
+// feat/frozen-multistep branch (see that repo's git log for the full investigation).
+// Replays the exact per-round send-count sequence a real SuperMUC repro produced
+// (FrozenMultiStep's kout sampling strategy, sync-grid reachability search,
+// gnm-undirected n=524288/m=4194304, p=2), over a dstl::grid_comm rebuilt fresh every
+// "iteration" -- exactly like KaCCv2's find_big_component_multi does once per benchmark
+// iteration -- with an element type shaped like KaCCv2's actual wire Message (a
+// uint64_t vertex id + an int payload, MPI_Type_create_struct+resized to 16 bytes --
+// same derived-datatype construction MixedGappedSendPackedRecv above already exercises,
+// reused here instead of guessing at how kamping-v2 bridges to kamping v1's
+// std::pair<uint64_t,int> type registration that KaCCv2's bfs.hpp actually relies on).
+//
+// Poison-fills each round's receive buffer with 0xAA before the real
+// dstl::grid_alltoallv call and reports (to stderr, plus a hard test failure) any
+// element still showing the poison pattern afterward -- i.e. an element MPI claimed to
+// deliver but never actually wrote. On the real repro this was proven NOT to be
+// corrupted content: every element that failed the receiving rank's is_local() check
+// decoded to exactly the 0xAA pattern, on both ranks, confirmed via this same
+// poison-fill technique added directly to KaCCv2's production code path.
+//
+// Needs genuine multi-node execution (2 real SuperMUC nodes, 1 rank/node,
+// `mpiexec -n 2 --perhost 1`) -- like every other diagnostic in this investigation, no
+// local run (including this test, run repeatedly during development) has ever
+// reproduced it. Set KACC_REPRO_ITERATIONS (default 5, matching KaCCv2's own
+// `--iterations 5`) to change how many times the round sequence repeats -- the real bug
+// has needed 2-3 repeats (not 1) to manifest, and the exact number has varied run to
+// run.
+TEST(GridAlltoallvTest, SizeTransitionPoisonRepro) {
+    int const size = world_size();
+    if (size != 2) {
+        GTEST_SKIP() << "calibrated for exactly 2 ranks (the real repro's p)";
+    }
+    int const rank  = world_rank();
+    int const other = 1 - rank;
+
+    struct Message {
+        std::uint64_t vid;
+        int           payload;
+    };
+    MPI_Datatype dt;
+    {
+        int          blocklen[2] = {1, 1};
+        MPI_Aint     disp[2]     = {offsetof(Message, vid), offsetof(Message, payload)};
+        MPI_Datatype types[2]    = {MPI_UINT64_T, MPI_INT};
+        MPI_Datatype tmp;
+        MPI_Type_create_struct(2, blocklen, disp, types, &tmp);
+        MPI_Type_create_resized(tmp, 0, static_cast<MPI_Aint>(sizeof(Message)), &dt);
+        MPI_Type_commit(&dt);
+        MPI_Type_free(&tmp);
+    }
+
+    // {rank0->1, rank1->0} per round, read directly off a real SuperMUC repro's
+    // route_phase trace. Deterministic across iterations there (fixed seed), so this
+    // exact sequence repeating below is a faithful replay, not an approximation.
+    struct RoundCounts {
+        std::size_t to_1;
+        std::size_t to_0;
+    };
+    static constexpr RoundCounts kRounds[] = {
+        {396252, 396779},
+        {111004, 109734},
+        {6436, 6404},
+        {322, 335},
+        {8, 23},
+        {0, 5},
+        {0, 0},
+    };
+
+    int iterations = 5;
+    if (char const* env = std::getenv("KACC_REPRO_ITERATIONS")) {
+        iterations = std::max(1, std::atoi(env));
+    }
+
+    std::size_t total_poison = 0;
+    for (int iter = 1; iter <= iterations; ++iter) {
+        dstl::grid_comm<dstl::execution_policy::seq> grid{comm_view{MPI_COMM_WORLD}};
+
+        for (std::size_t round = 0; round < std::size(kRounds); ++round) {
+            std::size_t const send_count = rank == 0 ? kRounds[round].to_1 : kRounds[round].to_0;
+            std::size_t const recv_count = rank == 0 ? kRounds[round].to_0 : kRounds[round].to_1;
+
+            std::vector<int> send_counts(2, 0);
+            std::vector<int> send_displs(2, 0);
+            send_counts[static_cast<std::size_t>(other)] = static_cast<int>(send_count);
+
+            std::vector<Message> send_data(send_count);
+            for (std::size_t i = 0; i < send_count; ++i) {
+                send_data[i] = Message{
+                    static_cast<std::uint64_t>(iter) * 100000000ULL
+                        + static_cast<std::uint64_t>(round) * 1000000ULL + i,
+                    rank
+                };
+            }
+
+            std::vector<Message> recv_data(recv_count);
+            std::memset(recv_data.data(), 0xAA, recv_data.size() * sizeof(Message));
+
+            dstl::grid_alltoallv(
+                send_data | views::with_type(dt) | views::with_counts(send_counts) | views::with_displs(send_displs),
+                recv_data | views::with_type(dt),
+                grid
+            );
+
+            std::size_t poison = 0;
+            for (auto const& elem: recv_data) {
+                if (elem.vid == 0xAAAAAAAAAAAAAAAAULL && elem.payload == static_cast<int>(0xAAAAAAAA)) {
+                    ++poison;
+                }
+            }
+            if (poison > 0) {
+                std::fprintf(
+                    stderr,
+                    "[repro] *** REPRODUCED *** iter=%d round=%zu rank=%d: %zu/%zu elements never written by "
+                    "MPI_Alltoallv (still show the 0xAA poison pattern)\n",
+                    iter,
+                    round,
+                    rank,
+                    poison,
+                    recv_data.size()
+                );
+                std::fflush(stderr);
+            }
+            total_poison += poison;
+        }
+    }
+
+    MPI_Type_free(&dt);
+    EXPECT_EQ(total_poison, 0u) << "at least one grid_alltoallv call left part of its receive buffer "
+                                    "unwritten -- see stderr for which iteration/round/rank";
 }
