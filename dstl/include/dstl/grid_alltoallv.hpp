@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <concepts>
 #include <cstddef>
+#include <cstdio>
 #include <iterator>
 #include <numeric>
 #include <ranges>
@@ -374,6 +375,38 @@ void route_phase(
     int const total_recv = subcomm_size > 0 ? recv_displs[static_cast<std::size_t>(subcomm_size) - 1]
                                                   + recv_counts[static_cast<std::size_t>(subcomm_size) - 1]
                                             : 0;
+
+    // TEMPORARY DIAGNOSTIC (2026-09-01, per KaCCv2-side request -- there are only a
+    // handful of phases per grid_alltoallv call (num_dims, single digits), so print the
+    // full per-phase metadata unconditionally rather than gating everything behind an
+    // assertion that might silently pass. subcomm.rank()/size() are phase-local (this
+    // dimension's subcommunicator), not the global rank -- dim_size/is_last pin down
+    // which phase this is, and KaCCv2's own bfs.hpp prints "a2a round=" immediately
+    // around each grid_alltoallv call, so the two logs correlate by proximity even
+    // without a shared round number. Revert once answered.
+    {
+        std::fprintf(stderr,
+                      "[grid_alltoallv route_phase] subrank=%d/%d dim_size=%zu is_last=%d "
+                      "total_recv=%d send_counts=[",
+                      subcomm.rank(),
+                      subcomm.size(),
+                      dim_size,
+                      is_last ? 1 : 0,
+                      total_recv);
+        for (std::size_t i = 0; i < send_counts.size(); ++i) {
+            std::fprintf(stderr, "%d%s", send_counts[i], i + 1 < send_counts.size() ? "," : "");
+        }
+        std::fprintf(stderr, "] recv_counts=[");
+        for (std::size_t i = 0; i < recv_counts.size(); ++i) {
+            std::fprintf(stderr, "%d%s", recv_counts[i], i + 1 < recv_counts.size() ? "," : "");
+        }
+        std::fprintf(stderr, "] recv_meta=[");
+        for (std::size_t i = 0; i < recv_meta.size(); ++i) {
+            std::fprintf(stderr, "%d%s", recv_meta[i], i + 1 < recv_meta.size() ? "," : "");
+        }
+        std::fprintf(stderr, "]\n");
+        std::fflush(stderr);
+    }
 
     // TEMPORARY DIAGNOSTIC (2026-09-01, KaCCv2 grid-fanout investigation -- see that repo's
     // notes/frozen-multistep-coverage-and-imbalance-findings.md). A caller-side global
