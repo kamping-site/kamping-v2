@@ -375,6 +375,36 @@ void route_phase(
                                                   + recv_counts[static_cast<std::size_t>(subcomm_size) - 1]
                                             : 0;
 
+    // TEMPORARY DIAGNOSTIC (2026-09-01, KaCCv2 grid-fanout investigation -- see that repo's
+    // notes/frozen-multistep-coverage-and-imbalance-findings.md). A caller-side global
+    // sent/received element-count cross-check around the whole grid_alltoallv call passed
+    // (global totals balance) on a run that still hit "received a real message whose vertex
+    // decodes to 0" downstream -- so the bug isn't a global over/under-count, and must be
+    // either local mis-accounting that cancels out globally, or content corruption that
+    // preserves counts. This isolates the first possibility: recv_counts (derived above from
+    // recv_meta, itself carried by the kamping::v2::alltoall two lines up) is exactly the
+    // "how much does each peer THINK it's sending me" side of a normal alltoall exchange.
+    // Independently re-negotiate the same metadata via a redundant, ordinary MPI_Alltoall of
+    // send_counts and assert it agrees. Disagreement here would mean the count-metadata
+    // exchange itself (not the data exchange or rebin that follows) is the fault. Revert once
+    // answered.
+    {
+        std::vector<int> verify_recv_counts(static_cast<std::size_t>(subcomm_size), 0);
+        MPI_Alltoall(
+            send_counts.data(), 1, MPI_INT, verify_recv_counts.data(), 1, MPI_INT, subcomm.mpi_handle()
+        );
+        for (int r = 0; r < subcomm_size; ++r) {
+            KAMPING_V2_ASSERT(
+                verify_recv_counts[static_cast<std::size_t>(r)] == recv_counts[static_cast<std::size_t>(r)],
+                "grid_alltoallv route_phase: rank "
+                    << subcomm.rank() << " (dim_size=" << dim_size << " is_last=" << is_last
+                    << "): recv_counts[" << r << "]=" << recv_counts[static_cast<std::size_t>(r)]
+                    << " but independently-negotiated MPI_Alltoall says "
+                    << verify_recv_counts[static_cast<std::size_t>(r)]
+            );
+        }
+    }
+
     // recv_counts / recv_displs were derived locally from recv_meta above (the BEFORE half of the
     // phase diagram at the top of this function), so we attach them explicitly rather than let the
     // kamping::v2 layer re-negotiate them (a redundant collective per phase).
