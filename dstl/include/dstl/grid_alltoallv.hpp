@@ -11,6 +11,7 @@
 #include <numeric>
 #include <ranges>
 #include <span>
+#include <string>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -384,27 +385,36 @@ void route_phase(
     // which phase this is, and KaCCv2's own bfs.hpp prints "a2a round=" immediately
     // around each grid_alltoallv call, so the two logs correlate by proximity even
     // without a shared round number. Revert once answered.
+    //
+    // Built into one string and written with a single fputs/fwrite: two ranks calling
+    // fprintf multiple times each for the "same" line (as an earlier version of this
+    // diagnostic did) interleave mid-line on a shared stderr stream under real
+    // multi-node MPI, since each individual fprintf call is its own unsynchronized
+    // write -- confirmed garbled in exactly that way in the first SuperMUC run using
+    // this diagnostic. A single call's write of a short line is atomic on the streams
+    // MPI redirects to (POSIX pipes/regular files under PIPE_BUF), so one string, one
+    // call.
     {
-        std::fprintf(stderr,
-                      "[grid_alltoallv route_phase] subrank=%d/%d dim_size=%zu is_last=%d "
-                      "total_recv=%d send_counts=[",
-                      subcomm.rank(),
-                      subcomm.size(),
-                      dim_size,
-                      is_last ? 1 : 0,
-                      total_recv);
+        std::string line = "[grid_alltoallv route_phase] subrank=" + std::to_string(subcomm.rank())
+                          + "/" + std::to_string(subcomm.size()) + " dim_size=" + std::to_string(dim_size)
+                          + " is_last=" + std::to_string(is_last ? 1 : 0)
+                          + " total_recv=" + std::to_string(total_recv) + " send_counts=[";
         for (std::size_t i = 0; i < send_counts.size(); ++i) {
-            std::fprintf(stderr, "%d%s", send_counts[i], i + 1 < send_counts.size() ? "," : "");
+            line += std::to_string(send_counts[i]);
+            if (i + 1 < send_counts.size()) line += ",";
         }
-        std::fprintf(stderr, "] recv_counts=[");
+        line += "] recv_counts=[";
         for (std::size_t i = 0; i < recv_counts.size(); ++i) {
-            std::fprintf(stderr, "%d%s", recv_counts[i], i + 1 < recv_counts.size() ? "," : "");
+            line += std::to_string(recv_counts[i]);
+            if (i + 1 < recv_counts.size()) line += ",";
         }
-        std::fprintf(stderr, "] recv_meta=[");
+        line += "] recv_meta=[";
         for (std::size_t i = 0; i < recv_meta.size(); ++i) {
-            std::fprintf(stderr, "%d%s", recv_meta[i], i + 1 < recv_meta.size() ? "," : "");
+            line += std::to_string(recv_meta[i]);
+            if (i + 1 < recv_meta.size()) line += ",";
         }
-        std::fprintf(stderr, "]\n");
+        line += "]\n";
+        std::fputs(line.c_str(), stderr);
         std::fflush(stderr);
     }
 
