@@ -455,6 +455,35 @@ void route_phase(
     auto send_data =
         state.data | views::with_type(dt) | views::with_counts(send_counts) | views::with_displs(send_displs);
 
+    // TEMPORARY DIAGNOSTIC (2026-09-01, KaCCv2 grid-fanout investigation). Rank 0's own
+    // bfs.hpp-side trace (this same investigation, separate log) shows a real, non-zero
+    // element queued as the first message to the peer at exactly this round; the peer's
+    // crash shows an all-zero element at the equivalent receive position, with every
+    // count cross-check (global, per-phase, this branch's independent recv_counts
+    // renegotiation) agreeing exactly -- so the corruption is content, not size or
+    // routing, and must happen between here (about to cross the wire) and the matching
+    // point just after the alltoallv call below. Dumps the raw bytes of the first
+    // element about to be sent to each non-self peer this phase, generically (T is
+    // opaque to this library) via reinterpret_cast -- safe for any indirectly_copyable,
+    // default_initializable T, which is already this function's own element-type
+    // requirement. Revert once answered.
+    for (int r = 0; r < subcomm_size; ++r) {
+        if (r == subcomm.rank() || send_counts[static_cast<std::size_t>(r)] == 0) continue;
+        auto const* elem =
+            reinterpret_cast<unsigned char const*>(&state.data[static_cast<std::size_t>(send_displs[static_cast<std::size_t>(r)])]);
+        std::string hex;
+        for (std::size_t b = 0; b < sizeof(T); ++b) {
+            char buf[4];
+            std::snprintf(buf, sizeof(buf), "%02x", elem[b]);
+            hex += buf;
+        }
+        std::string line = "[grid_alltoallv route_phase SEND] subrank=" + std::to_string(subcomm.rank())
+                          + "/" + std::to_string(subcomm.size()) + " dim_size=" + std::to_string(dim_size)
+                          + " is_last=" + std::to_string(is_last ? 1 : 0) + " to_subrank=" + std::to_string(r)
+                          + " first_elem_bytes=" + hex + "\n";
+        std::fputs(line.c_str(), stderr);
+    }
+
     // Last phase: next_subtree_size == 1, so the rebin/merge below would be an identity (it just
     // concatenates each source's already-contiguous recv block in source order — exactly the alltoallv
     // recv layout). We skip the staging buffer and the post-loop result copy and deposit the routed
@@ -507,6 +536,30 @@ void route_phase(
         recv_data | views::with_type(dt) | views::with_counts(recv_counts) | views::with_displs(recv_displs),
         subcomm
     );
+
+    // TEMPORARY DIAGNOSTIC (2026-09-01, KaCCv2 grid-fanout investigation) -- matching
+    // "SEND" dump above, immediately on the other side of the same alltoallv call, before
+    // rebin() (already proven a trivial straight copy for KaCCv2's specific p=2 repro,
+    // since next_subtree_size collapses to 1 there) touches recv_data at all. If this
+    // dump's bytes already differ from the matching SEND dump's for the same round, the
+    // corruption is inside this one alltoallv call; if they match, rebin/downstream is
+    // still implicated despite the p=2 straight-copy argument, and that argument needs
+    // re-examining. Revert once answered.
+    if (total_recv > 0) {
+        auto const* elem = reinterpret_cast<unsigned char const*>(&recv_data[0]);
+        std::string hex;
+        for (std::size_t b = 0; b < sizeof(T); ++b) {
+            char buf[4];
+            std::snprintf(buf, sizeof(buf), "%02x", elem[b]);
+            hex += buf;
+        }
+        std::string line = "[grid_alltoallv route_phase RECV] subrank=" + std::to_string(subcomm.rank())
+                          + "/" + std::to_string(subcomm.size()) + " dim_size=" + std::to_string(dim_size)
+                          + " is_last=" + std::to_string(is_last ? 1 : 0)
+                          + " total_recv=" + std::to_string(total_recv) + " first_elem_bytes=" + hex + "\n";
+        std::fputs(line.c_str(), stderr);
+    }
+
     uninit_vector<int> recv_source_rank;
     if constexpr (Ordered) {
         recv_source_rank.resize(static_cast<std::size_t>(total_recv));
