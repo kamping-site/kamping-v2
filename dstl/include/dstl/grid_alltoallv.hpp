@@ -7,6 +7,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdio>
+#include <cstring>
 #include <iterator>
 #include <numeric>
 #include <ranges>
@@ -293,7 +294,8 @@ void route_phase(
     mpi::experimental::comm_view subcomm,
     RBuf&                        rbuf,
     bool                         is_last,
-    [[maybe_unused]] int         global_size
+    [[maybe_unused]] int         global_size,
+    long                         call_id
 ) {
     namespace views = kamping::v2::views;
 
@@ -395,7 +397,8 @@ void route_phase(
     // MPI redirects to (POSIX pipes/regular files under PIPE_BUF), so one string, one
     // call.
     {
-        std::string line = "[grid_alltoallv route_phase] subrank=" + std::to_string(subcomm.rank())
+        std::string line = "[grid_alltoallv route_phase] call=" + std::to_string(call_id)
+                          + " subrank=" + std::to_string(subcomm.rank())
                           + "/" + std::to_string(subcomm.size()) + " dim_size=" + std::to_string(dim_size)
                           + " is_last=" + std::to_string(is_last ? 1 : 0)
                           + " total_recv=" + std::to_string(total_recv) + " send_counts=[";
@@ -455,32 +458,56 @@ void route_phase(
     auto send_data =
         state.data | views::with_type(dt) | views::with_counts(send_counts) | views::with_displs(send_displs);
 
-    // TEMPORARY DIAGNOSTIC (2026-09-01, KaCCv2 grid-fanout investigation). Rank 0's own
+    // TEMPORARY DIAGNOSTIC (2026-09-01, KaCCv2 grid-fanout investigation, revised after a
+    // static-audit subagent flagged two weaknesses in the first version of this dump:
+    // (a) it printed all sizeof(T)=16 bytes of KaCC's wire Message
+    // (std::pair<uint64_t VId, int Payload>), but that type's actual MPI datatype is
+    // MPI_Type_create_struct{uint64_t@0, int@8} resized to 16 -- bytes 12-15 are a
+    // padding hole MPI never transfers, so a byte-for-byte "match" there is 4 bytes of
+    // coincidence and a mismatch confined to that range would be a false positive.
+    // KACC_DIAG_ELEM_BYTES below is hardcoded to 12 for exactly this reason -- it is
+    // NOT generically correct for any T, only for this investigation's specific element
+    // type, and must be reverted along with the rest of this diagnostic.
+    // (b) it dumped only element 0, and paired SEND/RECV lines across ranks purely by
+    // log order, with no shared call/round identifier -- call_id (this function's new
+    // parameter, a monotonic per-process counter incremented once per top-level
+    // grid_alltoallv() call) fixes the pairing; dumping up to the first 4 elements
+    // instead of just 1 shows whether any corruption is confined to position 0 or
+    // spread across the block.
+    //
+    // Rationale for the dump itself, unchanged from the previous version: rank 0's own
     // bfs.hpp-side trace (this same investigation, separate log) shows a real, non-zero
     // element queued as the first message to the peer at exactly this round; the peer's
     // crash shows an all-zero element at the equivalent receive position, with every
     // count cross-check (global, per-phase, this branch's independent recv_counts
     // renegotiation) agreeing exactly -- so the corruption is content, not size or
     // routing, and must happen between here (about to cross the wire) and the matching
-    // point just after the alltoallv call below. Dumps the raw bytes of the first
-    // element about to be sent to each non-self peer this phase, generically (T is
-    // opaque to this library) via reinterpret_cast -- safe for any indirectly_copyable,
-    // default_initializable T, which is already this function's own element-type
-    // requirement. Revert once answered.
+    // point just after the alltoallv call below. Revert once answered.
+    constexpr std::size_t KACC_DIAG_ELEM_BYTES = 12;
     for (int r = 0; r < subcomm_size; ++r) {
         if (r == subcomm.rank() || send_counts[static_cast<std::size_t>(r)] == 0) continue;
-        auto const* elem =
-            reinterpret_cast<unsigned char const*>(&state.data[static_cast<std::size_t>(send_displs[static_cast<std::size_t>(r)])]);
-        std::string hex;
-        for (std::size_t b = 0; b < sizeof(T); ++b) {
-            char buf[4];
-            std::snprintf(buf, sizeof(buf), "%02x", elem[b]);
-            hex += buf;
+        auto const  count       = static_cast<std::size_t>(send_counts[static_cast<std::size_t>(r)]);
+        auto const  dump_count  = std::min<std::size_t>(count, 4);
+        auto const* base        = reinterpret_cast<unsigned char const*>(
+            &state.data[static_cast<std::size_t>(send_displs[static_cast<std::size_t>(r)])]
+        );
+        std::string line = "[grid_alltoallv route_phase SEND] call=" + std::to_string(call_id)
+                          + " subrank=" + std::to_string(subcomm.rank()) + "/" + std::to_string(subcomm.size())
+                          + " dim_size=" + std::to_string(dim_size) + " is_last=" + std::to_string(is_last ? 1 : 0)
+                          + " to_subrank=" + std::to_string(r) + " count=" + std::to_string(count)
+                          + " elems=[";
+        for (std::size_t e = 0; e < dump_count; ++e) {
+            auto const* elem = base + e * sizeof(T);
+            std::string hex;
+            for (std::size_t b = 0; b < KACC_DIAG_ELEM_BYTES; ++b) {
+                char buf[4];
+                std::snprintf(buf, sizeof(buf), "%02x", elem[b]);
+                hex += buf;
+            }
+            line += hex;
+            if (e + 1 < dump_count) line += ",";
         }
-        std::string line = "[grid_alltoallv route_phase SEND] subrank=" + std::to_string(subcomm.rank())
-                          + "/" + std::to_string(subcomm.size()) + " dim_size=" + std::to_string(dim_size)
-                          + " is_last=" + std::to_string(is_last ? 1 : 0) + " to_subrank=" + std::to_string(r)
-                          + " first_elem_bytes=" + hex + "\n";
+        line += "]\n";
         std::fputs(line.c_str(), stderr);
     }
 
@@ -531,32 +558,58 @@ void route_phase(
     // Intermediate phase: stage the received blocks, then rebin them back into remaining-index order.
     // When ordering by source, source_rank rides along with the identical counts and displacements.
     uninit_vector<T> recv_data(static_cast<std::size_t>(total_recv));
+
+    // TEMPORARY DIAGNOSTIC (2026-09-01, KaCCv2 grid-fanout investigation, added after a
+    // static-audit subagent pointed out recv_data is genuinely UNINITIALIZED
+    // (uninit_vector, see default_init_allocator.hpp) -- "the receiver got all-zero
+    // bytes" is exactly what a slot MPI never wrote at all would also look like, once
+    // heap pages happen to come back zeroed (e.g. after malloc_trim, which KaCCv2's
+    // benchmark runner calls every iteration). Poisoning with a non-zero, non-plausible
+    // pattern before the real alltoallv call turns that ambiguity into a direct
+    // yes/no: if the RECV dump below ever shows this exact poison pattern instead of
+    // either the correct content OR all-zero, MPI genuinely never wrote that slot --
+    // proof of a sizing/count bug despite every count cross-check agreeing so far. If it
+    // shows all-zero (not the poison pattern), MPI DID write something, and the
+    // all-zero content is either genuine wire corruption or genuinely-zero real data --
+    // still meaningful either way. Revert once answered.
+    std::memset(recv_data.data(), 0xAA, recv_data.size() * sizeof(T));
+
     kamping::v2::alltoallv(
         send_data,
         recv_data | views::with_type(dt) | views::with_counts(recv_counts) | views::with_displs(recv_displs),
         subcomm
     );
 
-    // TEMPORARY DIAGNOSTIC (2026-09-01, KaCCv2 grid-fanout investigation) -- matching
-    // "SEND" dump above, immediately on the other side of the same alltoallv call, before
-    // rebin() (already proven a trivial straight copy for KaCCv2's specific p=2 repro,
-    // since next_subtree_size collapses to 1 there) touches recv_data at all. If this
-    // dump's bytes already differ from the matching SEND dump's for the same round, the
-    // corruption is inside this one alltoallv call; if they match, rebin/downstream is
+    // TEMPORARY DIAGNOSTIC (2026-09-01, KaCCv2 grid-fanout investigation, revised -- see
+    // the SEND dump's comment above for why KACC_DIAG_ELEM_BYTES=12 (not sizeof(T)) and
+    // why call_id/multiple elements were added) -- matching "SEND" dump above,
+    // immediately on the other side of the same alltoallv call, before rebin() (already
+    // proven a trivial straight copy for KaCCv2's specific p=2 repro, since
+    // next_subtree_size collapses to 1 there) touches recv_data at all. If this dump's
+    // bytes already differ from the matching SEND dump's for the same call_id, the
+    // corruption is inside this one alltoallv call (or is the poison pattern above,
+    // meaning MPI never wrote the slot at all); if they match, rebin/downstream is
     // still implicated despite the p=2 straight-copy argument, and that argument needs
     // re-examining. Revert once answered.
     if (total_recv > 0) {
-        auto const* elem = reinterpret_cast<unsigned char const*>(&recv_data[0]);
-        std::string hex;
-        for (std::size_t b = 0; b < sizeof(T); ++b) {
-            char buf[4];
-            std::snprintf(buf, sizeof(buf), "%02x", elem[b]);
-            hex += buf;
+        constexpr std::size_t KACC_DIAG_RECV_ELEM_BYTES = 12;
+        auto const dump_count = std::min<std::size_t>(static_cast<std::size_t>(total_recv), 4);
+        std::string line = "[grid_alltoallv route_phase RECV] call=" + std::to_string(call_id)
+                          + " subrank=" + std::to_string(subcomm.rank()) + "/" + std::to_string(subcomm.size())
+                          + " dim_size=" + std::to_string(dim_size) + " is_last=" + std::to_string(is_last ? 1 : 0)
+                          + " total_recv=" + std::to_string(total_recv) + " elems=[";
+        for (std::size_t e = 0; e < dump_count; ++e) {
+            auto const* elem = reinterpret_cast<unsigned char const*>(&recv_data[e]);
+            std::string hex;
+            for (std::size_t b = 0; b < KACC_DIAG_RECV_ELEM_BYTES; ++b) {
+                char buf[4];
+                std::snprintf(buf, sizeof(buf), "%02x", elem[b]);
+                hex += buf;
+            }
+            line += hex;
+            if (e + 1 < dump_count) line += ",";
         }
-        std::string line = "[grid_alltoallv route_phase RECV] subrank=" + std::to_string(subcomm.rank())
-                          + "/" + std::to_string(subcomm.size()) + " dim_size=" + std::to_string(dim_size)
-                          + " is_last=" + std::to_string(is_last ? 1 : 0)
-                          + " total_recv=" + std::to_string(total_recv) + " first_elem_bytes=" + hex + "\n";
+        line += "]\n";
         std::fputs(line.c_str(), stderr);
     }
 
@@ -658,6 +711,18 @@ auto grid_alltoallv(SBuf&& sbuf, RBuf&& rbuf, grid_comm<Exec> const& grid, [[may
         state.source_rank.assign(static_cast<std::size_t>(total_send), grid.rank());
     }
 
+    // TEMPORARY DIAGNOSTIC (2026-09-01, KaCCv2 grid-fanout investigation): a monotonic
+    // per-process call counter, incremented once per top-level grid_alltoallv() call
+    // (shared by every phase inside this one call), so route_phase's SEND/RECV/count
+    // dumps can be paired reliably across ranks and rounds instead of by log order
+    // alone -- a static-audit subagent flagged the previous log-order-only pairing as
+    // the diagnostic's weakest link. Safe as a plain function-local static: this
+    // function is only ever called under dstl::execution_policy::seq in KaCCv2's usage
+    // (see multistep_impl.hpp), so there is no concurrent-call race to guard against.
+    // Revert once answered.
+    static long call_id = 0;
+    ++call_id;
+
     // k phases, remote dimension first (dimension 0 → k-1). The last phase sizes rbuf and deposits the
     // routed result straight into it (D8) — there is no separate post-loop sizing or copy.
     auto const num_dims = grid.num_dims();
@@ -669,7 +734,8 @@ auto grid_alltoallv(SBuf&& sbuf, RBuf&& rbuf, grid_comm<Exec> const& grid, [[may
             grid.subcomm(i),
             rbuf,
             /*is_last=*/i + 1 == num_dims,
-            static_cast<int>(p)
+            static_cast<int>(p),
+            call_id
         );
     }
 
