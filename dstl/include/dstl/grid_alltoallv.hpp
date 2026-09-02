@@ -809,7 +809,12 @@ void route_phase(
         uninit_vector<T> p2p_recv_data(peer_recv_count);
         std::memset(p2p_recv_data.data(), 0xAA, p2p_recv_data.size() * sizeof(T));
 
-        constexpr int    kP2pTag = 0x4b414343; // "KACC" in hex, arbitrary but distinctive
+        // NOTE: was 0x4b414343 ("KACC" in hex) -- exceeded OpenMPI's MPI_TAG_UB (typically
+        // much smaller than INT_MAX; here evidently < ~1.26e9), causing MPI_ERR_TAG on the
+        // very first call before this diagnostic ever reached the real corrupting call.
+        // A small, ordinary tag is all this needs -- it's used synchronously, immediately
+        // matched by the single Waitall right below, no risk of colliding with anything.
+        constexpr int    kP2pTag = 7;
         MPI_Request       reqs[2];
         MPI_Isend(
             state.data.data() + send_displs[static_cast<std::size_t>(peer)],
