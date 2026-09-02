@@ -4,6 +4,7 @@
 #pragma once
 
 #include <algorithm>
+#include <chrono>
 #include <concepts>
 #include <cstddef>
 #include <cstdio>
@@ -574,11 +575,54 @@ void route_phase(
     // still meaningful either way. Revert once answered.
     std::memset(recv_data.data(), 0xAA, recv_data.size() * sizeof(T));
 
+    // TEMPORARY DIAGNOSTIC (2026-09-02, KaCCv2 grid-fanout investigation, continued --
+    // both isolated reproducers built so far (a plain-Alltoallv call-count loop, and a
+    // split/use/free comm-cycling loop matching grid_comm's own lifecycle -- see
+    // notes/grid-alltoallv-supermuc-data-loss.md) came back negative on real SuperMUC
+    // hardware, as did an even more faithful pre-existing isolated test that replays the
+    // real datatype/sizes/grid_comm-per-iteration pattern with a flat, uniform inter-round
+    // delay standing in for real computation. A byte-level SEND-vs-RECV comparison across
+    // three real crash occurrences (same seed, same call=17) showed the SEND side is
+    // always byte-identical and clean, while the RECV side fails non-deterministically --
+    // sometimes rank 0, sometimes rank 1, sometimes both -- ruling out a deterministic
+    // KaCC-side content bug and pointing at something timing-sensitive in delivery that a
+    // FLAT delay never replicates. This captures each rank's real wall-clock arrival time
+    // at this exact call, to see whether the corrupting call has unusually large or
+    // unusual inter-rank skew compared to clean calls -- something no synthetic reproducer
+    // has measured yet, since they were never run against this real skew pattern in the
+    // first place. Revert once answered.
+    {
+      auto const now = std::chrono::high_resolution_clock::now().time_since_epoch();
+      auto const us = std::chrono::duration_cast<std::chrono::microseconds>(now).count();
+      std::string line = "[grid_alltoallv route_phase SKEW pre] call=" + std::to_string(call_id)
+                        + " subrank=" + std::to_string(subcomm.rank()) + "/" + std::to_string(subcomm.size())
+                        + " dim_size=" + std::to_string(dim_size) + " is_last=" + std::to_string(is_last ? 1 : 0)
+                        + " t_us=" + std::to_string(us) + "\n";
+      std::fputs(line.c_str(), stderr);
+      std::fflush(stderr);
+    }
+
     kamping::v2::alltoallv(
         send_data,
         recv_data | views::with_type(dt) | views::with_counts(recv_counts) | views::with_displs(recv_displs),
         subcomm
     );
+
+    // TEMPORARY DIAGNOSTIC (2026-09-02, continued from the "pre" skew capture above): the
+    // matching post-call timestamp -- the gap between this rank's pre/post pair is this
+    // rank's own call latency; comparing "pre" timestamps for the same call_id across
+    // ranks is the actual inter-rank arrival skew this diagnostic exists to measure.
+    // Revert once answered.
+    {
+      auto const now = std::chrono::high_resolution_clock::now().time_since_epoch();
+      auto const us = std::chrono::duration_cast<std::chrono::microseconds>(now).count();
+      std::string line = "[grid_alltoallv route_phase SKEW post] call=" + std::to_string(call_id)
+                        + " subrank=" + std::to_string(subcomm.rank()) + "/" + std::to_string(subcomm.size())
+                        + " dim_size=" + std::to_string(dim_size) + " is_last=" + std::to_string(is_last ? 1 : 0)
+                        + " t_us=" + std::to_string(us) + "\n";
+      std::fputs(line.c_str(), stderr);
+      std::fflush(stderr);
+    }
 
     // TEMPORARY DIAGNOSTIC (2026-09-01, KaCCv2 grid-fanout investigation, revised -- see
     // the SEND dump's comment above for why KACC_DIAG_ELEM_BYTES=12 (not sizeof(T)) and
