@@ -787,6 +787,80 @@ void route_phase(
         std::fflush(stderr);
     }
 
+    // TEMPORARY DIAGNOSTIC (2026-09-02, continued -- the SHADOW check above (another
+    // collective Alltoallv) still can't distinguish "MPI genuinely dropped this
+    // message" from "MPI thinks it delivered something, just not what we expect" --
+    // MPI_Alltoallv exposes no per-message completion status the way point-to-point
+    // does. This gets that ground truth directly: for the specific 2-rank case this
+    // whole investigation's real crashes have always been in (dim_size==2, exactly the
+    // KaCCv2 p=2 repro), redo the exchange a THIRD time as an explicit
+    // MPI_Isend/MPI_Irecv/MPI_Waitall pair (mathematically identical to a 2-rank
+    // Alltoallv, just via the point-to-point API), then call MPI_Get_count on the recv
+    // MPI_Status -- this is real information the collective API never surfaces. If
+    // MPI_Get_count reports the full expected element count AND the buffer still shows
+    // the poison pattern, that's a direct, first-class proof of a genuine delivery
+    // defect (MPI's own bookkeeping says "delivered N", the memory disagrees) -- not
+    // inferred from a second collective's silence. If MPI_Get_count itself reports a
+    // wrong/partial count, that's equally informative in the other direction. Gated to
+    // subcomm_size==2 (not truly a P2P question at larger grids). Revert once answered.
+    if (subcomm_size == 2) {
+        int const peer = 1 - subcomm.rank();
+        auto const peer_recv_count = static_cast<std::size_t>(recv_counts[static_cast<std::size_t>(peer)]);
+        uninit_vector<T> p2p_recv_data(peer_recv_count);
+        std::memset(p2p_recv_data.data(), 0xAA, p2p_recv_data.size() * sizeof(T));
+
+        constexpr int    kP2pTag = 0x4b414343; // "KACC" in hex, arbitrary but distinctive
+        MPI_Request       reqs[2];
+        MPI_Isend(
+            state.data.data() + send_displs[static_cast<std::size_t>(peer)],
+            send_counts[static_cast<std::size_t>(peer)],
+            dt,
+            peer,
+            kP2pTag,
+            subcomm.mpi_handle(),
+            &reqs[0]
+        );
+        MPI_Irecv(
+            p2p_recv_data.data(), static_cast<int>(peer_recv_count), dt, peer, kP2pTag, subcomm.mpi_handle(), &reqs[1]
+        );
+        MPI_Status statuses[2];
+        MPI_Waitall(2, reqs, statuses);
+        int actual_count = -1;
+        MPI_Get_count(&statuses[1], dt, &actual_count);
+
+        constexpr std::size_t KACC_DIAG_P2P_ELEM_BYTES = 12;
+        std::size_t              p2p_mismatches         = 0;
+        std::string              p2p_detail;
+        for (std::size_t i = 0; i < peer_recv_count; ++i) {
+            auto const* real_elem = reinterpret_cast<unsigned char const*>(&recv_data[i]);
+            auto const* p2p_elem  = reinterpret_cast<unsigned char const*>(&p2p_recv_data[i]);
+            if (std::memcmp(real_elem, p2p_elem, KACC_DIAG_P2P_ELEM_BYTES) != 0) {
+                if (p2p_mismatches < 4) {
+                    std::string real_hex, p2p_hex;
+                    for (std::size_t b = 0; b < KACC_DIAG_P2P_ELEM_BYTES; ++b) {
+                        char buf[4];
+                        std::snprintf(buf, sizeof(buf), "%02x", real_elem[b]);
+                        real_hex += buf;
+                        std::snprintf(buf, sizeof(buf), "%02x", p2p_elem[b]);
+                        p2p_hex += buf;
+                    }
+                    p2p_detail += " [" + std::to_string(i) + "]real=" + real_hex + "/p2p=" + p2p_hex;
+                }
+                ++p2p_mismatches;
+            }
+        }
+        std::string line = "[grid_alltoallv route_phase P2P] call=" + std::to_string(call_id)
+                          + " subrank=" + std::to_string(subcomm.rank()) + "/" + std::to_string(subcomm.size())
+                          + " dim_size=" + std::to_string(dim_size) + " is_last=" + std::to_string(is_last ? 1 : 0)
+                          + " expected_count=" + std::to_string(peer_recv_count)
+                          + " mpi_get_count=" + std::to_string(actual_count)
+                          + " recv_status_error=" + std::to_string(statuses[1].MPI_ERROR)
+                          + " recv_status_source=" + std::to_string(statuses[1].MPI_SOURCE)
+                          + " mismatches_vs_real=" + std::to_string(p2p_mismatches) + p2p_detail + "\n";
+        std::fputs(line.c_str(), stderr);
+        std::fflush(stderr);
+    }
+
     uninit_vector<int> recv_source_rank;
     if constexpr (Ordered) {
         recv_source_rank.resize(static_cast<std::size_t>(total_recv));
