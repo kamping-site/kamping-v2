@@ -663,11 +663,60 @@ void route_phase(
       std::fflush(stderr);
     }
 
-    kamping::v2::alltoallv(
-        send_data,
-        recv_data | views::with_type(dt) | views::with_counts(recv_counts) | views::with_displs(recv_displs),
-        subcomm
-    );
+    // TEMPORARY DIAGNOSTIC/ROOT-CAUSE TEST (2026-09-02, continued -- per explicit user
+    // direction to keep root-causing rather than pivot to a workaround yet). Every
+    // point-to-point check tried so far (the removed P2P/SHADOW diagnostics) ran AFTER
+    // this real exchange had ALREADY completed -- and their mere presence suppressed
+    // the bug, so those redos never actually observed a live failure; there is still no
+    // MPI_Get_count data from a genuinely failing instance. This makes the REAL exchange
+    // itself go through point-to-point instead of the collective, for the 2-rank case
+    // (every crash in this investigation has been at subcomm_size==2): if the bug still
+    // happens via Isend/Irecv, MPI_Get_count finally tells us what MPI's own bookkeeping
+    // says about an exchange that actually fails. If the bug STOPS happening once routed
+    // through point-to-point instead of MPI_Alltoallv, that's real evidence the defect is
+    // specific to Alltoallv's internal (tuned/pairwise-exchange) algorithm rather than
+    // the transport in general -- a genuine root-cause narrowing, and incidentally also a
+    // viable permanent fix for this call shape. Only takes this path for `!Ordered`
+    // (KaCC's real usage here); `Ordered` mode falls through to the collective call,
+    // untouched. Revert or promote to a real fix once answered.
+    bool used_p2p_exchange = false;
+    if constexpr (!Ordered) {
+        if (subcomm_size == 2) {
+            used_p2p_exchange   = true;
+            int const  peer     = 1 - subcomm.rank();
+            constexpr int kExchTag = 11;
+            MPI_Request reqs[2];
+            MPI_Isend(
+                state.data.data() + send_displs[static_cast<std::size_t>(peer)],
+                send_counts[static_cast<std::size_t>(peer)],
+                dt,
+                peer,
+                kExchTag,
+                subcomm.mpi_handle(),
+                &reqs[0]
+            );
+            MPI_Irecv(recv_data.data(), total_recv, dt, peer, kExchTag, subcomm.mpi_handle(), &reqs[1]);
+            MPI_Status statuses[2];
+            MPI_Waitall(2, reqs, statuses);
+            int actual_count = -1;
+            MPI_Get_count(&statuses[1], dt, &actual_count);
+            std::string line = "[grid_alltoallv route_phase REALP2P] call=" + std::to_string(call_id)
+                              + " subrank=" + std::to_string(subcomm.rank()) + "/" + std::to_string(subcomm.size())
+                              + " dim_size=" + std::to_string(dim_size) + " is_last=" + std::to_string(is_last ? 1 : 0)
+                              + " expected_count=" + std::to_string(total_recv)
+                              + " mpi_get_count=" + std::to_string(actual_count)
+                              + " recv_status_error=" + std::to_string(statuses[1].MPI_ERROR) + "\n";
+            std::fputs(line.c_str(), stderr);
+            std::fflush(stderr);
+        }
+    }
+    if (!used_p2p_exchange) {
+        kamping::v2::alltoallv(
+            send_data,
+            recv_data | views::with_type(dt) | views::with_counts(recv_counts) | views::with_displs(recv_displs),
+            subcomm
+        );
+    }
 
     // TEMPORARY DIAGNOSTIC (2026-09-02, continued from the "pre" skew capture above): the
     // matching post-call timestamp -- the gap between this rank's pre/post pair is this
@@ -718,36 +767,13 @@ void route_phase(
         std::fputs(line.c_str(), stderr);
     }
 
-    // TEMPORARY DIAGNOSTIC (2026-09-02, continued -- prior versions of this check (a
-    // shadow MPI_Alltoallv, then an MPI_Isend/Irecv/Waitall+MPI_Get_count P2P redo,
-    // both AFTER the real call above) were tried and REMOVED again the same session:
-    // FOUR consecutive real runs with some combination of them active all completed
-    // every iteration cleanly, zero crashes -- including two independent runs with
-    // ONLY the lightweight P2P-with-real-data-movement check active. That's strong,
-    // repeated evidence that *some* form of extra activity on this communicator
-    // suppresses the bug, but it doesn't yet say WHICH aspect of "extra activity"
-    // matters: real duplicate data movement (touching send/recv buffers, driving the
-    // transport's request/rendezvous machinery) vs. mere synchronization (a
-    // happens-before edge with no payload at all). This swaps the diagnostic to test
-    // exactly that: a bare MPI_Barrier, zero bytes, no request objects beyond the
-    // barrier's own internal ones. If a barrier ALONE still suppresses the bug, that
-    // points at a race/synchronization issue (this call starting before some resource
-    // from the PREVIOUS call/iteration on this communicator is fully released) rather
-    // than anything about data volume or transport warm-up. If the bug reproduces
-    // again with just a barrier present, that argues the opposite -- real data
-    // movement specifically was what mattered before. Gated to subcomm_size==2
-    // (matches every real crash in this investigation). See
-    // notes/grid-alltoallv-supermuc-data-loss.md (KaCCv2) for the full run history.
-    // Revert once answered.
-    if (subcomm_size == 2) {
-        MPI_Barrier(subcomm.mpi_handle());
-        std::string line = "[grid_alltoallv route_phase BARRIER] call=" + std::to_string(call_id)
-                          + " subrank=" + std::to_string(subcomm.rank()) + "/" + std::to_string(subcomm.size())
-                          + " dim_size=" + std::to_string(dim_size) + " is_last=" + std::to_string(is_last ? 1 : 0)
-                          + "\n";
-        std::fputs(line.c_str(), stderr);
-        std::fflush(stderr);
-    }
+    // (The bare-MPI_Barrier check that used to live here answered its question and was
+    // removed: it crashed 2/2 times, so mere synchronization does NOT suppress the bug --
+    // only genuine duplicate data movement did, 4/4. See
+    // notes/grid-alltoallv-supermuc-data-loss.md (KaCCv2) for that result. Superseded by
+    // the REALP2P swap above, which now tests something sharper: whether point-to-point
+    // is inherently safe for this call shape, not just whether extra traffic suppresses
+    // a still-present bug.)
 
     uninit_vector<int> recv_source_rank;
     if constexpr (Ordered) {
