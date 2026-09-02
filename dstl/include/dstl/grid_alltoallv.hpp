@@ -15,6 +15,7 @@
 #include <span>
 #include <string>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -401,12 +402,30 @@ void route_phase(
     // this diagnostic. A single call's write of a short line is atomic on the streams
     // MPI redirects to (POSIX pipes/regular files under PIPE_BUF), so one string, one
     // call.
+    // TEMPORARY DIAGNOSTIC (2026-09-02, continued -- KaCCv2's investigation established
+    // that the corrupting call is never a fixed absolute call_id (call #17 was three
+    // runs' coincidence; a later rerun landed on #24 instead) but IS always the same
+    // total_recv size class (~6400 elements, BFS round 3) -- see
+    // notes/grid-alltoallv-supermuc-data-loss.md's "size-class trigger, not fixed call
+    // count" correction. This decouples the two: `occurrence` is the count of prior
+    // calls (this rank, this process lifetime) with this exact total_recv value,
+    // independent of call_id, num_dims, or how many other grid_alltoallv calls (e.g.
+    // from a coloring phase that does real work) happened in between. A future crash
+    // log line can then read off "this was the Nth time this rank saw a call this
+    // size" directly, without needing an external confound-breaking suite config
+    // (c9 tried and failed at this -- see notes). Keyed by exact total_recv, not a
+    // rounded bucket, since the fixed seed makes every occurrence of the real bug
+    // byte-identical in size. Revert once answered.
+    static std::unordered_map<int, long> size_class_occurrences;
+    long const occurrence = ++size_class_occurrences[total_recv];
+
     {
         std::string line = "[grid_alltoallv route_phase] call=" + std::to_string(call_id)
                           + " subrank=" + std::to_string(subcomm.rank())
                           + "/" + std::to_string(subcomm.size()) + " dim_size=" + std::to_string(dim_size)
                           + " is_last=" + std::to_string(is_last ? 1 : 0)
-                          + " total_recv=" + std::to_string(total_recv) + " send_counts=[";
+                          + " total_recv=" + std::to_string(total_recv)
+                          + " size_class_occurrence=" + std::to_string(occurrence) + " send_counts=[";
         for (std::size_t i = 0; i < send_counts.size(); ++i) {
             line += std::to_string(send_counts[i]);
             if (i + 1 < send_counts.size()) line += ",";
