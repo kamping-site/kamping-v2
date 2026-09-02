@@ -718,95 +718,33 @@ void route_phase(
         std::fputs(line.c_str(), stderr);
     }
 
-    // TEMPORARY DIAGNOSTIC (2026-09-02, continued -- the raw-MPI_Alltoallv "SHADOW"
-    // variant of this check (a second collective call, compared byte-for-byte against
-    // the real one) was tried and REMOVED again the same session: three consecutive
-    // real runs with it active (plus the P2P check below, i.e. triple traffic on every
-    // intermediate-phase call) completed ALL iterations cleanly, zero crashes -- a
-    // sharp reversal from every prior run without these diagnostics, which reliably
-    // failed within 3-5 iterations. That's a real, if inconvenient, signal that the
-    // added traffic itself is what's suppressing the bug, not proof the bug is gone.
-    // Removed the SHADOW half specifically (kept this P2P half, see below) to cut the
-    // added overhead roughly in half and improve the odds of actually catching a live
-    // failure with a diagnostic active. If the bug still doesn't reproduce with just
-    // this one active, that itself is worth recording as evidence toward a timing/
-    // traffic-history-sensitive trigger. See notes/grid-alltoallv-supermuc-data-loss.md
-    // (KaCCv2) for the full run history.
-    //
-    // This P2P check still can't distinguish "MPI genuinely dropped this
-    // message" from "MPI thinks it delivered something, just not what we expect" --
-    // MPI_Alltoallv exposes no per-message completion status the way point-to-point
-    // does. This gets that ground truth directly: for the specific 2-rank case this
-    // whole investigation's real crashes have always been in (dim_size==2, exactly the
-    // KaCCv2 p=2 repro), redo the exchange a THIRD time as an explicit
-    // MPI_Isend/MPI_Irecv/MPI_Waitall pair (mathematically identical to a 2-rank
-    // Alltoallv, just via the point-to-point API), then call MPI_Get_count on the recv
-    // MPI_Status -- this is real information the collective API never surfaces. If
-    // MPI_Get_count reports the full expected element count AND the buffer still shows
-    // the poison pattern, that's a direct, first-class proof of a genuine delivery
-    // defect (MPI's own bookkeeping says "delivered N", the memory disagrees) -- not
-    // inferred from a second collective's silence. If MPI_Get_count itself reports a
-    // wrong/partial count, that's equally informative in the other direction. Gated to
-    // subcomm_size==2 (not truly a P2P question at larger grids). Revert once answered.
+    // TEMPORARY DIAGNOSTIC (2026-09-02, continued -- prior versions of this check (a
+    // shadow MPI_Alltoallv, then an MPI_Isend/Irecv/Waitall+MPI_Get_count P2P redo,
+    // both AFTER the real call above) were tried and REMOVED again the same session:
+    // FOUR consecutive real runs with some combination of them active all completed
+    // every iteration cleanly, zero crashes -- including two independent runs with
+    // ONLY the lightweight P2P-with-real-data-movement check active. That's strong,
+    // repeated evidence that *some* form of extra activity on this communicator
+    // suppresses the bug, but it doesn't yet say WHICH aspect of "extra activity"
+    // matters: real duplicate data movement (touching send/recv buffers, driving the
+    // transport's request/rendezvous machinery) vs. mere synchronization (a
+    // happens-before edge with no payload at all). This swaps the diagnostic to test
+    // exactly that: a bare MPI_Barrier, zero bytes, no request objects beyond the
+    // barrier's own internal ones. If a barrier ALONE still suppresses the bug, that
+    // points at a race/synchronization issue (this call starting before some resource
+    // from the PREVIOUS call/iteration on this communicator is fully released) rather
+    // than anything about data volume or transport warm-up. If the bug reproduces
+    // again with just a barrier present, that argues the opposite -- real data
+    // movement specifically was what mattered before. Gated to subcomm_size==2
+    // (matches every real crash in this investigation). See
+    // notes/grid-alltoallv-supermuc-data-loss.md (KaCCv2) for the full run history.
+    // Revert once answered.
     if (subcomm_size == 2) {
-        int const peer = 1 - subcomm.rank();
-        auto const peer_recv_count = static_cast<std::size_t>(recv_counts[static_cast<std::size_t>(peer)]);
-        uninit_vector<T> p2p_recv_data(peer_recv_count);
-        std::memset(p2p_recv_data.data(), 0xAA, p2p_recv_data.size() * sizeof(T));
-
-        // NOTE: was 0x4b414343 ("KACC" in hex) -- exceeded OpenMPI's MPI_TAG_UB (typically
-        // much smaller than INT_MAX; here evidently < ~1.26e9), causing MPI_ERR_TAG on the
-        // very first call before this diagnostic ever reached the real corrupting call.
-        // A small, ordinary tag is all this needs -- it's used synchronously, immediately
-        // matched by the single Waitall right below, no risk of colliding with anything.
-        constexpr int    kP2pTag = 7;
-        MPI_Request       reqs[2];
-        MPI_Isend(
-            state.data.data() + send_displs[static_cast<std::size_t>(peer)],
-            send_counts[static_cast<std::size_t>(peer)],
-            dt,
-            peer,
-            kP2pTag,
-            subcomm.mpi_handle(),
-            &reqs[0]
-        );
-        MPI_Irecv(
-            p2p_recv_data.data(), static_cast<int>(peer_recv_count), dt, peer, kP2pTag, subcomm.mpi_handle(), &reqs[1]
-        );
-        MPI_Status statuses[2];
-        MPI_Waitall(2, reqs, statuses);
-        int actual_count = -1;
-        MPI_Get_count(&statuses[1], dt, &actual_count);
-
-        constexpr std::size_t KACC_DIAG_P2P_ELEM_BYTES = 12;
-        std::size_t              p2p_mismatches         = 0;
-        std::string              p2p_detail;
-        for (std::size_t i = 0; i < peer_recv_count; ++i) {
-            auto const* real_elem = reinterpret_cast<unsigned char const*>(&recv_data[i]);
-            auto const* p2p_elem  = reinterpret_cast<unsigned char const*>(&p2p_recv_data[i]);
-            if (std::memcmp(real_elem, p2p_elem, KACC_DIAG_P2P_ELEM_BYTES) != 0) {
-                if (p2p_mismatches < 4) {
-                    std::string real_hex, p2p_hex;
-                    for (std::size_t b = 0; b < KACC_DIAG_P2P_ELEM_BYTES; ++b) {
-                        char buf[4];
-                        std::snprintf(buf, sizeof(buf), "%02x", real_elem[b]);
-                        real_hex += buf;
-                        std::snprintf(buf, sizeof(buf), "%02x", p2p_elem[b]);
-                        p2p_hex += buf;
-                    }
-                    p2p_detail += " [" + std::to_string(i) + "]real=" + real_hex + "/p2p=" + p2p_hex;
-                }
-                ++p2p_mismatches;
-            }
-        }
-        std::string line = "[grid_alltoallv route_phase P2P] call=" + std::to_string(call_id)
+        MPI_Barrier(subcomm.mpi_handle());
+        std::string line = "[grid_alltoallv route_phase BARRIER] call=" + std::to_string(call_id)
                           + " subrank=" + std::to_string(subcomm.rank()) + "/" + std::to_string(subcomm.size())
                           + " dim_size=" + std::to_string(dim_size) + " is_last=" + std::to_string(is_last ? 1 : 0)
-                          + " expected_count=" + std::to_string(peer_recv_count)
-                          + " mpi_get_count=" + std::to_string(actual_count)
-                          + " recv_status_error=" + std::to_string(statuses[1].MPI_ERROR)
-                          + " recv_status_source=" + std::to_string(statuses[1].MPI_SOURCE)
-                          + " mismatches_vs_real=" + std::to_string(p2p_mismatches) + p2p_detail + "\n";
+                          + "\n";
         std::fputs(line.c_str(), stderr);
         std::fflush(stderr);
     }
