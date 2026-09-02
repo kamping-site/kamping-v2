@@ -22,6 +22,10 @@
     #include <omp.h>
 #endif
 
+#ifdef __linux__
+    #include <malloc.h>
+#endif
+
 #include <mpi.h>
 
 #include "dstl/default_init_allocator.hpp"
@@ -598,6 +602,44 @@ void route_phase(
                         + " subrank=" + std::to_string(subcomm.rank()) + "/" + std::to_string(subcomm.size())
                         + " dim_size=" + std::to_string(dim_size) + " is_last=" + std::to_string(is_last ? 1 : 0)
                         + " t_us=" + std::to_string(us) + "\n";
+      std::fputs(line.c_str(), stderr);
+      std::fflush(stderr);
+    }
+
+    // TEMPORARY DIAGNOSTIC (2026-09-02, continued -- the skew capture above showed call
+    // #17's inter-rank arrival timing is statistically indistinguishable from clean calls
+    // at the same round position (call 3, call 10), directly refuting the timing-race
+    // hypothesis on the real crash. This checks two remaining, still-untested angles: (a)
+    // whether recv_data's heap address on the corrupting call is suspicious in any way
+    // (e.g. coincides with memory very recently freed by the previous iteration's
+    // grid_comm teardown -- addresses alone can't prove aliasing, but a suspiciously
+    // *repeated* address across iterations, or one close to state.data's own address,
+    // would be a real lead), and (b) the allocator's own arena/free-list state
+    // (mallinfo2) at this exact point, in case the corrupting call coincides with an
+    // allocator-triggered mmap/sbrk transition. Revert once answered.
+    {
+      auto const recv_addr = reinterpret_cast<std::uintptr_t>(recv_data.data());
+      auto const send_addr = reinterpret_cast<std::uintptr_t>(state.data.data());
+      std::string line = "[grid_alltoallv route_phase MEM pre] call=" + std::to_string(call_id)
+                        + " subrank=" + std::to_string(subcomm.rank()) + "/" + std::to_string(subcomm.size())
+                        + " dim_size=" + std::to_string(dim_size) + " is_last=" + std::to_string(is_last ? 1 : 0)
+                        + " recv_data.data()=0x" + [&] {
+                            char buf[32];
+                            std::snprintf(buf, sizeof(buf), "%lx", recv_addr);
+                            return std::string{buf};
+                          }()
+                        + " recv_bytes=" + std::to_string(recv_data.size() * sizeof(T))
+                        + " state.data.data()=0x" + [&] {
+                            char buf[32];
+                            std::snprintf(buf, sizeof(buf), "%lx", send_addr);
+                            return std::string{buf};
+                          }();
+#ifdef __linux__
+      auto const mi = mallinfo2();
+      line += " arena=" + std::to_string(mi.arena) + " uordblks=" + std::to_string(mi.uordblks)
+            + " fordblks=" + std::to_string(mi.fordblks) + " hblkhd=" + std::to_string(mi.hblkhd);
+#endif
+      line += "\n";
       std::fputs(line.c_str(), stderr);
       std::fflush(stderr);
     }
