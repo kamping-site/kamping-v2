@@ -718,77 +718,22 @@ void route_phase(
         std::fputs(line.c_str(), stderr);
     }
 
-    // TEMPORARY DIAGNOSTIC (2026-09-02, continued -- resuming after a pause, at the
-    // user's explicit direction to keep instrumenting a real run to find the actual
-    // mechanism rather than gather more statistical reruns or wait on HPC vendor
-    // support (paper deadline). Every diagnostic so far has only ever observed the
-    // kamping::v2::alltoallv code path -- nothing has directly compared it against a
-    // bare MPI_Alltoallv on the identical send data at the exact call that corrupts.
-    // This closes that gap: immediately after the real call above, redo the identical
-    // exchange through the raw MPI C API into a separately poison-filled buffer, then
-    // compare byte-for-byte (first KACC_DIAG_SHADOW_ELEM_BYTES=12 bytes per element,
-    // matching the RECV dump's own padding-aware comparison above) against what
-    // kamping's call produced.
-    //   - If the raw call ALSO drops the same elements: conclusively an MPI/vendor-
-    //     level (PSM2/OpenMPI) defect, not a kamping-v2 or KaCC bug -- matches every
-    //     prior clue, but now directly proven rather than inferred.
-    //   - If the raw call succeeds where kamping's failed: the opposite and far more
-    //     actionable conclusion -- something about how kamping-v2 constructs or issues
-    //     this specific call (the padded MPI_Type_create_struct datatype, buffer
-    //     views, argument order) is the actual bug, fixable in our own code without
-    //     waiting on anyone else.
-    // Doubles network traffic on every intermediate-phase call while this is active,
-    // which could itself shift *when* the corruption first fires (see the size-class-
-    // occurrence finding above) -- expected and acceptable: this answers "which
-    // mechanism", not "which occurrence". Revert once answered.
-    {
-        uninit_vector<T> shadow_recv_data(static_cast<std::size_t>(total_recv));
-        std::memset(shadow_recv_data.data(), 0xAA, shadow_recv_data.size() * sizeof(T));
-        int const shadow_err = MPI_Alltoallv(
-            state.data.data(),
-            send_counts.data(),
-            send_displs.data(),
-            dt,
-            shadow_recv_data.data(),
-            recv_counts.data(),
-            recv_displs.data(),
-            dt,
-            subcomm.mpi_handle()
-        );
-        constexpr std::size_t KACC_DIAG_SHADOW_ELEM_BYTES = 12;
-        std::size_t              mismatches = 0;
-        std::string              detail;
-        for (int i = 0; i < total_recv; ++i) {
-            auto const* real_elem =
-                reinterpret_cast<unsigned char const*>(&recv_data[static_cast<std::size_t>(i)]);
-            auto const* shadow_elem =
-                reinterpret_cast<unsigned char const*>(&shadow_recv_data[static_cast<std::size_t>(i)]);
-            if (std::memcmp(real_elem, shadow_elem, KACC_DIAG_SHADOW_ELEM_BYTES) != 0) {
-                if (mismatches < 4) {
-                    std::string real_hex, shadow_hex;
-                    for (std::size_t b = 0; b < KACC_DIAG_SHADOW_ELEM_BYTES; ++b) {
-                        char buf[4];
-                        std::snprintf(buf, sizeof(buf), "%02x", real_elem[b]);
-                        real_hex += buf;
-                        std::snprintf(buf, sizeof(buf), "%02x", shadow_elem[b]);
-                        shadow_hex += buf;
-                    }
-                    detail += " [" + std::to_string(i) + "]real=" + real_hex + "/shadow=" + shadow_hex;
-                }
-                ++mismatches;
-            }
-        }
-        std::string line = "[grid_alltoallv route_phase SHADOW] call=" + std::to_string(call_id)
-                          + " subrank=" + std::to_string(subcomm.rank()) + "/" + std::to_string(subcomm.size())
-                          + " dim_size=" + std::to_string(dim_size) + " is_last=" + std::to_string(is_last ? 1 : 0)
-                          + " total_recv=" + std::to_string(total_recv) + " shadow_err=" + std::to_string(shadow_err)
-                          + " mismatches=" + std::to_string(mismatches) + detail + "\n";
-        std::fputs(line.c_str(), stderr);
-        std::fflush(stderr);
-    }
-
-    // TEMPORARY DIAGNOSTIC (2026-09-02, continued -- the SHADOW check above (another
-    // collective Alltoallv) still can't distinguish "MPI genuinely dropped this
+    // TEMPORARY DIAGNOSTIC (2026-09-02, continued -- the raw-MPI_Alltoallv "SHADOW"
+    // variant of this check (a second collective call, compared byte-for-byte against
+    // the real one) was tried and REMOVED again the same session: three consecutive
+    // real runs with it active (plus the P2P check below, i.e. triple traffic on every
+    // intermediate-phase call) completed ALL iterations cleanly, zero crashes -- a
+    // sharp reversal from every prior run without these diagnostics, which reliably
+    // failed within 3-5 iterations. That's a real, if inconvenient, signal that the
+    // added traffic itself is what's suppressing the bug, not proof the bug is gone.
+    // Removed the SHADOW half specifically (kept this P2P half, see below) to cut the
+    // added overhead roughly in half and improve the odds of actually catching a live
+    // failure with a diagnostic active. If the bug still doesn't reproduce with just
+    // this one active, that itself is worth recording as evidence toward a timing/
+    // traffic-history-sensitive trigger. See notes/grid-alltoallv-supermuc-data-loss.md
+    // (KaCCv2) for the full run history.
+    //
+    // This P2P check still can't distinguish "MPI genuinely dropped this
     // message" from "MPI thinks it delivered something, just not what we expect" --
     // MPI_Alltoallv exposes no per-message completion status the way point-to-point
     // does. This gets that ground truth directly: for the specific 2-rank case this
