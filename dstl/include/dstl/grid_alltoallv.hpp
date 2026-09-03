@@ -7,6 +7,7 @@
 #include <chrono>
 #include <concepts>
 #include <cstddef>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <iterator>
@@ -583,20 +584,109 @@ void route_phase(
     // When ordering by source, source_rank rides along with the identical counts and displacements.
     uninit_vector<T> recv_data(static_cast<std::size_t>(total_recv));
 
-    // TEMPORARY DIAGNOSTIC (2026-09-01, KaCCv2 grid-fanout investigation, added after a
-    // static-audit subagent pointed out recv_data is genuinely UNINITIALIZED
-    // (uninit_vector, see default_init_allocator.hpp) -- "the receiver got all-zero
-    // bytes" is exactly what a slot MPI never wrote at all would also look like, once
-    // heap pages happen to come back zeroed (e.g. after malloc_trim, which KaCCv2's
-    // benchmark runner calls every iteration). Poisoning with a non-zero, non-plausible
-    // pattern before the real alltoallv call turns that ambiguity into a direct
-    // yes/no: if the RECV dump below ever shows this exact poison pattern instead of
-    // either the correct content OR all-zero, MPI genuinely never wrote that slot --
-    // proof of a sizing/count bug despite every count cross-check agreeing so far. If it
-    // shows all-zero (not the poison pattern), MPI DID write something, and the
-    // all-zero content is either genuine wire corruption or genuinely-zero real data --
-    // still meaningful either way. Revert once answered.
-    std::memset(recv_data.data(), 0xAA, recv_data.size() * sizeof(T));
+    // TEMPORARY DIAGNOSTIC (2026-09-01, KaCCv2 grid-fanout investigation): recv_data is
+    // genuinely UNINITIALIZED (uninit_vector, see default_init_allocator.hpp), so "the
+    // receiver got all-zero bytes" is also what a slot MPI never wrote would look like
+    // once heap pages come back zeroed. Poison-filling before the exchange separates
+    // those. NOTE (2026-09-03): the original conclusion drawn from this -- "seeing the
+    // poison pattern proves MPI never wrote the slot" -- does NOT follow; see the block
+    // immediately below, which is what the fill now actually tests.
+    //
+    // TEMPORARY DIAGNOSTIC (2026-09-03 -- the one gap left in the "below the MPI API
+    // surface" argument). The 0xAA memset that used to live here is the ONLY source of
+    // 0xAA bytes in the entire process (grep both repos), and `recv_data` is a
+    // function-local uninit_vector: its heap block is FREED when route_phase returns and
+    // glibc is free to hand the same block to a later allocation. Any later
+    // `uninit_vector` that lands on it and isn't fully written reads back as 0xAA. So
+    // "the receive buffer holds the poison pattern" does NOT actually prove MPI never
+    // wrote it -- it proves only "these bytes were last touched by *some* poison memset",
+    // possibly an EARLIER call's, having travelled to us as genuine, faithfully
+    // transmitted payload from the sender. That alternative explains every observation on
+    // record with no MPI defect at all: exact MPI_Get_count and MPI_SUCCESS (MPI really
+    // did transfer every element), a contiguous poison SUFFIX from a variable boundary
+    // (the tail of a partially-populated send buffer), self-consistent counts (they come
+    // from a separate metadata path), balanced global send/recv totals, and -- the
+    // telling one -- why two standalone reproducers and the isolated test never
+    // reproduced it: they build their send buffers properly.
+    //
+    // Making the pattern unique per memset discriminates the two directly. Each fill
+    // stamps its own monotonic sequence number into the low 32 bits of every 8-byte word,
+    // keeping 0xAAAAAAAA in the high 32 bits so the marker is still recognizable and the
+    // decoded VId still fails is_local() (detection downstream is unchanged; real vertex
+    // ids are nowhere near 2^32 at these scales, so no false positives). Then a poisoned
+    // receive reads out WHICH fill wrote those bytes:
+    //   seq == this call's own fill  -> MPI genuinely left the buffer untouched.
+    //   seq <  this call's own fill  -> recycled heap that reached us through the SENDER;
+    //                                   an application bug, not an MPI one.
+    // Revert once answered.
+    //
+    // `grid_alltoallv` is generic and its tests instantiate it with small element types
+    // (e.g. `int`), so the sequence-carrying fill and the scans below are gated on the
+    // element being wide enough to hold a marker word; narrower types fall back to the
+    // original flat 0xAA memset and simply skip the scans.
+    constexpr bool     kPoisonSeqUsable = sizeof(T) >= sizeof(std::uint64_t);
+    constexpr std::uint64_t kPoisonMask = 0xAAAAAAAA00000000ULL;
+    static std::uint64_t poison_seq     = 0;
+    std::uint64_t const  my_poison_seq  = ++poison_seq;
+    if constexpr (kPoisonSeqUsable) {
+        std::uint64_t const poison_word = kPoisonMask | my_poison_seq;
+        // Written with memcpy rather than a reinterpret_cast to uint64_t*: T's alignment
+        // is not guaranteed to reach 8 for every instantiation of this template.
+        for (std::size_t e = 0; e < recv_data.size(); ++e) {
+            auto* const elem = reinterpret_cast<unsigned char*>(&recv_data[e]);
+            std::memset(elem, 0xAA, sizeof(T));
+            std::memcpy(elem, &poison_word, sizeof(poison_word));
+        }
+    } else {
+        std::memset(recv_data.data(), 0xAA, recv_data.size() * sizeof(T));
+    }
+
+    // TEMPORARY DIAGNOSTIC (2026-09-03, the other half of the same question): every
+    // "the sender's content is byte-clean" conclusion in this investigation rests on the
+    // SEND dump above, which prints only the FIRST 4 of ~6400 elements. A send buffer
+    // whose tail is recycled poison would dump clean at elements 0..3 every single time
+    // and still put a poison suffix on the wire. This scans the ENTIRE outgoing block for
+    // the marker and reports the first/last offending index and the total count. If the
+    // sender is already carrying poison at exactly the boundary the receiver later
+    // reports, the case is closed on the application side and no MPI defect is involved.
+    // O(n) over a buffer we are about to send anyway -- diagnostic build only, reverted
+    // with the rest. Revert once answered.
+    if constexpr (kPoisonSeqUsable) {
+        for (int r = 0; r < subcomm_size; ++r) {
+            if (send_counts[static_cast<std::size_t>(r)] == 0) continue;
+            auto const  count = static_cast<std::size_t>(send_counts[static_cast<std::size_t>(r)]);
+            auto const* base  = reinterpret_cast<unsigned char const*>(
+                &state.data[static_cast<std::size_t>(send_displs[static_cast<std::size_t>(r)])]
+            );
+            std::ptrdiff_t first_bad = -1;
+            std::ptrdiff_t last_bad  = -1;
+            std::size_t    num_bad   = 0;
+            std::uint64_t  seen_seq  = 0;
+            for (std::size_t e = 0; e < count; ++e) {
+                std::uint64_t vid = 0;
+                std::memcpy(&vid, base + e * sizeof(T), sizeof(vid));
+                if ((vid & 0xFFFFFFFF00000000ULL) == kPoisonMask) {
+                    if (first_bad < 0) {
+                        first_bad = static_cast<std::ptrdiff_t>(e);
+                        seen_seq  = vid & 0xFFFFFFFFULL;
+                    }
+                    last_bad = static_cast<std::ptrdiff_t>(e);
+                    ++num_bad;
+                }
+            }
+            std::string line = "[grid_alltoallv route_phase SENDSCAN] call=" + std::to_string(call_id)
+                              + " subrank=" + std::to_string(subcomm.rank()) + "/" + std::to_string(subcomm.size())
+                              + " dim_size=" + std::to_string(dim_size) + " is_last=" + std::to_string(is_last ? 1 : 0)
+                              + " to_subrank=" + std::to_string(r) + " count=" + std::to_string(count)
+                              + " my_poison_seq=" + std::to_string(my_poison_seq)
+                              + " num_poisoned=" + std::to_string(num_bad)
+                              + " first_bad=" + std::to_string(first_bad)
+                              + " last_bad=" + std::to_string(last_bad)
+                              + " first_bad_seq=" + std::to_string(seen_seq) + "\n";
+            std::fputs(line.c_str(), stderr);
+            std::fflush(stderr);
+        }
+    }
 
     // TEMPORARY DIAGNOSTIC (2026-09-02, KaCCv2 grid-fanout investigation, continued --
     // both isolated reproducers built so far (a plain-Alltoallv call-count loop, and a
@@ -765,6 +855,55 @@ void route_phase(
         }
         line += "]\n";
         std::fputs(line.c_str(), stderr);
+    }
+
+    // TEMPORARY DIAGNOSTIC (2026-09-03): the payoff of the per-fill poison sequence
+    // numbers above. Scans the WHOLE received buffer (the RECV dump above only shows 4
+    // elements) and reports the poisoned range plus the sequence numbers actually found
+    // in it. This is the line that settles the investigation's central question:
+    //   found_seq == my_poison_seq  -> the bytes are THIS call's own fill; MPI returned
+    //                                  success having genuinely never written the buffer,
+    //                                  and the defect really is below the API surface.
+    //   found_seq <  my_poison_seq  -> the bytes are an EARLIER fill's, recycled through
+    //                                  the allocator and delivered to us as real payload
+    //                                  by a sender whose own buffer was already poisoned.
+    //                                  That is an application-side bug and the "below the
+    //                                  MPI API surface" conclusion does not hold.
+    // Cross-check against the SENDSCAN line from the peer for the same call_id. Revert
+    // once answered.
+    if constexpr (kPoisonSeqUsable) if (total_recv > 0) {
+        std::ptrdiff_t first_bad = -1;
+        std::ptrdiff_t last_bad  = -1;
+        std::size_t    num_bad   = 0;
+        std::uint64_t  min_seq   = 0;
+        std::uint64_t  max_seq   = 0;
+        for (std::size_t e = 0; e < static_cast<std::size_t>(total_recv); ++e) {
+            std::uint64_t vid = 0;
+            std::memcpy(&vid, reinterpret_cast<unsigned char const*>(&recv_data[e]), sizeof(vid));
+            if ((vid & 0xFFFFFFFF00000000ULL) == kPoisonMask) {
+                auto const seq = vid & 0xFFFFFFFFULL;
+                if (first_bad < 0) {
+                    first_bad = static_cast<std::ptrdiff_t>(e);
+                    min_seq = max_seq = seq;
+                }
+                last_bad = static_cast<std::ptrdiff_t>(e);
+                min_seq  = std::min(min_seq, seq);
+                max_seq  = std::max(max_seq, seq);
+                ++num_bad;
+            }
+        }
+        std::string line = "[grid_alltoallv route_phase RECVSCAN] call=" + std::to_string(call_id)
+                          + " subrank=" + std::to_string(subcomm.rank()) + "/" + std::to_string(subcomm.size())
+                          + " dim_size=" + std::to_string(dim_size) + " is_last=" + std::to_string(is_last ? 1 : 0)
+                          + " total_recv=" + std::to_string(total_recv)
+                          + " my_poison_seq=" + std::to_string(my_poison_seq)
+                          + " num_poisoned=" + std::to_string(num_bad)
+                          + " first_bad=" + std::to_string(first_bad)
+                          + " last_bad=" + std::to_string(last_bad)
+                          + " min_found_seq=" + std::to_string(min_seq)
+                          + " max_found_seq=" + std::to_string(max_seq) + "\n";
+        std::fputs(line.c_str(), stderr);
+        std::fflush(stderr);
     }
 
     // (The bare-MPI_Barrier check that used to live here answered its question and was
