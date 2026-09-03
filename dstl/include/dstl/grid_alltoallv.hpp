@@ -668,7 +668,7 @@ void route_phase(
                 if ((vid & 0xFFFFFFFF00000000ULL) == kPoisonMask) {
                     if (first_bad < 0) {
                         first_bad = static_cast<std::ptrdiff_t>(e);
-                        seen_seq  = vid & 0xFFFFFFFFULL;
+                        seen_seq  = static_cast<std::uint64_t>(vid & 0xFFFFFFFFULL);
                     }
                     last_bad = static_cast<std::ptrdiff_t>(e);
                     ++num_bad;
@@ -881,7 +881,12 @@ void route_phase(
             std::uint64_t vid = 0;
             std::memcpy(&vid, reinterpret_cast<unsigned char const*>(&recv_data[e]), sizeof(vid));
             if ((vid & 0xFFFFFFFF00000000ULL) == kPoisonMask) {
-                auto const seq = vid & 0xFFFFFFFFULL;
+                // Explicitly std::uint64_t, not `auto`: the ULL literal makes the
+                // expression `unsigned long long`, which on Linux (where std::uint64_t is
+                // `unsigned long`) is a *different* type and fails std::min's single
+                // template parameter. It happens to compile on macOS, where the two are
+                // the same type.
+                std::uint64_t const seq = static_cast<std::uint64_t>(vid & 0xFFFFFFFFULL);
                 if (first_bad < 0) {
                     first_bad = static_cast<std::ptrdiff_t>(e);
                     min_seq = max_seq = seq;
