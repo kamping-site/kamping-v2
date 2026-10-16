@@ -51,10 +51,12 @@ target_link_libraries(mpi_core INTERFACE MPI::MPI_CXX kamping_v2::kassert kampin
 
 # Set a sensible default assertion level so kassert does not warn about a missing definition
 # when mpi-core is used without kamping-v1 (which sets its own level on the kamping target).
-# Debug → light assertions (level 20); otherwise → exceptions only (level 10).
+# Debug → normal assertions (level 30, the level of a plain KAMPING_V2_ASSERT(...)); otherwise → exceptions only
+# (level 10). The Debug level must be at least 30, or every KAMPING_V2_ASSERT without an explicit level is
+# compiled out.
 target_compile_definitions(
     mpi_core INTERFACE
-    $<IF:$<CONFIG:Debug>,KAMPING_V2_ASSERT_ASSERTION_LEVEL=20,KAMPING_V2_ASSERT_ASSERTION_LEVEL=10>
+    $<IF:$<CONFIG:Debug>,KAMPING_V2_ASSERT_ASSERTION_LEVEL=30,KAMPING_V2_ASSERT_ASSERTION_LEVEL=10>
 )
 
 # kamping::types transitively includes the kamping-v1 kassert (macro prefix KAMPING_ASSERT) via
