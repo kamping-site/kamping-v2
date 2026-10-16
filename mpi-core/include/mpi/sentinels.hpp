@@ -41,13 +41,16 @@ inline constexpr inplace_t inplace{};
 /// Sentinel buffer that passes `nullptr` as the data pointer.
 /// Used for optional root-only buffers in gather/scatter: non-root ranks
 /// pass `null_buf` for the receive/send buffer that MPI ignores on their
-/// side. Satisfies `send_buffer` and `recv_buffer`.
+/// side. Also usable as an empty message in point-to-point calls, which is why
+/// the datatype is `MPI_BYTE`: MPI rejects `MPI_DATATYPE_NULL` there even for
+/// count 0. Satisfies `send_buffer` and `recv_buffer`.
 ///
 ///   v2::gather(local_data, null_buf, root, comm);  // non-root
+///   v2::send(null_buf, dest, tag, comm);           // zero-byte signal
 struct null_buf_t {
     static void*          mpi_ptr()  noexcept { return nullptr; }
     static std::ptrdiff_t mpi_count() noexcept { return 0; }
-    static MPI_Datatype   mpi_type()  noexcept { return MPI_DATATYPE_NULL; }
+    static MPI_Datatype   mpi_type()  noexcept { return MPI_BYTE; }
 };
 inline constexpr null_buf_t null_buf{};
 

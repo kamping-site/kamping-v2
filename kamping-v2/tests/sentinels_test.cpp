@@ -28,7 +28,7 @@ static_assert(mpi::experimental::recv_buffer<v2::null_buf_t>);
 TEST(SentinelsTest, NullBufData) {
     EXPECT_EQ(mpi::experimental::ptr(v2::null_buf), nullptr);
     EXPECT_EQ(mpi::experimental::count(v2::null_buf), 0);
-    EXPECT_EQ(mpi::experimental::type(v2::null_buf), MPI_DATATYPE_NULL);
+    EXPECT_EQ(mpi::experimental::type(v2::null_buf), MPI_BYTE);
 }
 
 // ── bottom_t ──────────────────────────────────────────────────────────────────
