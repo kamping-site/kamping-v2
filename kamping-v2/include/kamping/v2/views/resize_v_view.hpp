@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <ranges>
+#include <utility>
 
 #include "kamping/v2/views/adaptor.hpp"
 #include "kamping/v2/views/all.hpp"
@@ -41,6 +42,9 @@ public:
     }
     constexpr Base const& base() const& noexcept {
         return base_;
+    }
+    constexpr Base&& base() && noexcept {
+        return std::move(base_);
     }
 
     // mpi_counts, mpi_displs, mpi_type, mpi_count are all forwarded through view_interface.

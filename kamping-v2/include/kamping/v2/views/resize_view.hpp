@@ -5,6 +5,7 @@
 
 #include <cstddef>
 #include <optional>
+#include <utility>
 
 #include "kamping/v2/kassert.hpp"
 #include "kamping/v2/views/adaptor.hpp"
@@ -33,6 +34,9 @@ public:
     }
     constexpr Base const& base() const& noexcept {
         return base_;
+    }
+    constexpr Base&& base() && noexcept {
+        return std::move(base_);
     }
 
     /// Called by the collective with the inferred recv count. Does not resize yet.

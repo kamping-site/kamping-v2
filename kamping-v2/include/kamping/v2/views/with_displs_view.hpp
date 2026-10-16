@@ -26,6 +26,9 @@ public:
     constexpr Base& base() & noexcept {
         return base_;
     }
+    constexpr Base&& base() && noexcept {
+        return std::move(base_);
+    }
 
     template <typename R, typename C>
     with_displs_view(R&& base, C&& displs)

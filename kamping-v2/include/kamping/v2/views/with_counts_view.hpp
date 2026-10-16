@@ -24,6 +24,9 @@ public:
     constexpr Base& base() & noexcept {
         return base_;
     }
+    constexpr Base&& base() && noexcept {
+        return std::move(base_);
+    }
 
     template <typename R, typename C>
     with_counts_view(R&& base, C&& counts)

@@ -3,6 +3,7 @@
 
 #pragma once
 #include <ranges>
+#include <utility>
 
 #include <mpi.h>
 
@@ -23,6 +24,9 @@ public:
     }
     constexpr Base& base() & noexcept {
         return base_;
+    }
+    constexpr Base&& base() && noexcept {
+        return std::move(base_);
     }
 
     template <typename R>
