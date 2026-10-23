@@ -37,6 +37,10 @@ add_executable(test_v2_view_base_rvalue view_base_rvalue_test.cpp)
 target_link_libraries(test_v2_view_base_rvalue PRIVATE kamping_v2 kamping_v2_warnings GTest::gtest_main)
 gtest_discover_tests(test_v2_view_base_rvalue)
 
+add_executable(test_v2_handle_range handle_range_test.cpp)
+target_link_libraries(test_v2_handle_range PRIVATE kamping_v2 kamping_v2_warnings GTest::gtest_main)
+gtest_discover_tests(test_v2_handle_range)
+
 # MPI tests
 add_executable(test_v2_type_pool v2_type_pool_test.cpp)
 target_link_libraries(test_v2_type_pool PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
@@ -53,6 +57,14 @@ katestrophe_add_mpi_test(test_v2_comm_view_with_pool CORES 1 2)
 add_executable(test_v2_request_view request_view_test.cpp)
 target_link_libraries(test_v2_request_view PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
 katestrophe_add_mpi_test(test_v2_request_view CORES 1 2)
+
+add_executable(test_v2_arrays arrays_test.cpp)
+target_link_libraries(test_v2_arrays PRIVATE kamping_v2 kamping_v2_warnings GTest::gtest_main)
+gtest_discover_tests(test_v2_arrays)
+
+add_executable(test_v2_completion completion_test.cpp)
+target_link_libraries(test_v2_completion PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
+katestrophe_add_mpi_test(test_v2_completion CORES 1 2 4)
 
 add_executable(test_v2_info info_test.cpp)
 target_link_libraries(test_v2_info PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
