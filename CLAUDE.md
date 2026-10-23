@@ -194,6 +194,8 @@ Free functions `mpi::experimental::handle(x)` and `handle_ptr(x)` extract `MPI_C
 2. `t.mpi_handle()` / `t.mpi_handle_ptr()` member functions
 3. Passthrough for raw `MPI_Comm` / `MPI_Request` / … values
 
+Arrays of handles (e.g. the requests of `waitall`) are obtained via `handle_range(x)`, with the same priority: `handle_range_traits<T>` → `t.mpi_handle_range()` → contiguous-range passthrough (lvalues only). The result must be writable contiguous storage of exactly the handle type that refers to the caller's memory (an lvalue reference or a borrowed view like `std::span`, never a copy), since MPI writes back into it; `convertible_to_mpi_handle_range<T, Handle>` checks this. It need not be sized; arguments that need a count require that separately.
+
 The same pattern applies to ranks (`to_rank`) and tags (`to_tag`), supporting both plain `int` and strongly-typed wrappers.
 
 ### Coding Conventions
