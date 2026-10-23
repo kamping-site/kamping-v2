@@ -105,7 +105,7 @@ auto irecv(RBuf&& rbuf, Source source = MPI_ANY_SOURCE, Tag tag = MPI_ANY_TAG, C
             mpi::experimental::to_tag(tag),
             mpi::experimental::handle(comm)
         );
-        mpi::experimental::imrecv(res.view(), &msg, res.mpi_native_handle_ptr());
+        mpi::experimental::imrecv(res.view(), &msg, res.mpi_handle_ptr());
     } else if constexpr (std::is_same_v<infer_result_t, std::pair<int, int>>) {
         auto [src, tg] = infer(
             comm_op::recv{},
@@ -114,7 +114,7 @@ auto irecv(RBuf&& rbuf, Source source = MPI_ANY_SOURCE, Tag tag = MPI_ANY_TAG, C
             mpi::experimental::to_tag(tag),
             mpi::experimental::handle(comm)
         );
-        mpi::experimental::irecv(res.view(), src, tg, comm, res.mpi_native_handle_ptr());
+        mpi::experimental::irecv(res.view(), src, tg, comm, res.mpi_handle_ptr());
     } else {
         infer(
             comm_op::recv{},
@@ -123,7 +123,7 @@ auto irecv(RBuf&& rbuf, Source source = MPI_ANY_SOURCE, Tag tag = MPI_ANY_TAG, C
             mpi::experimental::to_tag(tag),
             mpi::experimental::handle(comm)
         );
-        mpi::experimental::irecv(res.view(), source, tag, comm, res.mpi_native_handle_ptr());
+        mpi::experimental::irecv(res.view(), source, tag, comm, res.mpi_handle_ptr());
     }
     return res;
 }

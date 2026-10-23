@@ -458,7 +458,7 @@ auto v2::isend(SBuf&& sbuf, int dest, int tag, MPI_Comm comm)
 - Move-only (buffer pointer captured by MPI stays stable)
 - `.wait()` — blocks until completion, returns buffer (owned buffers moved out; borrowed buffers return reference)
 - `.test()` — non-blocking poll
-- Destructor calls `MPI_Wait` if not already completed (prevents silent hangs)
+- `[[nodiscard]]`; destroying it with an outstanding request prints a diagnostic and calls `std::terminate()` (no implicit `MPI_Wait`): the library never completes a request implicitly, completion must be explicit
 
 ---
 
