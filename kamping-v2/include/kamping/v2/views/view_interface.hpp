@@ -167,21 +167,21 @@ struct view_interface : public view_interface_base, public std::ranges::view_int
     }
 
     template <typename Self = Derived>
-    constexpr auto mpi_counts()
+    constexpr decltype(auto) mpi_counts()
         requires mpi::experimental::has_mpi_counts_mutable<decltype(std::declval<Self&>().base())>
     {
         return mpi::experimental::counts(derived().base());
     }
 
     template <typename Self = Derived>
-    constexpr auto mpi_counts() const
+    constexpr decltype(auto) mpi_counts() const
         requires mpi::experimental::has_mpi_counts<decltype(std::declval<Self const&>().base())>
     {
         return mpi::experimental::counts(derived().base());
     }
 
     template <typename Self = Derived>
-    constexpr auto mpi_displs() const
+    constexpr decltype(auto) mpi_displs() const
         requires mpi::experimental::has_mpi_displs<decltype(std::declval<Self const&>().base())>
     {
         return mpi::experimental::displs(derived().base());
