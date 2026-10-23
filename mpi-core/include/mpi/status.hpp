@@ -3,9 +3,8 @@
 
 #pragma once
 
-#include <mpi.h>
-
 #include <kamping/types/builtin_types.hpp>
+#include <mpi.h>
 
 namespace mpi::experimental {
 
@@ -82,6 +81,40 @@ private:
     MPI_Status* _status; ///< Non-owning pointer to the viewed status.
 };
 
+// ── const_status_view ───────────────────────────────────────────────────────
+
+/// @brief Read-only, non-owning view over an existing `MPI_Status`.
+///
+/// Provides the read accessors (`source()`, `tag()`, `count()`) for a status that must not be
+/// written, e.g. an element of a `const status_vector`. Satisfies `convertible_to_mpi_handle<MPI_Status>`
+/// but, being read-only, not `convertible_to_mpi_handle_ptr<MPI_Status>`.
+class const_status_view : public status_accessors<const_status_view> {
+public:
+    /// @brief Construct from a pointer to an existing MPI_Status. Must not be null.
+    explicit const_status_view(MPI_Status const* status) : _status(status) {}
+
+    /// @brief Implicit conversion from a mutable view.
+    const_status_view(status_view view) noexcept : _status(view.native()) {}
+
+    /// @return Pointer to the underlying `MPI_Status` (escape hatch).
+    [[nodiscard]] MPI_Status const* native() const {
+        return _status;
+    }
+
+    /// @return The underlying `MPI_Status` by value (for `handle`).
+    [[nodiscard]] MPI_Status mpi_handle() const {
+        return *_status;
+    }
+
+private:
+    friend class status_accessors<const_status_view>;
+    [[nodiscard]] MPI_Status const* status_ptr() const {
+        return _status;
+    }
+
+    MPI_Status const* _status; ///< Non-owning pointer to the viewed status.
+};
+
 // ── status ───────────────────────────────────────────────────────────────────
 
 /// @brief Owning wrapper around `MPI_Status`.
@@ -111,7 +144,14 @@ public:
     ///
     /// Allows passing a `status` wherever a `status_view` is expected without
     /// an explicit cast. The view borrows; it does not extend lifetime.
-    operator status_view() noexcept { return status_view{&_status}; }
+    operator status_view() noexcept {
+        return status_view{&_status};
+    }
+
+    /// @brief Implicit conversion to a read-only, non-owning view.
+    operator const_status_view() const noexcept {
+        return const_status_view{&_status};
+    }
 
     /// @return The underlying `MPI_Status` by value (for `handle`).
     [[nodiscard]] MPI_Status mpi_handle() const {

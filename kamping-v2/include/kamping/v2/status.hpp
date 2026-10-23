@@ -4,9 +4,12 @@
 #pragma once
 
 #include <mpi/status.hpp>
+#include <mpi/status_vector.hpp>
 
 namespace kamping::v2 {
+using mpi::experimental::const_status_view;
 using mpi::experimental::status;
 using mpi::experimental::status_accessors;
+using mpi::experimental::status_vector;
 using mpi::experimental::status_view;
 } // namespace kamping::v2
