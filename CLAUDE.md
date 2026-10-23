@@ -184,7 +184,7 @@ Non-blocking operations return `iresult<Buf>` (single buffer) or `iresult<SBuf, 
 - Move-only; the buffer is stored on the heap via `unique_ptr` so the pointer captured by MPI remains stable after a move.
 - `.wait([status])` — blocks and returns the buffer (owned buffers moved out; borrowed buffers return an lvalue reference).
 - `.test([status])` — polls; borrowed buffers return `bool`, owned buffers return `std::optional<T>`.
-- Destructor calls `MPI_Wait` if the request was not already completed, preventing silent data corruption.
+- `[[nodiscard]]`. Must be completed with `.wait()` or a successful `.test()`: the library never completes a request implicitly. Dropping an outstanding request — destroying or move-assigning over an iresult or `mpi::experimental::request` — prints a diagnostic and calls `std::terminate()` (install a handler via `std::set_terminate`, e.g. to call `MPI_Abort`). The request is destroyed before the buffer, so termination happens before a buffer in use by MPI is released.
 
 ### Native Handle Bridge (`mpi-core/include/mpi/handle.hpp`)
 
