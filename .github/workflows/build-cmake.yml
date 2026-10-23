@@ -7,22 +7,28 @@ on:
     branches: [ "main" ]
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     strategy:
+      fail-fast: false
       matrix:
         mpi: ['mpich', 'openmpi', 'intelmpi']
         cxx: ['g++', 'clang++']
     steps:
+    - name: Configure hostname
+      run: echo 127.0.0.1 "$(hostname)" | sudo tee -a /etc/hosts > /dev/null
     - name: Checkout
       uses: actions/checkout@v4
     - name: Setup MPI
       uses: mpi4py/setup-mpi@v1
       with:
         mpi: ${{ matrix.mpi }}
+    # Restrict each MPI runtime to TCP/shared memory (the runner's RDMA device is unusable), following mpi4py's CI.
+    - name: Tweak MPI
+      run: awk 'NF' .ci/env.${{ matrix.mpi }} >> "$GITHUB_ENV"
     - name: Configure CMake
       run: cmake --preset release -DCMAKE_CXX_COMPILER=${{ matrix.cxx }}
     - name: Build
       run: cmake --build --preset release --parallel
     - name: Test
-      run: ctest --preset release
-
+      run: ctest --preset release --timeout 180
