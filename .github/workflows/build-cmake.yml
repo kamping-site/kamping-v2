@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -31,4 +31,4 @@ jobs:
     - name: Build
       run: cmake --build --preset release --parallel
     - name: Test
-      run: ctest --preset release
+      run: ctest --preset release --timeout 180
