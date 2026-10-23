@@ -6,6 +6,7 @@
 #include <numeric>
 #include <ranges>
 #include <span>
+#include <utility>
 #include <vector>
 
 #include "kamping/v2/kassert.hpp"
@@ -30,6 +31,9 @@ public:
     }
     constexpr Base& base() & noexcept {
         return base_;
+    }
+    constexpr Base&& base() && noexcept {
+        return std::move(base_);
     }
 
     template <typename R, typename C>

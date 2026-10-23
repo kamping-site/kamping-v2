@@ -4,6 +4,7 @@
 #pragma once
 
 #include <cstddef>
+#include <utility>
 
 #include "kamping/v2/views/adaptor.hpp"
 #include "kamping/v2/views/all.hpp"
@@ -22,6 +23,9 @@ public:
     }
     constexpr Base& base() & noexcept {
         return base_;
+    }
+    constexpr Base&& base() && noexcept {
+        return std::move(base_);
     }
 
     template <typename R>

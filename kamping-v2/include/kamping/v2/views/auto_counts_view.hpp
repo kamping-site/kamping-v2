@@ -4,6 +4,7 @@
 #pragma once
 
 #include <span>
+#include <utility>
 #include <vector>
 
 #include "kamping/v2/views/adaptor.hpp"
@@ -40,6 +41,9 @@ public:
     }
     constexpr Base& base() & noexcept {
         return base_;
+    }
+    constexpr Base&& base() && noexcept {
+        return std::move(base_);
     }
 
     /// Construct from a data buffer and counts buffer (no resize; counts must be pre-sized).
