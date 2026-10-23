@@ -213,29 +213,33 @@ constexpr auto type(T&& /* t */) {
 // counts() preserves const: non-const T → mutable span (int*), const T → read-only
 // span (int const*). This allows infer() to write directly into the counts buffer
 // of a non-const deferred buffer, and MPI wrappers to read it const afterwards.
+//
+// Both return decltype(auto): a view returned by value (e.g. std::span) stays a value and a
+// container returned by reference stays a reference. A plain `auto` would copy such a container,
+// so writes through counts() (e.g. by infer()) would land in a temporary and be lost.
 // ──────────────────────────────────────────────────────────────────────────────
 
 template <typename T>
     requires detail::traits_has_counts<std::remove_cvref_t<T>>
-constexpr auto counts(T&& t) {
+constexpr decltype(auto) counts(T&& t) {
     return buffer_traits<std::remove_cvref_t<T>>::counts(std::forward<T>(t));
 }
 
 template <typename T>
     requires(!detail::traits_has_counts<std::remove_cvref_t<T>>) && detail::has_counts_member<T>
-constexpr auto counts(T&& t) {
+constexpr decltype(auto) counts(T&& t) {
     return t.mpi_counts();
 }
 
 template <typename T>
     requires detail::traits_has_displs<std::remove_cvref_t<T>>
-constexpr auto displs(T&& t) {
-    return buffer_traits<std::remove_cvref_t<T>>::displs(t);
+constexpr decltype(auto) displs(T&& t) {
+    return buffer_traits<std::remove_cvref_t<T>>::displs(std::forward<T>(t));
 }
 
 template <typename T>
     requires(!detail::traits_has_displs<std::remove_cvref_t<T>>) && detail::has_displs_member<T>
-constexpr auto displs(T&& t) {
+constexpr decltype(auto) displs(T&& t) {
     return t.mpi_displs();
 }
 
