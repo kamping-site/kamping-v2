@@ -18,65 +18,29 @@
 
 namespace kamping::v2 {
 
-namespace detail {
-
-/// Common base for all iresult specialisations.
-///
-/// Owns the MPI_Request, enforces move-only semantics, and provides:
-///   - mpi_native_handle_ptr() for the MPI call site to fill in the request.
-///   - do_wait() / do_test() — thin wrappers that delegate to request_view and throw
-///     on error, so the derived wait()/test() methods only handle return values.
-class iresult_base {
-protected:
-    MPI_Request request_ = MPI_REQUEST_NULL;
-
-    void do_wait(MPI_Status* s) {
-        mpi::experimental::request_view{request_}.wait(s);
-    }
-
-    /// Returns true when the operation has completed.
-    bool do_test(MPI_Status* s) {
-        return mpi::experimental::request_view{request_}.test(s);
-    }
-
-public:
-    iresult_base() = default;
-
-    iresult_base(iresult_base&&) noexcept            = default;
-    iresult_base& operator=(iresult_base&&) noexcept = default;
-    iresult_base(iresult_base const&)                = delete;
-    iresult_base& operator=(iresult_base const&)     = delete;
-
-    /// If the caller forgot to call wait()/test(), block on the outstanding request
-    /// so the buffer is safe to destroy. Turns a leaked request into a visible stall
-    /// rather than silent data-corruption. MPI errors are swallowed — a destructor
-    /// cannot throw.
-    ~iresult_base() {
-        if (request_ != MPI_REQUEST_NULL) {
-            try {
-                mpi::experimental::request_view{request_}.wait();
-            } catch (...) {
-            }
-        }
-    }
-
-    MPI_Request* mpi_native_handle_ptr() {
-        return &request_;
-    }
-};
-
-} // namespace detail
+// Lifetime invariant shared by both specialisations: an owned buffer must outlive the operation using it.
+//
+// An iresult must be completed with wait() or a successful test() before it is destroyed or move-assigned over;
+// otherwise the `request` member calls std::terminate() — see mpi::experimental::request. The class is [[nodiscard]],
+// so discarding the iresult returned by a non-blocking call (which would drop it immediately) is a compile warning.
+//
+//   - Destruction: the `request` member is declared *after* the buffer, so it is destroyed first: it terminates
+//     *before* the buffer of a still-running operation is released, never after.
+//   - Move assignment: moves into a temporary and swaps, so the previously held request and buffer are dropped by
+//     the temporary's destructor in that same order. (A defaulted move assignment would release the old buffer
+//     before checking the old request.)
+//
+// For the same reason the request cannot live in a common base class: base subobjects are destroyed after members.
 
 // Primary template — specialised for one or two buffer types below.
 template <typename... Bufs>
-class iresult;
+class [[nodiscard]] iresult;
 
 /// Single-buffer non-blocking result (isend, irecv).
 ///
 /// Stores the buffer on the heap via a unique_ptr<view_t> so that the data pointer
 /// MPI captures during MPI_Isend/Irecv remains valid regardless of whether the
-/// iresult handle itself is moved. The MPI_Request is stored inline (it is a
-/// copyable integer handle to a reference-counted MPI-internal object).
+/// iresult handle itself is moved. The request is owned by a mpi::experimental::request member.
 ///
 /// The view wrapping follows the usual all_t<Buf> convention:
 ///   - lvalue T&  → ref_view<T>:   non-owning; caller keeps the buffer alive.
@@ -84,12 +48,15 @@ class iresult;
 ///   - view type  → stored as-is (all_t pass-through).
 ///
 /// iresult is move-only: moving transfers ownership of the heap view (the view's
-/// address is unchanged) and copies the MPI_Request handle.
+/// address is unchanged) and of the request. Destroying or overwriting an iresult whose operation
+/// is still outstanding terminates the program (see the lifetime invariant above).
 template <typename Buf>
-class iresult<Buf> : public detail::iresult_base {
+class [[nodiscard]] iresult<Buf> {
     using view_t = kamping::v2::all_t<Buf>;
 
     std::unique_ptr<view_t> view_;
+    // Declared after view_ so that it is destroyed first (see the lifetime invariant above).
+    mpi::experimental::request request_;
 
     // Returns the buffer with correct ownership semantics:
     //   - lvalue Buf (T&):           ref_view<T> stored → base() → T&
@@ -108,6 +75,22 @@ class iresult<Buf> : public detail::iresult_base {
 public:
     explicit iresult(Buf&& buf) : view_(std::make_unique<view_t>(kamping::v2::all(std::forward<Buf>(buf)))) {}
 
+    iresult(iresult&&) noexcept = default;
+
+    /// Releases this iresult's buffer and takes over `other`'s. Aborts if this iresult's operation is still
+    /// outstanding.
+    iresult& operator=(iresult&& other) noexcept {
+        iresult tmp(std::move(other));
+        std::swap(view_, tmp.view_);
+        std::swap(request_, tmp.request_);
+        return *this; // tmp's destructor checks the old request, then releases the old buffer
+    }
+
+    /// For the MPI call site to fill in the request (satisfies convertible_to_mpi_handle_ptr<MPI_Request>).
+    MPI_Request* mpi_handle_ptr() noexcept {
+        return request_.mpi_handle_ptr();
+    }
+
     view_t& view() {
         return *view_;
     }
@@ -124,7 +107,7 @@ public:
     ///   view pass-through:       moves the view out.
     template <mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>
     decltype(auto) wait(Status&& status = MPI_STATUS_IGNORE) {
-        do_wait(mpi::experimental::handle_ptr(status));
+        request_.wait(std::forward<Status>(status));
         return extract_buf();
     }
 
@@ -135,7 +118,7 @@ public:
     ///     nullopt on pending — iresult remains valid for retry or wait().
     template <mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>
     auto test(Status&& status = MPI_STATUS_IGNORE) {
-        bool const done = do_test(mpi::experimental::handle_ptr(status));
+        bool const done = request_.test(std::forward<Status>(status));
         if constexpr (kamping::v2::borrowed_buffer<view_t>) {
             return done;
         } else {
@@ -149,14 +132,16 @@ public:
 
 /// Two-buffer non-blocking result (non-blocking sendrecv, non-blocking collectives).
 ///
-/// Stores a result<SBuf, RBuf> on the heap for pointer stability. The MPI_Request
-/// is stored inline (copyable integer handle). Mirrors iresult<Buf>:
+/// Stores a result<SBuf, RBuf> on the heap for pointer stability; the request is owned by a
+/// mpi::experimental::request member. Mirrors iresult<Buf>:
 ///   - lvalue SBuf/RBuf: reference members — caller keeps the buffers alive.
 ///   - rvalue SBuf/RBuf: value members — iresult owns the buffers until wait()/test().
 /// Move-only: moving transfers the unique_ptr without relocating the buffers.
 template <typename SBuf, typename RBuf>
-class iresult<SBuf, RBuf> : public detail::iresult_base {
+class [[nodiscard]] iresult<SBuf, RBuf> {
     std::unique_ptr<result<SBuf, RBuf>> result_;
+    // Declared after result_ so that it is destroyed first (see the lifetime invariant above).
+    mpi::experimental::request request_;
 
 public:
     explicit iresult(SBuf&& sbuf, RBuf&& rbuf)
@@ -165,6 +150,22 @@ public:
                   result<SBuf, RBuf>{std::forward<SBuf>(sbuf), std::forward<RBuf>(rbuf)}
               )
           ) {}
+
+    iresult(iresult&&) noexcept = default;
+
+    /// Releases this iresult's buffers and takes over `other`'s. Aborts if this iresult's operation is still
+    /// outstanding.
+    iresult& operator=(iresult&& other) noexcept {
+        iresult tmp(std::move(other));
+        std::swap(result_, tmp.result_);
+        std::swap(request_, tmp.request_);
+        return *this; // tmp's destructor checks the old request, then releases the old buffers
+    }
+
+    /// For the MPI call site to fill in the request (satisfies convertible_to_mpi_handle_ptr<MPI_Request>).
+    MPI_Request* mpi_handle_ptr() noexcept {
+        return request_.mpi_handle_ptr();
+    }
 
     // ── Buffer access ─────────────────────────────────────────────────────────
 
@@ -181,7 +182,7 @@ public:
     /// Owned members are moved out; borrowed members copy their reference binding (no data copy).
     template <mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>
     result<SBuf, RBuf> wait(Status&& status = MPI_STATUS_IGNORE) {
-        do_wait(mpi::experimental::handle_ptr(status));
+        request_.wait(std::forward<Status>(status));
         return std::move(*result_);
     }
 
@@ -190,7 +191,7 @@ public:
     ///   nullopt: pending — iresult remains valid for retry or wait().
     template <mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>
     std::optional<result<SBuf, RBuf>> test(Status&& status = MPI_STATUS_IGNORE) {
-        if (do_test(mpi::experimental::handle_ptr(status)))
+        if (request_.test(std::forward<Status>(status)))
             return std::move(*result_);
         return std::nullopt;
     }

@@ -66,6 +66,45 @@ add_executable(test_v2_completion completion_test.cpp)
 target_link_libraries(test_v2_completion PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
 katestrophe_add_mpi_test(test_v2_completion CORES 1 2 4)
 
+add_executable(test_v2_iresult iresult_test.cpp)
+target_link_libraries(test_v2_iresult PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
+katestrophe_add_mpi_test(test_v2_iresult CORES 1)
+
+# Dropping a still-active request must call std::terminate. Each scenario runs as its own process, since it ends it.
+add_executable(test_v2_terminate_on_active_request terminate_on_active_request_test.cpp)
+target_link_libraries(test_v2_terminate_on_active_request PRIVATE kamping_v2 kamping_v2_warnings)
+foreach(
+    scenario
+    request_destructor
+    request_move_assignment
+    iresult_destructor
+    iresult_during_unwinding
+)
+    add_test(
+        NAME test_v2_terminate_on_active_request.${scenario}
+        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 ${MPIEXEC_PREFLAGS}
+                $<TARGET_FILE:test_v2_terminate_on_active_request> ${MPIEXEC_POSTFLAGS} ${scenario}
+    )
+    set_tests_properties(
+        test_v2_terminate_on_active_request.${scenario}
+        PROPERTIES PASS_REGULAR_EXPRESSION "dropped while a request is still active" FAIL_REGULAR_EXPRESSION
+                   "NOT TERMINATED" TIMEOUT 30
+    )
+endforeach()
+set_tests_properties(
+    test_v2_terminate_on_active_request.iresult_during_unwinding
+    PROPERTIES PASS_REGULAR_EXPRESSION "still active \\(during exception unwinding\\)"
+)
+add_test(
+    NAME test_v2_terminate_on_active_request.completed_requests
+    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 ${MPIEXEC_PREFLAGS}
+            $<TARGET_FILE:test_v2_terminate_on_active_request> ${MPIEXEC_POSTFLAGS} completed_requests
+)
+set_tests_properties(
+    test_v2_terminate_on_active_request.completed_requests PROPERTIES PASS_REGULAR_EXPRESSION "CONTROL OK" FAIL_REGULAR_EXPRESSION
+                                                          "dropped while a request is still active" TIMEOUT 30
+)
+
 add_executable(test_v2_info info_test.cpp)
 target_link_libraries(test_v2_info PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
 katestrophe_add_mpi_test(test_v2_info CORES 1)
