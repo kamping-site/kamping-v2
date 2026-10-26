@@ -66,6 +66,10 @@ add_executable(test_v2_completion completion_test.cpp)
 target_link_libraries(test_v2_completion PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
 katestrophe_add_mpi_test(test_v2_completion CORES 1 2 4)
 
+add_executable(test_v2_handle_vector handle_vector_test.cpp)
+target_link_libraries(test_v2_handle_vector PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
+katestrophe_add_mpi_test(test_v2_handle_vector CORES 1 2)
+
 add_executable(test_v2_iresult iresult_test.cpp)
 target_link_libraries(test_v2_iresult PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
 katestrophe_add_mpi_test(test_v2_iresult CORES 1)
@@ -77,6 +81,10 @@ foreach(
     scenario
     request_destructor
     request_move_assignment
+    request_vector_destructor
+    request_vector_clear
+    request_vector_resize
+    request_vector_pop_back
     iresult_destructor
     iresult_during_unwinding
 )
