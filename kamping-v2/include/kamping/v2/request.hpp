@@ -4,8 +4,10 @@
 #pragma once
 
 #include "mpi/request.hpp"
+#include "mpi/request_vector.hpp"
 
 namespace kamping::v2 {
 using mpi::experimental::request;
+using mpi::experimental::request_vector;
 using mpi::experimental::request_view;
 } // namespace kamping::v2
