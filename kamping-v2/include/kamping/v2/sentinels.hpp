@@ -18,6 +18,8 @@ using mpi::experimental::null_buf;
 using mpi::experimental::null_buf_t;
 using mpi::experimental::null_buf_v;
 using mpi::experimental::null_buf_v_t;
+using mpi::experimental::statuses_ignore;
+using mpi::experimental::statuses_ignore_t;
 
 /// Deferred variadic null recv buffer for non-root ranks in gather-family collectives.
 ///

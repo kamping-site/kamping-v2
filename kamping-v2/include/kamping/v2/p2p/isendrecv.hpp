@@ -133,16 +133,7 @@ auto isendrecv(
         mpi::experimental::to_tag(recv_tag),
         mpi::experimental::handle(comm)
     );
-    mpi::experimental::isendrecv(
-        res.send(),
-        dest,
-        send_tag,
-        res.recv(),
-        source,
-        recv_tag,
-        comm,
-        res.mpi_native_handle_ptr()
-    );
+    mpi::experimental::isendrecv(res.send(), dest, send_tag, res.recv(), source, recv_tag, comm, res.mpi_handle_ptr());
     return res;
 }
 

@@ -11,6 +11,7 @@
 
 #include "kamping/v2/collectives/allgather.hpp"
 #include "kamping/v2/comm.hpp"
+#include "kamping/v2/completion.hpp"
 #include "kamping/v2/p2p/irecv.hpp"
 #include "kamping/v2/p2p/isend.hpp"
 #include "kamping/v2/sentinels.hpp"
@@ -31,7 +32,7 @@ namespace dstl {
 ///   1. Allgather all per-rank send/recv counts to derive global displacement arrays.
 ///   2. For each rank, binary-search for the set of remote ranks whose send (or recv) window
 ///      overlaps this rank's recv (or send) window, and issue one irecv/isend per overlap.
-///   3. MPI_Waitall.
+///   3. Wait for all transfers (kamping::v2::waitall).
 ///
 /// No additional data copies beyond the MPI transfers are performed.
 template <
@@ -115,7 +116,7 @@ void redistribute(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = MPI_COMM_WORLD, T
         }
     }
 
-    MPI_Waitall(static_cast<int>(requests.size()), requests.data(), MPI_STATUSES_IGNORE);
+    kamping::v2::waitall(requests);
 }
 
 } // namespace dstl

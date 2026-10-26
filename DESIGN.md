@@ -115,6 +115,27 @@ struct mpi::experimental::handle_traits<MyComm> {
 mpi::experimental::allgather(sbuf, rbuf, MyComm{comm});
 ```
 
+#### Handle ranges
+
+Functions that take an array of handles (e.g. the requests of `waitall`) obtain it via `mpi::experimental::handle_range(x)`, with the same 3-tier dispatch:
+
+1. **`handle_range_traits<T>` specialization** — `static … handle_range(T& t)`
+2. **Member function** — `t.mpi_handle_range()`
+3. **Contiguous range passthrough** — an lvalue `std::vector<MPI_Request>`, `std::array`, C array or `std::span` is returned by reference
+
+The result must be a writable contiguous range of exactly the handle type that refers to the caller's storage: an lvalue reference or a borrowed view such as `std::span`, never a container returned by value. MPI writes back into it (completed requests become `MPI_REQUEST_NULL`, statuses are filled in), so writes into a copy would be lost. `convertible_to_mpi_handle_range<T, Handle>` checks all of this. A handle range need not be sized; arguments that need a count (like a request array) additionally require a sized range.
+
+The member tier exists for types whose iteration differs from their storage. For example, a vector of requests that iterates as `request_view`s (with `wait()`/`test()`) but stores raw `MPI_Request`s:
+
+```cpp
+class MyRequests {
+    std::vector<MPI_Request> requests_;
+public:
+    std::span<MPI_Request> mpi_handle_range() noexcept { return requests_; }
+    // begin()/end() may iterate as views instead of raw handles
+};
+```
+
 ---
 
 ## Adding a New Collective
@@ -437,7 +458,7 @@ auto v2::isend(SBuf&& sbuf, int dest, int tag, MPI_Comm comm)
 - Move-only (buffer pointer captured by MPI stays stable)
 - `.wait()` — blocks until completion, returns buffer (owned buffers moved out; borrowed buffers return reference)
 - `.test()` — non-blocking poll
-- Destructor calls `MPI_Wait` if not already completed (prevents silent hangs)
+- `[[nodiscard]]`; destroying it with an outstanding request prints a diagnostic and calls `std::terminate()` (no implicit `MPI_Wait`): the library never completes a request implicitly, completion must be explicit
 
 ---
 

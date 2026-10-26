@@ -52,13 +52,13 @@ auto isend(SendMode&&, SBuf&& sbuf, Dest dest, Tag tag = DEFAULT_SEND_TAG, Comm 
     -> iresult<SBuf> {
     iresult<SBuf> res{std::forward<SBuf>(sbuf)};
     if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::standard_t>) {
-        mpi::experimental::isend(res.view(), dest, tag, comm, res.mpi_native_handle_ptr());
+        mpi::experimental::isend(res.view(), dest, tag, comm, res.mpi_handle_ptr());
     } else if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::buffered_t>) {
-        mpi::experimental::ibsend(res.view(), dest, tag, comm, res.mpi_native_handle_ptr());
+        mpi::experimental::ibsend(res.view(), dest, tag, comm, res.mpi_handle_ptr());
     } else if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::sync_t>) {
-        mpi::experimental::issend(res.view(), dest, tag, comm, res.mpi_native_handle_ptr());
+        mpi::experimental::issend(res.view(), dest, tag, comm, res.mpi_handle_ptr());
     } else if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::ready_t>) {
-        mpi::experimental::irsend(res.view(), dest, tag, comm, res.mpi_native_handle_ptr());
+        mpi::experimental::irsend(res.view(), dest, tag, comm, res.mpi_handle_ptr());
     }
     return res;
 }

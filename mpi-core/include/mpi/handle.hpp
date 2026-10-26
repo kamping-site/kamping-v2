@@ -4,10 +4,13 @@
 #pragma once
 
 #include <concepts>
+#include <ranges>
 #include <type_traits>
 #include <utility>
 
 #include <mpi.h>
+
+#include "mpi/range_concepts.hpp"
 
 namespace mpi::experimental {
 
@@ -30,6 +33,17 @@ concept builtin_handle = std::same_as<T, MPI_Comm> || std::same_as<T, MPI_Dataty
 template <typename T>
 concept ptr_to_builtin_handle = std::is_pointer_v<T> && !std::is_const_v<T> && builtin_handle<std::remove_pointer_t<T>>;
 
+/// A writable contiguous range of a builtin MPI handle type (e.g. `std::vector<MPI_Request>`). Not required to be
+/// sized: whether a size is needed depends on the argument it is passed as (e.g. a request array sets the count).
+template <typename T>
+concept contiguous_handle_range = std::ranges::contiguous_range<T> && requires(T& t) {
+    { std::ranges::data(t) } -> ptr_to_builtin_handle;
+};
+
+/// Writable storage of exactly `HandleType` that refers to the caller's memory (see `output_range_of`).
+template <typename T, typename HandleType>
+concept contiguous_handle_range_of = builtin_handle<HandleType> && output_range_of<T, HandleType>;
+
 namespace detail {
 template <typename T>
 concept has_mpi_handle_member = requires(T const& t) {
@@ -40,6 +54,11 @@ template <typename T>
 concept has_mpi_handle_ptr_member = requires(T& t) {
     { t.mpi_handle_ptr() } -> ptr_to_builtin_handle;
 };
+
+template <typename T>
+concept has_mpi_handle_range_member = requires(T& t) {
+    { t.mpi_handle_range() } -> contiguous_handle_range;
+};
 } // namespace detail
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -47,7 +66,7 @@ concept has_mpi_handle_ptr_member = requires(T& t) {
 //
 // Specialize native_handle_traits<T> for types you don't own. Only implement
 // the members you need; unimplemented members fall back to the corresponding
-// mpi_native_handle() / mpi_native_handle_ptr() member functions.
+// mpi_native_handle() / mpi_handle_ptr() member functions.
 //
 //   template <>
 //   struct native_handle_traits<MyComm> {
@@ -58,6 +77,12 @@ concept has_mpi_handle_ptr_member = requires(T& t) {
 template <typename T>
 struct handle_traits {};
 
+/// Trait class for non-intrusively exposing the contiguous handle storage of a type you don't own.
+/// Specialize with `static <contiguous_handle_range> handle_range(T& t)`; return a reference or a borrowed view
+/// (e.g. std::span) into `t`, never a copy.
+template <typename T>
+struct handle_range_traits {};
+
 namespace detail {
 template <typename T>
 concept handle_traits_has_handle = requires(T const& t) {
@@ -67,6 +92,11 @@ concept handle_traits_has_handle = requires(T const& t) {
 template <typename T>
 concept handle_traits_has_handle_ptr = requires(T& t) {
     { handle_traits<T>::handle_ptr(t) } -> ptr_to_builtin_handle;
+};
+
+template <typename T>
+concept handle_range_traits_has_handle_range = requires(T& t) {
+    { handle_range_traits<T>::handle_range(t) } -> contiguous_handle_range;
 };
 } // namespace detail
 
@@ -117,6 +147,34 @@ constexpr T* handle_ptr(T* t) noexcept {
     return t;
 }
 
+// ──────────────────────────────────────────────────────────────────────────────
+// handle_range() dispatch — priority: handle_range_traits > mpi_handle_range() > contiguous range passthrough
+//
+// Tiers 1 and 2 return decltype(auto) so that a view returned by value (e.g. std::span) stays a value and a
+// container returned by reference stays a reference. The passthrough tier only accepts lvalues and returns them by
+// reference. MPI writes completed handles (MPI_REQUEST_NULL) back into the range, so it must never be a copy.
+// ──────────────────────────────────────────────────────────────────────────────
+
+template <typename T>
+    requires detail::handle_range_traits_has_handle_range<std::remove_cvref_t<T>>
+constexpr decltype(auto) handle_range(T&& t) {
+    return handle_range_traits<std::remove_cvref_t<T>>::handle_range(t);
+}
+
+template <typename T>
+    requires(!detail::handle_range_traits_has_handle_range<std::remove_cvref_t<T>>)
+            && detail::has_mpi_handle_range_member<T>
+constexpr decltype(auto) handle_range(T&& t) {
+    return t.mpi_handle_range();
+}
+
+template <typename T>
+    requires(!detail::handle_range_traits_has_handle_range<std::remove_cvref_t<T>>)
+            && (!detail::has_mpi_handle_range_member<T>) && contiguous_handle_range<T>
+constexpr T& handle_range(T& t) noexcept {
+    return t;
+}
+
 template <typename T, typename HandleType>
 concept convertible_to_mpi_handle = builtin_handle<HandleType> && requires(T const& t) {
     { handle(t) } -> std::same_as<HandleType>;
@@ -125,6 +183,13 @@ concept convertible_to_mpi_handle = builtin_handle<HandleType> && requires(T con
 template <typename T, typename HandleType>
 concept convertible_to_mpi_handle_ptr = builtin_handle<HandleType> && requires(T& t) {
     { handle_ptr(t) } -> std::same_as<HandleType*>;
+};
+
+/// A type whose handle_range() is a writable, contiguous range of `HandleType` that refers to the caller's storage:
+/// either an lvalue reference or a borrowed view (never a container returned by value, since MPI writes into it).
+template <typename T, typename HandleType>
+concept convertible_to_mpi_handle_range = builtin_handle<HandleType> && requires(T& t) {
+    { handle_range(t) } -> contiguous_handle_range_of<HandleType>;
 };
 
 // ──────────────────────────────────────────────────────────────────────────────

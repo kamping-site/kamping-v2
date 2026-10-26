@@ -9,9 +9,10 @@
 #include <mpi.h>
 
 /// @file
-/// Sentinel buffer types for special MPI data pointer values.
-/// All three satisfy the buffer concept member protocol and can be passed
-/// directly to any mpi::experimental:: operation.
+/// Sentinel types for special MPI pointer values.
+/// The buffer sentinels (bottom, inplace, null_buf, null_buf_v) satisfy the buffer concept member protocol and can
+/// be passed directly to any mpi::experimental:: operation. The output array sentinels (statuses_ignore) stand in
+/// for an ignorable output array argument (see `output_array_or_ignore_of` in mpi/arrays.hpp).
 
 namespace mpi::experimental {
 
@@ -69,5 +70,22 @@ struct null_buf_v_t {
     static std::span<int const> mpi_displs() noexcept { return {}; }
 };
 inline constexpr null_buf_v_t null_buf_v{};
+
+// ─── Output array sentinels ──────────────────────────────────────────────────
+
+/// Sentinel output array that passes `MPI_STATUSES_IGNORE`. The default for the statuses argument of `waitall`,
+/// `testall`, `waitsome` and `testsome`; pass a range of `MPI_Status` instead to receive the statuses.
+///
+///   waitall(requests);                   // statuses ignored
+///   waitall(requests, statuses_ignore);  // the same, spelled out
+///
+/// Deliberately not convertible to a single `MPI_Status*` (no `mpi_handle_ptr()`), so it cannot be passed as the
+/// status of `wait`/`test`, where `MPI_STATUS_IGNORE` is the matching value.
+struct statuses_ignore_t {
+    static MPI_Status* mpi_ptr() noexcept {
+        return MPI_STATUSES_IGNORE;
+    }
+};
+inline constexpr statuses_ignore_t statuses_ignore{};
 
 } // namespace mpi::experimental
