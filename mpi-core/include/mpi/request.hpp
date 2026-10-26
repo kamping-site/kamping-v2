@@ -54,7 +54,7 @@ static_assert(convertible_to_mpi_handle_ptr<request_view, MPI_Request>);
 
 namespace detail {
 /// Reports that an owning request type (`what`) dropped a request that is still active, then calls std::terminate().
-/// Shared by request, request_vector and (through request) iresult.
+/// Shared by request and (through request) iresult.
 ///
 /// Silently completing the request would block (and possibly deadlock), and silently dropping it would let MPI keep
 /// using a buffer that is about to be released. Both hide a missing wait()/test(), so this is a hard error.
@@ -90,8 +90,7 @@ namespace detail {
 /// exception unwinding. Unlike iresult,
 /// request does not own the buffer: the caller must keep it alive until the request completes.
 ///
-/// Ownership can be handed back to raw MPI code with release(), and moved into or out of a request_vector with
-/// request_vector::push_back(request&&) / request_vector::extract().
+/// Ownership can be handed back to raw MPI code with release().
 class [[nodiscard]] request {
 public:
     /// Constructs a null request (MPI_REQUEST_NULL).

@@ -11,9 +11,7 @@
 #include <mpi.h>
 
 #include "mpi/arrays.hpp"
-#include "mpi/request_vector.hpp"
 #include "mpi/sentinels.hpp"
-#include "mpi/status_vector.hpp"
 
 namespace me = mpi::experimental;
 
@@ -35,13 +33,11 @@ using unbounded_requests = std::ranges::subrange<MPI_Request*, std::unreachable_
 static_assert(me::request_range<std::vector<MPI_Request>>);
 static_assert(me::request_range<MPI_Request[4]>);
 static_assert(me::request_range<span_member>);
-static_assert(me::request_range<me::request_vector>);
 static_assert(!me::request_range<unbounded_requests>);
 static_assert(!me::request_range<std::vector<MPI_Status>>);
 
 // Output arrays of handles go through handle_range; sized or not.
 static_assert(me::output_array_of<std::vector<MPI_Status>, MPI_Status>);
-static_assert(me::output_array_of<me::status_vector, MPI_Status>);
 static_assert(me::output_array_of<std::span<MPI_Status>, MPI_Status>);
 static_assert(me::output_array_of<std::ranges::subrange<MPI_Status*, std::unreachable_sentinel_t>, MPI_Status>);
 static_assert(!me::output_array_of<std::vector<MPI_Status> const, MPI_Status>);

@@ -18,7 +18,6 @@
 #include "kamping/v2/iresult.hpp"
 #include "mpi/p2p/irecv.hpp"
 #include "mpi/request.hpp"
-#include "mpi/request_vector.hpp"
 
 namespace me = mpi::experimental;
 
@@ -47,32 +46,6 @@ void request_move_assignment() {
     r = me::request{};
 }
 
-void request_vector_destructor() {
-    me::request_vector requests;
-    requests.emplace_back();                                        // null slots are fine ...
-    post_unmatched_irecv(requests.emplace_back().mpi_handle_ptr()); // ... active ones are not
-}
-
-void request_vector_clear() {
-    me::request_vector requests;
-    post_unmatched_irecv(requests.emplace_back().mpi_handle_ptr());
-    requests.clear();
-}
-
-void request_vector_resize() {
-    me::request_vector requests;
-    post_unmatched_irecv(requests.emplace_back().mpi_handle_ptr());
-    requests.emplace_back();
-    requests.resize(1); // dropping the null slot is fine ...
-    requests.resize(0); // ... dropping the active one is not
-}
-
-void request_vector_pop_back() {
-    me::request_vector requests;
-    post_unmatched_irecv(requests.emplace_back().mpi_handle_ptr());
-    requests.pop_back();
-}
-
 void iresult_destructor() {
     kamping::v2::iresult<std::vector<int>> res(std::vector<int>(1));
     me::irecv(res.view(), self(), 0, MPI_COMM_WORLD, res.mpi_handle_ptr());
@@ -89,8 +62,6 @@ void iresult_during_unwinding() {
 
 /// Control: completed or released requests must not terminate.
 void completed_requests() {
-    me::request_vector requests;
-    requests.emplace_back();
     me::request r;
     post_unmatched_irecv(r.mpi_handle_ptr());
     MPI_Request raw = r.release();
@@ -112,14 +83,6 @@ int main(int argc, char** argv) {
         request_destructor();
     } else if (std::strcmp(scenario, "request_move_assignment") == 0) {
         request_move_assignment();
-    } else if (std::strcmp(scenario, "request_vector_destructor") == 0) {
-        request_vector_destructor();
-    } else if (std::strcmp(scenario, "request_vector_clear") == 0) {
-        request_vector_clear();
-    } else if (std::strcmp(scenario, "request_vector_resize") == 0) {
-        request_vector_resize();
-    } else if (std::strcmp(scenario, "request_vector_pop_back") == 0) {
-        request_vector_pop_back();
     } else if (std::strcmp(scenario, "iresult_destructor") == 0) {
         iresult_destructor();
     } else if (std::strcmp(scenario, "iresult_during_unwinding") == 0) {
