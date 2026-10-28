@@ -4,11 +4,15 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdio>
+#include <exception>
+#include <optional>
 #include <utility>
 
 #include <mpi.h>
 
 #include "kamping/v2/comm_op.hpp"
+#include "kamping/v2/p2p/probe.hpp"
 #include "kamping/v2/status.hpp"
 #include "kamping/v2/views/concepts.hpp"
 #include "kamping/v2/views/ref_single_view.hpp"
@@ -18,7 +22,6 @@
 #include "mpi/collectives/gather.hpp"
 #include "mpi/collectives/scatter.hpp"
 #include "mpi/comm.hpp"
-#include "mpi/p2p/mprobe.hpp"
 #include "mpi/p2p/probe.hpp"
 #include "mpi/p2p/sendrecv.hpp"
 
@@ -33,6 +36,27 @@
 
 namespace kamping {
 
+namespace v2::detail {
+/// Returns the probed element count, or terminates if the message is not a whole number of elements of the receive
+/// buffer's datatype (MPI_Get_count yields MPI_UNDEFINED).
+///
+/// Checked in all build types, since the count depends on what the remote rank sent. Terminates rather than throws
+/// because a message matched by MPI_Mprobe cannot be dropped (see mpi::experimental::message) and a mismatch between
+/// the sent and received datatype is a programming error.
+inline std::ptrdiff_t checked_recv_count(std::optional<int> count) noexcept {
+    if (!count) {
+        std::fprintf(
+            stderr,
+            "kamping: probed message is not a whole number of elements of the receive buffer's datatype "
+            "(MPI_Get_count returned MPI_UNDEFINED). Check that sender and receiver use matching datatypes.\n"
+        );
+        std::fflush(stderr);
+        std::terminate();
+    }
+    return static_cast<std::ptrdiff_t>(*count);
+}
+} // namespace v2::detail
+
 // ---- Default infer() overloads ----------------------------------------------
 
 template <mpi::experimental::recv_buffer RBuf>
@@ -45,14 +69,12 @@ auto infer(comm_op::recv, RBuf& rbuf, int source, int tag, MPI_Comm comm) {
             // can issue a targeted MPI_Recv rather than a wildcard one.
             v2::status status;
             mpi::experimental::probe(source, tag, comm, status);
-            rbuf.set_recv_count(static_cast<std::ptrdiff_t>(status.count(mpi::experimental::type(rbuf))));
+            rbuf.set_recv_count(v2::detail::checked_recv_count(status.count(mpi::experimental::type(rbuf))));
             return std::pair{status.source(), status.tag()};
         } else {
-            v2::status  status;
-            MPI_Message message = MPI_MESSAGE_NULL;
-            mpi::experimental::mprobe(source, tag, comm, message, status);
-            rbuf.set_recv_count(static_cast<std::ptrdiff_t>(status.count(mpi::experimental::type(rbuf))));
-            return message;
+            auto res = v2::mprobe(source, tag, comm);
+            rbuf.set_recv_count(v2::detail::checked_recv_count(res.count(mpi::experimental::type(rbuf))));
+            return res.release();
         }
     }
 }
@@ -166,7 +188,7 @@ template <mpi::experimental::send_buffer SBuf, mpi::experimental::recv_buffer_v 
 void infer(comm_op::gatherv, SBuf const& sbuf, RBuf& rbuf, int root, MPI_Comm comm) {
     if constexpr (kamping::v2::deferred_recv_buf_v<RBuf>) {
         mpi::experimental::comm_view cv{comm};
-        int my_count = static_cast<int>(mpi::experimental::count(sbuf));
+        int                          my_count = static_cast<int>(mpi::experimental::count(sbuf));
         if (cv.rank() == root) {
             rbuf.set_comm_size(cv.size());
         }
@@ -181,7 +203,7 @@ template <mpi::experimental::send_buffer SBuf, mpi::experimental::recv_buffer RB
 void infer(comm_op::scatter, SBuf const& sbuf, RBuf& rbuf, int root, MPI_Comm comm) {
     if constexpr (kamping::v2::deferred_recv_buf<RBuf>) {
         mpi::experimental::comm_view cv{comm};
-        int per_rank_count = static_cast<int>(mpi::experimental::count(sbuf)) / cv.size();
+        int                          per_rank_count = static_cast<int>(mpi::experimental::count(sbuf)) / cv.size();
         mpi::experimental::bcast(v2::views::ref_single(per_rank_count), root, comm);
         rbuf.set_recv_count(static_cast<std::ptrdiff_t>(per_rank_count));
     }

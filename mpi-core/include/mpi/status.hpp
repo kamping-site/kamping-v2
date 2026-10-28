@@ -3,8 +3,12 @@
 
 #pragma once
 
+#include <optional>
+
 #include <kamping/types/builtin_types.hpp>
 #include <mpi.h>
+
+#include "mpi/error.hpp"
 
 namespace mpi::experimental {
 
@@ -30,18 +34,27 @@ public:
     }
 
     /// @param datatype The MPI datatype.
-    /// @return The number of top-level elements of the given datatype in the message.
-    [[nodiscard]] int count(MPI_Datatype datatype) const {
-        int cnt;
-        MPI_Get_count(ptr(), datatype, &cnt);
-        return cnt;
+    /// @return The number of top-level elements of the given datatype in the message. In cases where MPI_Get_count
+    /// would return MPI_UNDEFINED, `std::nullopt` is returned.
+    [[nodiscard]] std::optional<int> count(MPI_Datatype datatype) const {
+        int cnt = 0;
+        int err = MPI_Get_count(ptr(), datatype, &cnt);
+        if (err != MPI_SUCCESS) {
+            throw mpi_error(err);
+        }
+        if (cnt == MPI_UNDEFINED) {
+            return std::nullopt;
+        } else {
+            return cnt;
+        }
     }
 
     /// @tparam T A builtin MPI-mappable type.
-    /// @return The number of top-level elements of type `T` in the message.
+    /// @return The number of top-level elements of type `T` in the message. In cases where MPI_Get_count
+    /// would return MPI_UNDEFINED, `std::nullopt` is returned.
     template <typename T>
         requires kamping::types::is_builtin_type_v<T>
-    [[nodiscard]] int count() const {
+    [[nodiscard]] std::optional<int> count() const {
         return count(kamping::types::builtin_type<T>::data_type());
     }
 };
