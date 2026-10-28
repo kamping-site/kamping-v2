@@ -79,6 +79,14 @@ auto infer(comm_op::recv, RBuf& rbuf, int source, int tag, MPI_Comm comm) {
     }
 }
 
+/// Matched receive: the message has already been probed, so a deferred recv buffer is sized from the probed count.
+template <mpi::experimental::recv_buffer RBuf>
+void infer(comm_op::mrecv, RBuf& rbuf, v2::probe_result const& probe) {
+    if constexpr (kamping::v2::deferred_recv_buf<RBuf>) {
+        rbuf.set_recv_count(v2::detail::checked_recv_count(probe.count(mpi::experimental::type(rbuf))));
+    }
+}
+
 template <mpi::experimental::send_recv_buffer SRBuf>
 auto infer(comm_op::bcast, SRBuf& srbuf, int root, MPI_Comm comm) {
     if constexpr (kamping::v2::deferred_recv_buf<SRBuf>) {

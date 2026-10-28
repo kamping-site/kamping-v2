@@ -6,6 +6,7 @@
 namespace kamping::comm_op {
 
 struct recv {};
+struct mrecv {};
 struct bcast {};
 struct allgather {};
 struct allgatherv {};
