@@ -70,6 +70,10 @@ add_executable(test_v2_probe probe_test.cpp)
 target_link_libraries(test_v2_probe PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
 katestrophe_add_mpi_test(test_v2_probe CORES 2)
 
+add_executable(test_v2_ibarrier ibarrier_test.cpp)
+target_link_libraries(test_v2_ibarrier PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
+katestrophe_add_mpi_test(test_v2_ibarrier CORES 1 2 4)
+
 add_executable(test_v2_handle_vector handle_vector_test.cpp)
 target_link_libraries(test_v2_handle_vector PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
 katestrophe_add_mpi_test(test_v2_handle_vector CORES 1 2)
