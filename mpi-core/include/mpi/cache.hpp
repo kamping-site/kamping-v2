@@ -4,7 +4,8 @@
 #pragma once
 
 /// @file
-/// @brief An owning cache of per-object values attached via MPI attributes.
+/// @brief An owning cache of per-object values attached via MPI attributes. See `docs/attribute_caching.md` for
+/// when to use it instead of `keyval` (`mpi/attribute.hpp`).
 
 #include <concepts>
 #include <cstddef>

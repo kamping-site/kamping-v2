@@ -5,7 +5,8 @@
 
 /// @file
 /// @brief Attribute caching on MPI objects: kind tags selecting the `MPI_*_attr` functions, and a typed keyval whose
-/// attributes own their values. See also `mpi/cache.hpp` for a cache that owns its values itself.
+/// attributes own their values. See also `mpi/cache.hpp` for a cache that owns its values itself, and
+/// `docs/attribute_caching.md` for when to use which.
 
 #include <concepts>
 #include <functional>
