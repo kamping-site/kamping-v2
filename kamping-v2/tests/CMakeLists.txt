@@ -29,6 +29,10 @@ add_executable(test_v2_resize_contract resize_contract_test.cpp)
 target_link_libraries(test_v2_resize_contract PRIVATE kamping_v2 kamping_v2_warnings GTest::gtest_main)
 gtest_discover_tests(test_v2_resize_contract)
 
+add_executable(test_v2_chunked_view chunked_view_test.cpp)
+target_link_libraries(test_v2_chunked_view PRIVATE kamping_v2 kamping_v2_warnings GTest::gtest_main)
+gtest_discover_tests(test_v2_chunked_view)
+
 add_executable(test_v2_view_interface_underlying view_interface_underlying_test.cpp)
 target_link_libraries(test_v2_view_interface_underlying PRIVATE kamping_v2 kamping_v2_warnings GTest::gtest_main)
 gtest_discover_tests(test_v2_view_interface_underlying)
