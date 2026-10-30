@@ -82,6 +82,10 @@ add_executable(test_v2_win win_test.cpp)
 target_link_libraries(test_v2_win PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
 katestrophe_add_mpi_test(test_v2_win CORES 1 2 4)
 
+add_executable(test_v2_cache cache_test.cpp)
+target_link_libraries(test_v2_cache PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
+katestrophe_add_mpi_test(test_v2_cache CORES 1 2 4)
+
 add_executable(test_v2_iresult iresult_test.cpp)
 target_link_libraries(test_v2_iresult PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
 katestrophe_add_mpi_test(test_v2_iresult CORES 1)
