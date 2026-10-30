@@ -252,14 +252,28 @@ void sparse_alltoall(
             std::invoke(on_message, std::move(*probe));
         }
         if (++debug_iterations % (std::size_t{1} << 22) == 0) {
+            // Is any message waiting at all, with any tag?
+            int        pending = 0;
+            MPI_Status pending_status;
+            MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, mpi::experimental::handle(comm), &pending, &pending_status);
+            int pending_bytes = -1;
+            if (pending) {
+                MPI_Get_count(&pending_status, MPI_BYTE, &pending_bytes);
+            }
             std::fprintf(
                 stderr,
-                "[nbx debug] rank %d: %zu iterations, %d received, %zu sends posted, barrier started %d\n",
+                "[nbx debug] rank %d: tag %d, %zu iterations, %d received, %zu sends posted, barrier started %d, "
+                "pending any-tag message: %d (source %d, tag %d, %d bytes)\n",
                 debug_rank,
+                t,
                 debug_iterations,
                 debug_received,
                 sends.size(),
-                barrier_started ? 1 : 0
+                barrier_started ? 1 : 0,
+                pending,
+                pending ? pending_status.MPI_SOURCE : -1,
+                pending ? pending_status.MPI_TAG : -1,
+                pending_bytes
             );
             std::fflush(stderr);
         }
