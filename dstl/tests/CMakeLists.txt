@@ -56,6 +56,10 @@ add_executable(test_dstl_min dstl_min_test.cpp)
 target_link_libraries(test_dstl_min PRIVATE dstl kamping_v2_warnings KaTestrophe::main_thread_single)
 katestrophe_add_mpi_test(test_dstl_min CORES 1 2 4 8)
 
+add_executable(test_dstl_sparse_alltoall sparse_alltoall_test.cpp)
+target_link_libraries(test_dstl_sparse_alltoall PRIVATE dstl kamping_v2_warnings KaTestrophe::main_thread_single)
+katestrophe_add_mpi_test(test_dstl_sparse_alltoall CORES 1 2 4 8)
+
 add_executable(test_dstl_request_reply request_reply_test.cpp)
 target_link_libraries(test_dstl_request_reply PRIVATE dstl kamping_v2_warnings KaTestrophe::main_thread_funneled)
 katestrophe_add_mpi_test(test_dstl_request_reply CORES 1 2 4 8)

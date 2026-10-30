@@ -270,7 +270,7 @@ natively. Per value it sends with
 ```cpp
 type_pool p;
 dstl::request_reply(value_dest_pairs | views::with_auto_value_pool(p), ...);   // native, no packing
-dstl::sparse_alltoall(nested | views::with_value_type(dt) | flatten_v(), ...); // packed path
+dstl::sparse_alltoall(nested | views::with_value_type(dt), on_message, tag, comm); // nested, sent in place
 ```
 
 ### Receive side / round-trip contract
@@ -289,15 +289,14 @@ signature). The asymmetry is intentional — `with_value_type(dt)` on the send,
 // sender:   value payloads carry dt
 dstl::request_reply(pairs | views::with_value_type(dt), on_reply, comm);
 // receiver: flat recv buffer carries the same dt
-on_message = [&](probe_result pr) {
-    auto buf = std::vector<...>(pr.count(dt));          // count in units of dt
-    mpi::experimental::mrecv(std::move(pr), buf | views::with_type(dt));
+on_message = [&](kamping::v2::probe_result pr) {
+    std::vector<...> buf;
+    kamping::v2::mrecv(buf | views::with_type(dt) | views::resize, std::move(pr));
 };
 ```
 
-`probe_result::count(MPI_Datatype)` (the explicit-type variant from
-`sparse_alltoall.md`) lets the receiver reuse the same handle rather than
-re-deducing from a `T`, keeping both ends on one datatype.
+`kamping::v2::mrecv` sizes the deferred buffer from the probed count in units of
+the *recv buffer's* datatype (`pr.count(dt)`), keeping both ends on one datatype.
 
 ---
 
