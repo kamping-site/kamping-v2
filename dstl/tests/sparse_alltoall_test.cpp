@@ -110,14 +110,21 @@ int raw_nbx(int dest, int tag) {
             ++received;
         }
         if (++iterations % (std::size_t{1} << 22) == 0) {
+            int        pending = 0;
+            MPI_Status pending_status;
+            MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &pending, &pending_status);
             std::fprintf(
                 stderr,
-                "[raw nbx debug] rank %d: tag %d, %zu iterations, %d received, barrier started %d\n",
+                "[raw nbx debug] rank %d: tag %d, %zu iterations, %d received, barrier started %d, pending any-tag "
+                "message: %d (source %d, tag %d)\n",
                 r.rank,
                 tag,
                 iterations,
                 received,
-                barrier_started ? 1 : 0
+                barrier_started ? 1 : 0,
+                pending,
+                pending ? pending_status.MPI_SOURCE : -1,
+                pending ? pending_status.MPI_TAG : -1
             );
             std::fflush(stderr);
         }
@@ -146,11 +153,9 @@ TEST_F(RawMpiNbx, Ring) {
     EXPECT_EQ(raw_nbx(world_ranks().next, 7), 1);
 }
 
-// 2. Our NBX ring with tag 7, without empty rounds before it.
-TEST_F(RawMpiNbx, KampingRingTag7) {
-    auto const r        = world_ranks();
-    auto       received = exchange<dstl::sparse_alltoall_algorithm::nbx_t>(sends_t<int>{{r.next, {r.rank, r.rank}}}, 7);
-    EXPECT_EQ(received[r.prev].size(), 1u);
+// 2. The same plain MPI ring again (tag 8): does a second ring hang without kamping?
+TEST_F(RawMpiNbx, SecondRing) {
+    EXPECT_EQ(raw_nbx(world_ranks().next, 8), 1);
 }
 
 // 3. Plain MPI ring with tag 0 after two empty NBX rounds, each followed by a barrier (the sequence of the typed
@@ -161,6 +166,13 @@ TEST_F(RawMpiNbx, RingAfterEmptyRounds) {
     EXPECT_EQ(raw_nbx(-1, 0), 0);
     MPI_Barrier(MPI_COMM_WORLD);
     EXPECT_EQ(raw_nbx(world_ranks().next, 0), 1);
+}
+
+// 4. Our NBX ring with tag 7.
+TEST_F(RawMpiNbx, KampingRingTag7) {
+    auto const r        = world_ranks();
+    auto       received = exchange<dstl::sparse_alltoall_algorithm::nbx_t>(sends_t<int>{{r.next, {r.rank, r.rank}}}, 7);
+    EXPECT_EQ(received[r.prev].size(), 1u);
 }
 
 template <typename Algorithm>
