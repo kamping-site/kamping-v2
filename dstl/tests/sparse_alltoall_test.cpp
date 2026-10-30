@@ -3,7 +3,6 @@
 
 #include <array>
 #include <cstddef>
-#include <cstdio>
 #include <list>
 #include <map>
 #include <ranges>
@@ -84,96 +83,6 @@ protected:
         MPI_Barrier(MPI_COMM_WORLD);
     }
 };
-
-// TEMPORARY CI diagnostics, remove before merging. These run before the typed tests, in this order.
-namespace {
-/// The NBX ring in plain MPI, without kamping; `dest < 0` sends nothing. Returns the number of messages received.
-int raw_nbx(int dest, int tag) {
-    auto const  r          = world_ranks();
-    int const   payload[2] = {r.rank, r.rank};
-    MPI_Request send       = MPI_REQUEST_NULL;
-    if (dest >= 0) {
-        MPI_Issend(payload, 2, MPI_INT, dest, tag, MPI_COMM_WORLD, &send);
-    }
-    MPI_Request barrier         = MPI_REQUEST_NULL;
-    bool        barrier_started = false;
-    int         received        = 0;
-    std::size_t iterations      = 0;
-    while (true) {
-        int         flag = 0;
-        MPI_Message msg  = MPI_MESSAGE_NULL;
-        MPI_Status  status;
-        MPI_Improbe(MPI_ANY_SOURCE, tag, MPI_COMM_WORLD, &flag, &msg, &status);
-        if (flag) {
-            int buf[2];
-            MPI_Mrecv(buf, 2, MPI_INT, &msg, MPI_STATUS_IGNORE);
-            ++received;
-        }
-        if (++iterations % (std::size_t{1} << 22) == 0) {
-            int        pending = 0;
-            MPI_Status pending_status;
-            MPI_Iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &pending, &pending_status);
-            std::fprintf(
-                stderr,
-                "[raw nbx debug] rank %d: tag %d, %zu iterations, %d received, barrier started %d, pending any-tag "
-                "message: %d (source %d, tag %d)\n",
-                r.rank,
-                tag,
-                iterations,
-                received,
-                barrier_started ? 1 : 0,
-                pending,
-                pending ? pending_status.MPI_SOURCE : -1,
-                pending ? pending_status.MPI_TAG : -1
-            );
-            std::fflush(stderr);
-        }
-        int done = 0;
-        if (barrier_started) {
-            MPI_Test(&barrier, &done, MPI_STATUS_IGNORE);
-            if (done) {
-                break;
-            }
-        } else {
-            MPI_Test(&send, &done, MPI_STATUS_IGNORE);
-            if (done) {
-                MPI_Ibarrier(MPI_COMM_WORLD, &barrier);
-                barrier_started = true;
-            }
-        }
-    }
-    return received;
-}
-} // namespace
-
-using RawMpiNbx = SynchronizedTest;
-
-// 1. Plain MPI ring, first communication in the program.
-TEST_F(RawMpiNbx, Ring) {
-    EXPECT_EQ(raw_nbx(world_ranks().next, 7), 1);
-}
-
-// 2. The same plain MPI ring again (tag 8): does a second ring hang without kamping?
-TEST_F(RawMpiNbx, SecondRing) {
-    EXPECT_EQ(raw_nbx(world_ranks().next, 8), 1);
-}
-
-// 3. Plain MPI ring with tag 0 after two empty NBX rounds, each followed by a barrier (the sequence of the typed
-// tests).
-TEST_F(RawMpiNbx, RingAfterEmptyRounds) {
-    EXPECT_EQ(raw_nbx(-1, 0), 0);
-    MPI_Barrier(MPI_COMM_WORLD);
-    EXPECT_EQ(raw_nbx(-1, 0), 0);
-    MPI_Barrier(MPI_COMM_WORLD);
-    EXPECT_EQ(raw_nbx(world_ranks().next, 0), 1);
-}
-
-// 4. Our NBX ring with tag 7.
-TEST_F(RawMpiNbx, KampingRingTag7) {
-    auto const r        = world_ranks();
-    auto       received = exchange<dstl::sparse_alltoall_algorithm::nbx_t>(sends_t<int>{{r.next, {r.rank, r.rank}}}, 7);
-    EXPECT_EQ(received[r.prev].size(), 1u);
-}
 
 template <typename Algorithm>
 class SparseAlltoall : public SynchronizedTest {};
