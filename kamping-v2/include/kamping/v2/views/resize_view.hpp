@@ -19,6 +19,9 @@ namespace kamping::v2 {
 /// set_recv_count(n) is called by the collective after inferring n via infer(). mpi_count()
 /// returns the stored count immediately; mpi_ptr() triggers the resize on first call.
 /// mpi_type() is forwarded from the base via view_interface.
+///
+/// set_recv_count() may be called again after a resize, e.g. to grow the buffer behind data already received: the
+/// next mpi_ptr() / materialize() resizes again, keeping the existing elements (see resize_for_receive's contract).
 template <typename Base>
 class resize_view : public view_interface<resize_view<Base>> {
     Base                          base_;
