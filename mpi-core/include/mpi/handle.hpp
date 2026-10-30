@@ -28,7 +28,7 @@ inline constexpr bool is_scoped_enum_v = detail::is_scoped_enum_impl<T>::value;
 template <typename T>
 concept builtin_handle = std::same_as<T, MPI_Comm> || std::same_as<T, MPI_Datatype> || std::same_as<T, MPI_Request>
                          || std::same_as<T, MPI_Status> || std::same_as<T, MPI_Message> || std::same_as<T, MPI_Op>
-                         || std::same_as<T, MPI_Info> || std::same_as<T, MPI_Group>;
+                         || std::same_as<T, MPI_Info> || std::same_as<T, MPI_Group> || std::same_as<T, MPI_Win>;
 
 template <typename T>
 concept ptr_to_builtin_handle = std::is_pointer_v<T> && !std::is_const_v<T> && builtin_handle<std::remove_pointer_t<T>>;
