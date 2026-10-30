@@ -60,8 +60,7 @@ template <
     bool                           resize_buf    = false,
     bool                           resize_counts = false,
     bool                           resize_displs = false>
-    requires flattenable_send_buffer<Source>
-             && (!resize_buf || has_resize<FlatBuf> || has_mpi_resize_for_receive<FlatBuf>)
+    requires copyable_send_buffer<Source> && (!resize_buf || has_resize<FlatBuf> || has_mpi_resize_for_receive<FlatBuf>)
              && (!resize_counts || has_resize<Counts> || has_mpi_resize_for_receive<Counts>)
              && (!resize_displs || has_resize<Displs> || has_mpi_resize_for_receive<Displs>)
 class flatten_v_view
