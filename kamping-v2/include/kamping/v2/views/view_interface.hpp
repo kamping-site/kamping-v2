@@ -44,7 +44,8 @@ struct view_interface_base {};
 template <typename T>
 concept view = std::ranges::view<T> || std::derived_from<T, view_interface_base>;
 
-/// Type implements the custom MPI resize protocol (preferred over plain resize()).
+/// Type implements the custom MPI resize protocol (preferred over plain resize()). Implementations must follow the
+/// contract of @ref resize_for_receive: keep the values of the first min(old size, n) elements.
 template <typename T>
 concept has_mpi_resize_for_receive = requires(T& t, std::ptrdiff_t n) { t.mpi_resize_for_receive(n); };
 
@@ -55,6 +56,12 @@ concept has_resize = requires(T& t, std::size_t n) { t.resize(n); };
 /// Resize t to hold n MPI elements before a receive. Dispatches to:
 ///   1. t.mpi_resize_for_receive(n) — custom protocol (e.g. resize_and_overwrite, NUMA alloc)
 ///   2. t.resize(n)                 — standard containers
+///
+/// **Contract.** The elements [0, min(old size, n)) keep their values; new elements are unspecified (they may be
+/// left uninitialized, which is what custom protocols are for). Like a receive, which only writes the range it has
+/// data for, a resize only touches what it has to. This allows growing a buffer that already holds received data,
+/// e.g. to receive further messages behind it. std::vector::resize, std::string::resize_and_overwrite and
+/// Kokkos::resize all behave this way.
 template <has_mpi_resize_for_receive T>
 void resize_for_receive(T& t, std::ptrdiff_t n) {
     t.mpi_resize_for_receive(n);

@@ -488,6 +488,11 @@ struct resize_view : view_interface<resize_view<Base>> {
 };
 ```
 
+**Resize contract.** `resize_for_receive(n)` and every `mpi_resize_for_receive(n)` keep the values of the first
+`min(old size, n)` elements; new elements are unspecified (custom protocols may leave them uninitialized). Like a
+receive, which only writes the range it has data for, a resize only touches what it has to. So a buffer that already
+holds received data can be grown to receive more behind it: call `set_recv_count` again on a `resize_view`.
+
 When `infer(comm_op::recv{}, buf | views::resize, ...)` is called:
 1. Detects that the view is deferred
 2. Probes the network via `MPI_Mprobe` to determine size
