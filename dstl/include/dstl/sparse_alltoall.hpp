@@ -10,6 +10,7 @@
 #include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 #include <functional>
 #include <ranges>
 #include <type_traits>
@@ -241,9 +242,26 @@ void sparse_alltoall(
 
     mpi::experimental::request barrier;
     bool                       barrier_started = false;
+    // TEMPORARY CI diagnostics, remove before merging.
+    std::size_t debug_iterations = 0;
+    int         debug_received   = 0;
+    int const   debug_rank       = kamping::v2::comm_view{mpi::experimental::handle(comm)}.rank();
     while (true) {
         if (auto probe = kamping::v2::improbe(MPI_ANY_SOURCE, t, comm)) {
+            ++debug_received;
             std::invoke(on_message, std::move(*probe));
+        }
+        if (++debug_iterations % (std::size_t{1} << 22) == 0) {
+            std::fprintf(
+                stderr,
+                "[nbx debug] rank %d: %zu iterations, %d received, %zu sends posted, barrier started %d\n",
+                debug_rank,
+                debug_iterations,
+                debug_received,
+                sends.size(),
+                barrier_started ? 1 : 0
+            );
+            std::fflush(stderr);
         }
         if (barrier_started) {
             if (barrier.test()) {

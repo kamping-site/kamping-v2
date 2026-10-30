@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdio>
 #include <list>
 #include <map>
 #include <ranges>
@@ -83,6 +84,55 @@ protected:
         MPI_Barrier(MPI_COMM_WORLD);
     }
 };
+
+// TEMPORARY CI diagnostics, remove before merging: the NBX ring in plain MPI, without kamping. Runs first.
+using RawMpiNbx = SynchronizedTest;
+TEST_F(RawMpiNbx, Ring) {
+    auto const  r          = world_ranks();
+    int const   payload[2] = {r.rank, r.rank};
+    MPI_Request send       = MPI_REQUEST_NULL;
+    MPI_Issend(payload, 2, MPI_INT, r.next, 7, MPI_COMM_WORLD, &send);
+    MPI_Request barrier         = MPI_REQUEST_NULL;
+    bool        barrier_started = false;
+    int         received        = 0;
+    std::size_t iterations      = 0;
+    while (true) {
+        int         flag = 0;
+        MPI_Message msg  = MPI_MESSAGE_NULL;
+        MPI_Status  status;
+        MPI_Improbe(MPI_ANY_SOURCE, 7, MPI_COMM_WORLD, &flag, &msg, &status);
+        if (flag) {
+            int buf[2];
+            MPI_Mrecv(buf, 2, MPI_INT, &msg, MPI_STATUS_IGNORE);
+            ++received;
+        }
+        if (++iterations % (std::size_t{1} << 22) == 0) {
+            std::fprintf(
+                stderr,
+                "[raw nbx debug] rank %d: %zu iterations, %d received, barrier started %d\n",
+                r.rank,
+                iterations,
+                received,
+                barrier_started ? 1 : 0
+            );
+            std::fflush(stderr);
+        }
+        int done = 0;
+        if (barrier_started) {
+            MPI_Test(&barrier, &done, MPI_STATUS_IGNORE);
+            if (done) {
+                break;
+            }
+        } else {
+            MPI_Test(&send, &done, MPI_STATUS_IGNORE);
+            if (done) {
+                MPI_Ibarrier(MPI_COMM_WORLD, &barrier);
+                barrier_started = true;
+            }
+        }
+    }
+    EXPECT_EQ(received, 1);
+}
 
 template <typename Algorithm>
 class SparseAlltoall : public SynchronizedTest {};
