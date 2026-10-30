@@ -2,7 +2,11 @@
 // SPDX-License-Identifier: BSL-1.0
 
 #include <algorithm>
+#include <array>
+#include <cstddef>
 #include <cstdint>
+#include <list>
+#include <tuple>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -53,6 +57,100 @@ TEST(PayloadElementTest, ValueDestinationPairResolvesToValueSlotOnly) {
 TEST(PayloadElementTest, NestedResolvesToInnerElement) {
     using Buf = std::vector<std::vector<int>>;
     static_assert(std::same_as<kamping::v2::payload_element_t<Buf>, int>);
+}
+
+// ── pair_like: exactly two elements, and never a range ───────────────────────────────────
+
+TEST(PairLikeTest, AcceptsTwoElementTupleLikes) {
+    EXPECT_TRUE((kamping::v2::pair_like<std::pair<int, double>>));
+    EXPECT_TRUE((kamping::v2::pair_like<std::tuple<int, int>>));
+}
+
+TEST(PairLikeTest, RejectsOtherSizes) {
+    EXPECT_FALSE((kamping::v2::pair_like<std::tuple<int, int, int>>));
+    EXPECT_FALSE((kamping::v2::pair_like<std::array<int, 3>>));
+    EXPECT_FALSE((kamping::v2::pair_like<int>));
+}
+
+TEST(PairLikeTest, RejectsRanges) {
+    EXPECT_FALSE((kamping::v2::pair_like<std::array<int, 2>>));
+}
+
+TEST(PairLikeTest, ArrayOfTwoIsNestedNotValueDestinationPair) {
+    using Buf = std::vector<std::array<int, 2>>;
+    EXPECT_TRUE((kamping::v2::nested_send_buffer<Buf>));
+    EXPECT_FALSE((kamping::v2::value_destination_pair_buffer<Buf>));
+}
+
+// ── Messages: structure (nested / sparse) is separate from capability (range / buffer) ──
+
+namespace {
+/// A buffer-protocol message that is not a std::ranges range.
+struct int_buffer {
+    using value_type = int;
+    std::vector<int>         data;
+    [[nodiscard]] int const* mpi_ptr() const {
+        return data.data();
+    }
+    [[nodiscard]] std::size_t mpi_count() const {
+        return data.size();
+    }
+};
+static_assert(!std::ranges::range<int_buffer>);
+} // namespace
+
+TEST(MessageConceptTest, Capabilities) {
+    // Contiguous ranges have both capabilities.
+    static_assert(kamping::v2::range_message<std::vector<int>>);
+    static_assert(kamping::v2::buffer_message<std::vector<int>>);
+    // Non-contiguous ranges can only be iterated.
+    static_assert(kamping::v2::range_message<std::list<int>>);
+    static_assert(!kamping::v2::buffer_message<std::list<int>>);
+    // Buffer-protocol types that are not ranges can only be accessed in place.
+    static_assert(!kamping::v2::range_message<int_buffer>);
+    static_assert(kamping::v2::buffer_message<int_buffer>);
+    static_assert(kamping::v2::message<int_buffer>);
+    // Scalars are not messages, so a flat range of them stays flat.
+    static_assert(!kamping::v2::message<int>);
+    static_assert(!kamping::v2::nested_send_buffer<std::vector<int>>);
+}
+
+TEST(MessageConceptTest, StructureAcceptsAnyMessage) {
+    using Dense  = std::vector<int_buffer>;
+    using Sparse = std::vector<std::pair<int, int_buffer>>;
+    static_assert(kamping::v2::nested_send_buffer<Dense>);
+    static_assert(kamping::v2::sparse_nested_send_buffer<Sparse>);
+    static_assert(std::same_as<kamping::v2::nested_message_t<Dense>, int_buffer>);
+    static_assert(std::same_as<kamping::v2::nested_message_t<Sparse>, int_buffer>);
+    // The payload of buffer-protocol messages comes from their value_type member.
+    static_assert(std::same_as<kamping::v2::payload_element_t<Dense>, int>);
+    static_assert(std::same_as<kamping::v2::payload_element_t<Sparse>, int>);
+    EXPECT_EQ(kamping::v2::value_type(Dense{}), MPI_INT);
+}
+
+TEST(MessageConceptTest, FlattenRequiresCopyableMessages) {
+    static_assert(kamping::v2::copyable_send_buffer<std::vector<std::vector<int>>>);
+    static_assert(kamping::v2::copyable_send_buffer<std::vector<std::list<int>>>);
+    static_assert(kamping::v2::copyable_send_buffer<std::vector<std::pair<int, std::vector<int>>>>);
+    static_assert(kamping::v2::copyable_send_buffer<std::vector<std::pair<double, int>>>); // value-destination pairs
+    // Structured, but not copyable element by element.
+    static_assert(kamping::v2::flattenable_send_buffer<std::vector<int_buffer>>);
+    static_assert(!kamping::v2::copyable_send_buffer<std::vector<int_buffer>>);
+}
+
+TEST(MessageConceptTest, MessageInValueSlotIsNotAValueDestinationPair) {
+    // A message-valued payload means "several elements for this rank": no value-destination pair.
+    static_assert(!kamping::v2::value_destination_pair<std::pair<int_buffer, int>>);
+    static_assert(!kamping::v2::value_destination_pair<std::pair<std::vector<int>, int>>);
+}
+
+TEST(MessageConceptTest, NestedRangesOfRangesNeedAnExplicitValueType) {
+    // Messages that are themselves ranges of ranges: their elements are std::vector objects, which have no MPI
+    // datatype, so the builtin fallback refuses rather than sending the bytes of vector objects.
+    using Buf = std::vector<std::vector<std::vector<int>>>;
+    static_assert(kamping::v2::nested_send_buffer<Buf>);
+    static_assert(std::same_as<kamping::v2::payload_element_t<Buf>, std::vector<int>>);
+    static_assert(!kamping::v2::has_mpi_value_type<Buf>);
 }
 
 // ── value_type(): tier-3 fallback (builtin deduction from the payload) ─────────────────────
@@ -293,7 +391,7 @@ TEST(ValueTypeEndToEndTest, FlattenedIntPairPayloadSurvivesWithAutoPool) {
     }
 
     static_assert(std::is_same_v<kamping::v2::payload_element_t<decltype(msgs)>, Pair>);
-    auto flattened = msgs | views::flatten_v();
+    auto flattened  = msgs | views::flatten_v();
     using Flattened = decltype(flattened);
 
     // A flatten_v_view is already-flat: both resolvers must now agree (payload_element_t no
