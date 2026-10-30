@@ -26,6 +26,7 @@
 #include "kamping/v2/p2p/probe.hpp"
 #include "kamping/v2/p2p/send_mode.hpp"
 #include "kamping/v2/request.hpp"
+#include "kamping/v2/views/concepts.hpp"
 #include "kamping/v2/views/payload.hpp"
 #include "kamping/v2/views/with_type_view.hpp"
 #include "mpi/cache.hpp"
@@ -72,6 +73,19 @@ template <typename SBuf>
 concept sparse_alltoall_send_buffer =
     (kamping::v2::nested_send_buffer<SBuf> || kamping::v2::sparse_nested_send_buffer<SBuf>)
     && kamping::v2::buffer_message<kamping::v2::nested_message_t<SBuf>>;
+
+/// @brief Whether the messages of `SBuf` stay valid while they are being sent.
+///
+/// Messages are sent nonblocking while the input is iterated, so their data must outlive the loop iteration that
+/// posts them. That holds when the input yields references into storage that outlives the call (e.g. a
+/// `std::vector` of pairs), or when the messages do not own their data (e.g. `std::span`). It fails for messages
+/// that are produced by value and own their data, e.g. `std::views::transform` returning `std::vector`s: each one
+/// is destroyed at the end of its iteration while its send may still be in flight.
+template <typename SBuf>
+concept messages_outlive_iteration =
+    std::is_lvalue_reference_v<std::ranges::range_reference_t<std::remove_reference_t<SBuf> const>>
+    || std::is_lvalue_reference_v<kamping::v2::nested_message_t<SBuf>>
+    || kamping::v2::borrowed_buffer<kamping::v2::nested_message_t<SBuf>>;
 
 namespace detail {
 
@@ -135,6 +149,12 @@ template <sparse_alltoall_send_buffer SBuf, kamping::v2::is_send_mode SendMode, 
 void post_sends(
     SBuf const& sbuf, SendMode mode, int tag, Comm const& comm, kamping::v2::request_vector& requests, OnSend&& on_send
 ) {
+    static_assert(
+        messages_outlive_iteration<SBuf>,
+        "sparse_alltoall: the input produces messages by value that own their data, which would be destroyed while "
+        "they are being sent. Materialize the messages first (e.g. std::ranges::to<std::vector>()), or produce "
+        "non-owning messages (e.g. std::span)."
+    );
     MPI_Datatype const type = kamping::v2::value_type(sbuf);
     auto               send = [&](int dest, auto const& message) {
         if (mpi::experimental::count(message) == 0) {

@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <list>
 #include <map>
+#include <ranges>
 #include <span>
 #include <utility>
 #include <vector>
@@ -248,6 +249,20 @@ TYPED_TEST(SparseAlltoall, BufferProtocolMessages) {
     EXPECT_EQ(received[r.prev][0], (std::vector<int>{r.prev, 2}));
 }
 
+TYPED_TEST(SparseAlltoall, LazilyProducedNonOwningMessages) {
+    // The input is a view producing (destination, span) pairs on the fly; the spans refer to `payloads`.
+    auto const                    r = world_ranks();
+    std::vector<std::vector<int>> payloads{{r.rank, 10}, {r.rank, 20}};
+    auto                          sends    = payloads | std::views::transform([&](std::vector<int> const& payload) {
+                     return std::pair{r.next, std::span<int const>(payload)};
+                                             });
+    auto                          received = exchange<TypeParam>(sends);
+
+    ASSERT_EQ(received[r.prev].size(), 2u);
+    EXPECT_EQ(received[r.prev][0], (std::vector<int>{r.prev, 10}));
+    EXPECT_EQ(received[r.prev][1], (std::vector<int>{r.prev, 20}));
+}
+
 TYPED_TEST(SparseAlltoall, BuiltinValueTypeFallback) {
     auto const r        = world_ranks();
     auto       received = exchange<TypeParam>(sends_t<double>{{r.next, {0.5, double(r.rank)}}});
@@ -342,4 +357,34 @@ TEST(SparseAlltoallConcepts, SendBuffer) {
     static_assert(!dstl::sparse_alltoall_send_buffer<std::vector<std::list<int>>>);
     // Flat buffers are not nested inputs.
     static_assert(!dstl::sparse_alltoall_send_buffer<std::vector<int>>);
+}
+
+namespace {
+// Lazily transformed inputs, as types for the checks below.
+std::vector<std::vector<int>> storage;
+using owning_sparse   = decltype(storage | std::views::transform([](std::vector<int> const& v) {
+                                   return std::pair{0, v}; // copies the message: owns its data
+                                 }));
+using borrowed_sparse = decltype(storage | std::views::transform([](std::vector<int> const& v) {
+                                     return std::pair{0, std::span<int const>(v)}; // refers to storage
+                                 }));
+using owning_dense =
+    decltype(storage | std::views::transform([](std::vector<int> const& v) { return std::vector<int>(v); }));
+using borrowed_dense =
+    decltype(storage | std::views::transform([](std::vector<int> const& v) { return std::span<int const>(v); }));
+} // namespace
+
+TEST(SparseAlltoallConcepts, MessagesOutliveIteration) {
+    // Inputs that yield references: the messages live in storage that outlives the call.
+    static_assert(dstl::messages_outlive_iteration<std::vector<std::pair<int, std::vector<int>>>>);
+    static_assert(dstl::messages_outlive_iteration<std::vector<std::vector<int>>>);
+    static_assert(dstl::messages_outlive_iteration<std::vector<int_buffer>>);
+    // Messages produced by value: fine if they do not own their data ...
+    static_assert(dstl::sparse_alltoall_send_buffer<borrowed_sparse>);
+    static_assert(dstl::messages_outlive_iteration<borrowed_sparse>);
+    static_assert(dstl::messages_outlive_iteration<borrowed_dense>);
+    // ... rejected if they do: they would be destroyed while being sent.
+    static_assert(dstl::sparse_alltoall_send_buffer<owning_sparse>);
+    static_assert(!dstl::messages_outlive_iteration<owning_sparse>);
+    static_assert(!dstl::messages_outlive_iteration<owning_dense>);
 }
