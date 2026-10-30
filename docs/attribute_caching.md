@@ -94,5 +94,7 @@ extern "C" void mylib_exchange(MPI_Comm comm) {
   finalized. In the Sessions model this cannot be detected, so destroy it before the last session is finalized.
 - **Duplicates do not inherit.** `MPI_Comm_dup` and `MPI_Type_dup` create objects without cached values; they get
   their own on first use.
+- **Constness follows ownership.** A `cache` owns its values, so `find` on a const cache returns `T const*`. A `keyval`
+  is only a key, so `find` on a const keyval still returns `T*`.
 - **No exceptions from destructors.** Values are destroyed inside MPI's callbacks, so `T`'s destructor must not throw.
 - **Not thread-safe.** Do not call `get_or_create` / `erase` concurrently on the same cache or keyval.

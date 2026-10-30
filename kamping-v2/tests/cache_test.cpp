@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Karlsruhe Institute of Technology
 // SPDX-License-Identifier: BSL-1.0
 
+#include <concepts>
 #include <utility>
 
 #include <gtest/gtest.h>
@@ -267,4 +268,18 @@ TEST_F(KeyvalTest, StaticKeyvalOutlivesFinalize) {
     std::ignore             = key.get_or_create(copy, [] { return tracked(1); });
     MPI_Comm_free(&copy);
     EXPECT_EQ(tracked::destroyed, 1);
+}
+
+TEST(AttributeConstnessTest, CachePropagatesConstKeyvalDoesNot) {
+    using comm_keyval_t = mpi::experimental::keyval<mpi::experimental::attribute::comm, tracked>;
+    // cache owns its values: a const cache gives read-only access.
+    static_assert(std::same_as<decltype(std::declval<comm_cache&>().find(MPI_COMM_WORLD)), tracked*>);
+    static_assert(std::same_as<decltype(std::declval<comm_cache const&>().find(MPI_COMM_WORLD)), tracked const*>);
+    // keyval is only a key: constness does not reach the values.
+    static_assert(std::same_as<decltype(std::declval<comm_keyval_t const&>().find(MPI_COMM_WORLD)), tracked*>);
+
+    comm_cache c;
+    std::ignore             = c.get_or_create(MPI_COMM_WORLD, [] { return tracked(5); });
+    comm_cache const& c_ref = c;
+    EXPECT_EQ(c_ref.find(MPI_COMM_WORLD)->value, 5);
 }

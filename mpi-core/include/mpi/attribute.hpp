@@ -125,6 +125,10 @@ concept attribute_kind =
 /// destroyed after `MPI_Finalize`, the destructor skips freeing the key once MPI has been finalized (World model). In
 /// the Sessions model this cannot be detected; destroy the keyval before the last session is finalized.
 ///
+/// **Constness.** A keyval is a key, not a container: it does not own the values, so `const` does not apply to them,
+/// and @ref find on a const keyval still returns a mutable value (like a const `std::span` or `std::unique_ptr`).
+/// `cache<Kind, T>`, which owns its values, propagates `const` to them instead.
+///
 /// The delete callback runs inside MPI, so `T`'s destructor must not throw. Duplicated objects
 /// (`MPI_Comm_dup`, `MPI_Type_dup`) do not inherit cached values.
 ///
@@ -179,19 +183,22 @@ public:
             return *existing;
         }
         auto value = std::unique_ptr<T>(new T(std::invoke(std::forward<F>(make))));
-        if (int err = Kind::set_attr(handle(obj), _keyval, value.get()); err != MPI_SUCCESS) {
+        int  err   = Kind::set_attr(handle(obj), _keyval, value.get());
+        if (err != MPI_SUCCESS) {
             throw mpi_error(err);
         }
         return *value.release(); // now owned by the attribute; delete_fn destroys it
     }
 
-    /// @return The value attached to `obj`, or `nullptr` if there is none.
+    /// @return The value attached to `obj`, or `nullptr` if there is none. Mutable even through a const keyval, which
+    ///         does not own the values (see class documentation).
     /// @throws mpi_error if the attribute lookup fails.
     template <convertible_to_mpi_handle<handle_type> Obj>
     [[nodiscard]] T* find(Obj const& obj) const {
         void* value = nullptr;
         int   found = 0;
-        if (int err = Kind::get_attr(handle(obj), _keyval, &value, &found); err != MPI_SUCCESS) {
+        int   err   = Kind::get_attr(handle(obj), _keyval, &value, &found);
+        if (err != MPI_SUCCESS) {
             throw mpi_error(err);
         }
         return found ? static_cast<T*>(value) : nullptr;
@@ -205,7 +212,8 @@ public:
         if (find(obj) == nullptr) {
             return false;
         }
-        if (int err = Kind::delete_attr(handle(obj), _keyval); err != MPI_SUCCESS) {
+        int err = Kind::delete_attr(handle(obj), _keyval);
+        if (err != MPI_SUCCESS) {
             throw mpi_error(err);
         }
         return true;

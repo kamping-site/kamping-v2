@@ -97,7 +97,8 @@ public:
         auto              value = std::unique_ptr<T>(new T(std::invoke(std::forward<F>(make))));
         _impl->entries.emplace_back(h, std::move(value));
         T* const ptr = _impl->entries.back().second.get();
-        if (int err = Kind::set_attr(h, _impl->keyval, ptr); err != MPI_SUCCESS) {
+        int      err = Kind::set_attr(h, _impl->keyval, ptr);
+        if (err != MPI_SUCCESS) {
             _impl->entries.pop_back();
             throw mpi_error(err);
         }
@@ -107,13 +108,16 @@ public:
     /// @return The value cached for `obj`, or `nullptr` if there is none.
     /// @throws mpi_error if the attribute lookup fails.
     template <convertible_to_mpi_handle<handle_type> Obj>
-    [[nodiscard]] T* find(Obj const& obj) const {
-        void* value = nullptr;
-        int   found = 0;
-        if (int err = Kind::get_attr(handle(obj), _impl->keyval, &value, &found); err != MPI_SUCCESS) {
-            throw mpi_error(err);
-        }
-        return found ? static_cast<T*>(value) : nullptr;
+    [[nodiscard]] T* find(Obj const& obj) {
+        return lookup(handle(obj));
+    }
+
+    /// @return The value cached for `obj`, or `nullptr` if there is none. The cache owns its values, so a const cache
+    ///         gives read-only access to them.
+    /// @throws mpi_error if the attribute lookup fails.
+    template <convertible_to_mpi_handle<handle_type> Obj>
+    [[nodiscard]] T const* find(Obj const& obj) const {
+        return lookup(handle(obj));
     }
 
     /// @brief Destroys the value cached for `obj`, if any.
@@ -124,7 +128,8 @@ public:
         if (find(obj) == nullptr) {
             return false;
         }
-        if (int err = Kind::delete_attr(handle(obj), _impl->keyval); err != MPI_SUCCESS) {
+        int err = Kind::delete_attr(handle(obj), _impl->keyval);
+        if (err != MPI_SUCCESS) {
             throw mpi_error(err);
         }
         return true;
@@ -141,6 +146,17 @@ public:
     }
 
 private:
+    // Shared by both find overloads, which only differ in the constness of the result.
+    T* lookup(handle_type h) const {
+        void* value = nullptr;
+        int   found = 0;
+        int   err   = Kind::get_attr(h, _impl->keyval, &value, &found);
+        if (err != MPI_SUCCESS) {
+            throw mpi_error(err);
+        }
+        return found ? static_cast<T*>(value) : nullptr;
+    }
+
     // Heap-allocated so that its address, passed to MPI as the keyval's extra_state, survives moves of the cache.
     struct impl {
         int keyval = MPI_KEYVAL_INVALID;
