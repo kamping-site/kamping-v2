@@ -313,10 +313,9 @@ TEST(TypePoolValueTypeTest, WithValuePoolUsesOneShotRegisteredType) {
 
 // ── end-to-end: with_value_type/with_auto_value_pool + flatten_v() through a real alltoallv ────
 //
-// Exercises the composition sparse_alltoall.md's own transform_messages(with_auto_pool(...)) idea
-// is modeled on: a structured (sparse) send buffer carrying a non-builtin payload, annotated on the
-// value-type channel, flattened in-pipeline, and actually sent/received across ranks — not just
-// type-checked in isolation. If flatten_v_view's mpi_type() override (honoring Source's
+// A structured (sparse) send buffer carrying a non-builtin payload, annotated on the value-type
+// channel, flattened in-pipeline, and actually sent/received across ranks — not just type-checked
+// in isolation. If flatten_v_view's mpi_type() override (honoring Source's
 // mpi_value_type() instead of the deduced fallback) were wrong, or if the wrong MPI type were used
 // on the wire, the received struct fields would come back corrupted or MPI would reject the
 // mismatched type signature outright.
