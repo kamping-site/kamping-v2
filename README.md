@@ -36,7 +36,7 @@ int main(int argc, char* argv[]) {
         v2::send(data, 1, comm);
     } else if (comm.rank() == 1) {
         std::vector<int> data;
-        v2::recv(data | v2::views::resize, 0, v2::DEFAULT_SEND_TAG, comm); // resized to fit the message
+        v2::recv(data | v2::views::resize, 0, comm); // resized to fit the message
     }
 
     // Collectives: every rank contributes a different amount; counts are exchanged for you.
@@ -96,6 +96,24 @@ Before each operation, KaMPIng calls a customization point named `infer()`. It f
 open, for example by probing a message to size a `views::resize` buffer. You can overload `infer()` for your
 own buffer types to exchange extra metadata.
 
+## Calling conventions
+
+The communicator always comes last. Arguments with an obvious default can be left out from the front of it, so you
+only spell out what differs:
+
+```cpp
+v2::send(buf, dest, comm);          // tag 0
+v2::send(buf, dest, tag, comm);
+v2::recv(buf, comm);                // any source, any tag
+v2::recv(buf, source, tag, comm);
+v2::bcast(buf, comm);               // root 0
+v2::reduce(s, r, comm);             // std::plus<>, root 0
+v2::reduce(s, r, MPI_MAX, root, comm);
+```
+
+Rooted collectives have a shorthand for the ranks that don't need the root-only buffer, e.g. `v2::gather(s, comm)`
+on non-root ranks.
+
 ## Views
 
 All views compose with `|` and live in `kamping::v2::views`.
@@ -125,7 +143,7 @@ The buffer lives on the heap, so moving the `iresult` around never invalidates t
 
 ```cpp
 // Receiver: the iresult owns the vector until the receive completes.
-auto pending = v2::irecv(std::vector<int>{} | v2::views::resize, 0, MPI_ANY_TAG, comm);
+auto pending = v2::irecv(std::vector<int>{} | v2::views::resize, 0, comm);
 // ... do other work ...
 std::vector<int> data = pending.wait().underlying(); // the owned buffer is handed back
 
@@ -196,7 +214,7 @@ KaMPIng v2 is built in layers. You can use the lower ones on their own.
 | `mpi-core/` | `mpi::experimental` | `mpi::core` | Thin, explicit MPI wrappers: one MPI call each, no inference or resizing |
 | `kamping-v2/` | `kamping::v2` | `kamping::v2` | The ergonomic layer: views, `infer()`, self-sizing buffers, `iresult` |
 | `dstl/` | `dstl` | `dstl` | Distributed algorithms built on top (sparse all-to-all, grid all-to-all, scans, …) |
-| `ecosystem/` | `kamping::ecosystem` | `kamping::ecosystem::<name>` | Adapters for Cereal, Kokkos, Thrust, and SYCL |
+| `ecosystem/` | `kamping::v2`, `kamping::v2::views` | `kamping::ecosystem::<name>` | Adapters for Cereal, Kokkos, Thrust, and SYCL |
 
 MPI datatypes for user types come from `kamping-types`, which is shared with
 [KaMPIng v1](https://github.com/kamping-site/kamping) and fetched automatically. KaMPIng v1 and v2 are

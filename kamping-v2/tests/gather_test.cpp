@@ -28,7 +28,7 @@ TEST_F(GatherTest, gather_simple) {
     std::vector<int> send_data = {2 * rank_, 2 * rank_ + 1};
     std::vector<int> recv_data(static_cast<std::size_t>(2 * size_));
 
-    kamping::v2::gather(send_data, recv_data);
+    kamping::v2::gather(send_data, recv_data, MPI_COMM_WORLD);
     if (rank_ == 0) {
         std::vector<int> expected(static_cast<std::size_t>(2 * size_));
         std::iota(expected.begin(), expected.end(), 0);
@@ -41,12 +41,12 @@ TEST_F(GatherTest, gather_recv_buf_only_on_root) {
 
     if (rank_ == 0) {
         std::vector<int> recv_data(static_cast<std::size_t>(2 * size_));
-        kamping::v2::gather(send_data, recv_data);
+        kamping::v2::gather(send_data, recv_data, MPI_COMM_WORLD);
         std::vector<int> expected(static_cast<std::size_t>(2 * size_));
         std::iota(expected.begin(), expected.end(), 0);
         EXPECT_THAT(recv_data, testing::ElementsAreArray(expected));
     } else {
-        kamping::v2::gather(send_data);
+        kamping::v2::gather(send_data, MPI_COMM_WORLD);
     }
 }
 
@@ -55,11 +55,11 @@ TEST_F(GatherTest, gather_resize) {
 
     if (rank_ == 0) {
         std::vector<int> recv_data(static_cast<std::size_t>(2 * size_));
-        kamping::v2::gather(send_data, recv_data | kamping::v2::views::resize);
+        kamping::v2::gather(send_data, recv_data | kamping::v2::views::resize, MPI_COMM_WORLD);
         std::vector<int> expected(static_cast<std::size_t>(2 * size_));
         std::iota(expected.begin(), expected.end(), 0);
         EXPECT_THAT(recv_data, testing::ElementsAreArray(expected));
     } else {
-        kamping::v2::gather(send_data);
+        kamping::v2::gather(send_data, MPI_COMM_WORLD);
     }
 }

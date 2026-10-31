@@ -43,7 +43,8 @@ TEST(V2AlltoallvTest, LvalueRecvBuf) {
     std::vector<int> recv_data;
     kamping::v2::alltoallv(
         send_data | kamping::v2::views::with_counts(send_counts) | kamping::v2::views::with_displs(send_displs),
-        recv_data | kamping::v2::views::auto_recv_v
+        recv_data | kamping::v2::views::auto_recv_v,
+        MPI_COMM_WORLD
     );
 
     std::vector<int> expected;
@@ -65,7 +66,8 @@ TEST(V2AlltoallvTest, OwnedAutoRecvV) {
 
     auto res = kamping::v2::alltoallv(
         send_data | kamping::v2::views::with_counts(send_counts) | kamping::v2::views::with_displs(send_displs),
-        kamping::v2::auto_recv_v<int>()
+        kamping::v2::auto_recv_v<int>(),
+        MPI_COMM_WORLD
     );
 
     std::vector<int> recv_data(std::ranges::begin(res.recv), std::ranges::end(res.recv));
@@ -93,7 +95,8 @@ TEST(V2AlltoallvTest, UniformSingleElement) {
     std::vector<int> recv_data;
     kamping::v2::alltoallv(
         send_data | kamping::v2::views::with_counts(send_counts) | kamping::v2::views::with_displs(send_displs),
-        recv_data | kamping::v2::views::auto_recv_v
+        recv_data | kamping::v2::views::auto_recv_v,
+        MPI_COMM_WORLD
     );
 
     std::vector<int> expected(static_cast<std::size_t>(size));
@@ -116,7 +119,11 @@ TEST(V2AlltoallvTest, SparseFlattenSendBuffer) {
     }
 
     std::vector<int> recv_data;
-    kamping::v2::alltoallv(per_dest | kamping::v2::views::flatten_v(), recv_data | kamping::v2::views::auto_recv_v);
+    kamping::v2::alltoallv(
+        per_dest | kamping::v2::views::flatten_v(),
+        recv_data | kamping::v2::views::auto_recv_v,
+        MPI_COMM_WORLD
+    );
 
     std::vector<int> expected;
     for (int i = 0; i < size; ++i) {
@@ -140,7 +147,8 @@ TEST(V2AlltoallvTest, AllEmpty) {
     std::vector<int> recv_data;
     kamping::v2::alltoallv(
         send_data | kamping::v2::views::with_counts(send_counts) | kamping::v2::views::with_displs(send_displs),
-        recv_data | kamping::v2::views::auto_recv_v
+        recv_data | kamping::v2::views::auto_recv_v,
+        MPI_COMM_WORLD
     );
 
     EXPECT_TRUE(recv_data.empty());

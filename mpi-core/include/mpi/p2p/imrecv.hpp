@@ -17,8 +17,13 @@ template <
     convertible_to_mpi_handle_ptr<MPI_Message> Message,
     convertible_to_mpi_handle_ptr<MPI_Request> Request>
 void imrecv(RBuf&& rbuf, Message&& message, Request&& request) {
-    int err =
-        MPI_Imrecv(ptr(rbuf), static_cast<int>(count(rbuf)), type(rbuf), handle_ptr(message), handle_ptr(request));
+    int err = MPI_Imrecv(
+        mpi::experimental::ptr(rbuf),
+        static_cast<int>(mpi::experimental::count(rbuf)),
+        mpi::experimental::type(rbuf),
+        mpi::experimental::handle_ptr(message),
+        mpi::experimental::handle_ptr(request)
+    );
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);
     }

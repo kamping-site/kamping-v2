@@ -87,7 +87,7 @@ TEST(TypePoolTest, BcastWithPool) {
     } else {
         v.emplace_back(MyStruct{0, 0.0});
     }
-    kamping::v2::bcast(v | kamping::v2::views::with_pool(pool));
+    kamping::v2::bcast(v | kamping::v2::views::with_pool(pool), MPI_COMM_WORLD);
     EXPECT_EQ(v[0].x, 42);
     EXPECT_DOUBLE_EQ(v[0].y, 3.14);
 }

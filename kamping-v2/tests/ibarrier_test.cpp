@@ -31,7 +31,7 @@ TEST(IBarrierTest, core_ibarrier) {
 }
 
 TEST(IBarrierTest, v2_ibarrier) {
-    auto req = kamping::v2::ibarrier();
+    auto req = kamping::v2::ibarrier(MPI_COMM_WORLD);
     req.wait();
     EXPECT_TRUE(req.is_null());
 }
@@ -49,11 +49,11 @@ TEST(IBarrierTest, ibarrier_does_not_complete_before_all_ranks_entered) {
         }
         for (int r = 1; r < world.size(); ++r) {
             int token = 0;
-            mpi::experimental::send(kamping::v2::views::ref_single(token), r);
+            mpi::experimental::send(kamping::v2::views::ref_single(token), r, 0, MPI_COMM_WORLD);
         }
     } else {
         int token = 0;
-        mpi::experimental::recv(kamping::v2::views::ref_single(token), 0);
+        mpi::experimental::recv(kamping::v2::views::ref_single(token), 0, MPI_ANY_TAG, MPI_COMM_WORLD);
         mpi::experimental::ibarrier(world, req);
     }
     req.wait();

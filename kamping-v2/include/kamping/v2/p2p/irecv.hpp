@@ -3,133 +3,108 @@
 
 #pragma once
 
-#include <type_traits>
 #include <utility>
 
 #include <mpi.h>
 
 #include "kamping/v2/infer.hpp"
 #include "kamping/v2/iresult.hpp"
+#include "kamping/v2/p2p/recv.hpp"
 #include "mpi/handle.hpp"
 #include "mpi/p2p/imrecv.hpp"
 #include "mpi/p2p/irecv.hpp"
 
-namespace kamping::v2 {
-/// Starts receiving a message into `rbuf`, using a caller-supplied request (`MPI_Irecv` / `MPI_Imrecv`).
+/// @file
+/// Non-blocking receives. Source and tag may be omitted (any source / any tag). Without a request, the call returns
+/// an @ref kamping::v2::iresult that owns the request; with a caller-supplied request (passed first), it returns the
+/// buffer and the caller must complete the request.
 ///
-/// The caller must keep `rbuf` alive and complete `request`. Like the iresult-returning overload below, this may block
-/// to size a deferred receive buffer.
+/// **Synchronous work on the caller's thread.** Before the receive is started, the `infer(comm_op::recv, ...)`
+/// customization point runs. For a deferred receive buffer (e.g. `views::resize`) it performs a **blocking**
+/// `MPI_Mprobe` to size the buffer, so these calls are non-blocking only for the data transfer. Pass a buffer of known
+/// size to avoid this.
+
+namespace kamping::v2 {
+
+/// Starts receiving a message from `source` with `tag` into `rbuf`, using the caller-supplied `request` (`MPI_Irecv`,
+/// or `MPI_Imrecv` for a deferred buffer). The caller must keep `rbuf` alive and complete `request`.
 /// @return The receive buffer (owned if passed as rvalue, borrowed otherwise).
 template <
+    mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Request> Request,
     mpi::experimental::recv_buffer                                RBuf,
-    mpi::experimental::rank                                       Source  = int,
-    mpi::experimental::tag                                        Tag     = int,
-    mpi::experimental::convertible_to_mpi_handle<MPI_Comm>        Comm    = MPI_Comm,
-    mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Request> Request = MPI_Request*>
-auto irecv(
-    Request&&   request,
-    RBuf&&      rbuf,
-    Source      source = MPI_ANY_SOURCE,
-    Tag         tag    = MPI_ANY_TAG,
-    Comm const& comm   = MPI_COMM_WORLD
-) -> RBuf {
-    using infer_result_t = decltype(infer(
-        comm_op::recv{},
-        std::declval<RBuf&>(),
-        mpi::experimental::to_rank(std::declval<Source>()),
-        mpi::experimental::to_tag(std::declval<Tag>()),
-        mpi::experimental::handle(std::declval<Comm const&>())
-    ));
-    if constexpr (std::is_same_v<infer_result_t, MPI_Message>) {
-        MPI_Message msg = infer(
-            comm_op::recv{},
-            rbuf,
-            mpi::experimental::to_rank(source),
-            mpi::experimental::to_tag(tag),
-            mpi::experimental::handle(comm)
-        );
-        mpi::experimental::imrecv(rbuf, &msg, std::forward<Request>(request));
-        return std::forward<RBuf>(rbuf);
-    } else if constexpr (std::is_same_v<infer_result_t, std::pair<int, int>>) {
-        auto [src, tg] = infer(
-            comm_op::recv{},
-            rbuf,
-            mpi::experimental::to_rank(source),
-            mpi::experimental::to_tag(tag),
-            mpi::experimental::handle(comm)
-        );
-        mpi::experimental::irecv(rbuf, src, tg, comm, std::forward<Request>(request));
-        return std::forward<RBuf>(rbuf);
-    } else {
-        infer(
-            comm_op::recv{},
-            rbuf,
-            mpi::experimental::to_rank(source),
-            mpi::experimental::to_tag(tag),
-            mpi::experimental::handle(comm)
-        );
-        mpi::experimental::irecv(rbuf, std::move(source), std::move(tag), comm, std::forward<Request>(request));
-        return std::forward<RBuf>(rbuf);
-    }
+    mpi::experimental::rank                                       Source,
+    mpi::experimental::tag                                        Tag,
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm>        Comm>
+auto irecv(Request&& request, RBuf&& rbuf, Source source, Tag tag, Comm const& comm) -> RBuf {
+    detail::infer_and_recv(
+        rbuf,
+        mpi::experimental::to_rank(source),
+        mpi::experimental::to_tag(tag),
+        mpi::experimental::handle(comm),
+        [&](int src, int tg) { mpi::experimental::irecv(rbuf, src, tg, comm, std::forward<Request>(request)); },
+        [&](MPI_Message* msg) { mpi::experimental::imrecv(rbuf, msg, std::forward<Request>(request)); }
+    );
+    return std::forward<RBuf>(rbuf);
 }
-/// Issues a non-blocking receive and returns an iresult that can be waited on.
-///
-/// **Synchronous work on the caller's thread.** Before the underlying MPI_Irecv/
-/// MPI_Imrecv is issued, this call invokes the `infer(comm_op::recv, ...)`
-/// customization point. The default overload for buffers satisfying
-/// `deferred_recv_buf` runs a **blocking** `MPI_Mprobe` so the incoming message
-/// size can be determined and the buffer sized to fit. User-supplied `infer()`
-/// overloads may also perform blocking work. In both cases, this call will not
-/// return until that synchronous work has completed — it is "non-blocking" only
-/// for the wire-level data transfer, not for any handshake that precedes it.
-///
-/// If you need an `irecv` that is guaranteed not to block on the caller's thread,
-/// pass a buffer whose `infer()` overload is a no-op (for example, a fixed-size
-/// recv buffer that the caller has already sized correctly).
+
+/// Like the overload above, receiving with any tag.
+template <
+    mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Request> Request,
+    mpi::experimental::recv_buffer                                RBuf,
+    mpi::experimental::rank                                       Source,
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm>        Comm>
+auto irecv(Request&& request, RBuf&& rbuf, Source source, Comm const& comm) -> RBuf {
+    return kamping::v2::irecv(
+        std::forward<Request>(request),
+        std::forward<RBuf>(rbuf),
+        std::move(source),
+        MPI_ANY_TAG,
+        comm
+    );
+}
+
+/// Like the overload above, receiving from any source with any tag.
+template <
+    mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Request> Request,
+    mpi::experimental::recv_buffer                                RBuf,
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm>        Comm>
+auto irecv(Request&& request, RBuf&& rbuf, Comm const& comm) -> RBuf {
+    return kamping::v2::irecv(
+        std::forward<Request>(request),
+        std::forward<RBuf>(rbuf),
+        MPI_ANY_SOURCE,
+        MPI_ANY_TAG,
+        comm
+    );
+}
+
+/// Starts receiving a message from `source` with `tag` into `rbuf` (`MPI_Irecv`, or `MPI_Imrecv` for a deferred
+/// buffer).
+/// @return An iresult owning the request (and the buffer, if passed as rvalue); complete it with `wait()` or `test()`.
 template <
     mpi::experimental::recv_buffer                         RBuf,
-    mpi::experimental::rank                                Source = int,
-    mpi::experimental::tag                                 Tag    = int,
-    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm   = MPI_Comm>
-auto irecv(RBuf&& rbuf, Source source = MPI_ANY_SOURCE, Tag tag = MPI_ANY_TAG, Comm const& comm = MPI_COMM_WORLD)
-    -> iresult<RBuf> {
+    mpi::experimental::rank                                Source,
+    mpi::experimental::tag                                 Tag,
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
+auto irecv(RBuf&& rbuf, Source source, Tag tag, Comm const& comm) -> iresult<RBuf> {
     iresult<RBuf> res{std::forward<RBuf>(rbuf)};
-    using view_t         = kamping::v2::all_t<RBuf>;
-    using infer_result_t = decltype(infer(
-        comm_op::recv{},
-        std::declval<view_t&>(),
-        mpi::experimental::to_rank(std::declval<Source>()),
-        mpi::experimental::to_tag(std::declval<Tag>()),
-        mpi::experimental::handle(std::declval<Comm const&>())
-    ));
-    if constexpr (std::is_same_v<infer_result_t, MPI_Message>) {
-        MPI_Message msg = infer(
-            comm_op::recv{},
-            res.view(),
-            mpi::experimental::to_rank(source),
-            mpi::experimental::to_tag(tag),
-            mpi::experimental::handle(comm)
-        );
-        mpi::experimental::imrecv(res.view(), &msg, res.mpi_handle_ptr());
-    } else if constexpr (std::is_same_v<infer_result_t, std::pair<int, int>>) {
-        auto [src, tg] = infer(
-            comm_op::recv{},
-            res.view(),
-            mpi::experimental::to_rank(source),
-            mpi::experimental::to_tag(tag),
-            mpi::experimental::handle(comm)
-        );
-        mpi::experimental::irecv(res.view(), src, tg, comm, res.mpi_handle_ptr());
-    } else {
-        infer(
-            comm_op::recv{},
-            res.view(),
-            mpi::experimental::to_rank(source),
-            mpi::experimental::to_tag(tag),
-            mpi::experimental::handle(comm)
-        );
-        mpi::experimental::irecv(res.view(), source, tag, comm, res.mpi_handle_ptr());
-    }
+    kamping::v2::irecv(res.mpi_handle_ptr(), res.view(), std::move(source), std::move(tag), comm);
     return res;
 }
+
+/// Like the overload above, receiving with any tag.
+template <
+    mpi::experimental::recv_buffer                         RBuf,
+    mpi::experimental::rank                                Source,
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
+auto irecv(RBuf&& rbuf, Source source, Comm const& comm) -> iresult<RBuf> {
+    return kamping::v2::irecv(std::forward<RBuf>(rbuf), std::move(source), MPI_ANY_TAG, comm);
+}
+
+/// Like the overload above, receiving from any source with any tag.
+template <mpi::experimental::recv_buffer RBuf, mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
+auto irecv(RBuf&& rbuf, Comm const& comm) -> iresult<RBuf> {
+    return kamping::v2::irecv(std::forward<RBuf>(rbuf), MPI_ANY_SOURCE, MPI_ANY_TAG, comm);
+}
+
 } // namespace kamping::v2

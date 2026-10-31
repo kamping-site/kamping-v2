@@ -17,27 +17,47 @@
 
 namespace kamping::v2 {
 
-/// Scatterv (blocking).
+/// Distributes parts of the variadic buffer `sbuf` on `root` to all ranks, receiving into `rbuf` (`MPI_Scatterv`).
 ///
-/// Distributes variable-length data from root to all ranks. All ranks must call
-/// this function. On non-root, pass `v2::null_buf_v` as sbuf (MPI ignores it).
-///
-/// @param sbuf  Variadic send buffer on root (with per-rank counts and displacements);
-///              `null_buf_v` on non-root.
-/// @param rbuf  Recv buffer on every rank; may be a resizable view (`views::resize`)
-///              to trigger automatic count inference via MPI_Scatter of root's sendcounts.
-/// @param root  Root rank (default: 0).
-/// @param comm  MPI communicator (default: MPI_COMM_WORLD).
+/// The other ranks pass `null_buf_v` as `sbuf` or use the overloads without send buffer. `rbuf` may be a deferred
+/// receive buffer (e.g. `views::resize`); root's counts are then scattered first.
+/// @return The send and receive buffer (owned if passed as rvalue, borrowed otherwise).
 template <
     mpi::experimental::send_buffer_v                       SBuf,
     mpi::experimental::recv_buffer                         RBuf,
-    mpi::experimental::rank                                Root = int,
-    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
-auto scatterv(SBuf&& sbuf, RBuf&& rbuf, Root root = 0, Comm const& comm = MPI_COMM_WORLD) -> result<SBuf, RBuf> {
+    mpi::experimental::rank                                Root,
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
+auto scatterv(SBuf&& sbuf, RBuf&& rbuf, Root root, Comm const& comm) -> result<SBuf, RBuf> {
     result<SBuf, RBuf> res{std::forward<SBuf>(sbuf), std::forward<RBuf>(rbuf)};
     infer(comm_op::scatterv{}, res.send, res.recv, mpi::experimental::to_rank(root), mpi::experimental::handle(comm));
     mpi::experimental::scatterv(res.send, res.recv, std::move(root), comm);
     return res;
+}
+
+/// Scatters from rank 0; see the overload above.
+template <
+    mpi::experimental::send_buffer_v                       SBuf,
+    mpi::experimental::recv_buffer                         RBuf,
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
+auto scatterv(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm) -> result<SBuf, RBuf> {
+    return kamping::v2::scatterv(std::forward<SBuf>(sbuf), std::forward<RBuf>(rbuf), 0, comm);
+}
+
+/// Non-root shorthand of @ref scatterv: receives this rank's part from `root` into `rbuf`, without a send buffer.
+/// @return The receive buffer.
+template <
+    mpi::experimental::recv_buffer                         RBuf,
+    mpi::experimental::rank                                Root,
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
+auto scatterv(RBuf&& rbuf, Root root, Comm const& comm) -> RBuf {
+    return kamping::v2::scatterv(null_buf_v_t{}, std::forward<RBuf>(rbuf), std::move(root), comm).recv;
+}
+
+/// Non-root shorthand of @ref scatterv: receives this rank's part from rank 0 into `rbuf`, without a send buffer.
+/// @return The receive buffer.
+template <mpi::experimental::recv_buffer RBuf, mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
+auto scatterv(RBuf&& rbuf, Comm const& comm) -> RBuf {
+    return kamping::v2::scatterv(null_buf_v_t{}, std::forward<RBuf>(rbuf), 0, comm).recv;
 }
 
 } // namespace kamping::v2

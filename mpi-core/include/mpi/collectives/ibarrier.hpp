@@ -14,11 +14,9 @@ namespace mpi::experimental {
 /// The operation completes once all ranks of `comm` have started the barrier.
 ///
 /// @param request Receives the request of the barrier; the caller must complete it.
-template <
-    convertible_to_mpi_handle<MPI_Comm>        Comm    = MPI_Comm,
-    convertible_to_mpi_handle_ptr<MPI_Request> Request = MPI_Request*>
+template <convertible_to_mpi_handle<MPI_Comm> Comm, convertible_to_mpi_handle_ptr<MPI_Request> Request>
 void ibarrier(Comm const& comm, Request&& request) {
-    int err = MPI_Ibarrier(handle(comm), handle_ptr(request));
+    int err = MPI_Ibarrier(mpi::experimental::handle(comm), mpi::experimental::handle_ptr(request));
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);
     }

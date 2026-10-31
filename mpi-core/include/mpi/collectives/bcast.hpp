@@ -11,14 +11,14 @@
 
 namespace mpi::experimental {
 /// Broadcasts `send_recv_buf` from `root` to all ranks (`MPI_Bcast`). The buffer must have the same count on all ranks.
-template <send_recv_buffer SRBuf, rank Root = int, convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
-void bcast(SRBuf&& send_recv_buf, Root root = 0, Comm const& comm = MPI_COMM_WORLD) {
+template <send_recv_buffer SRBuf, rank Root, convertible_to_mpi_handle<MPI_Comm> Comm>
+void bcast(SRBuf&& send_recv_buf, Root root, Comm const& comm) {
     int err = MPI_Bcast(
-        ptr(send_recv_buf),
-        static_cast<int>(count(send_recv_buf)),
-        type(send_recv_buf),
-        to_rank(root),
-        handle(comm)
+        mpi::experimental::ptr(send_recv_buf),
+        static_cast<int>(mpi::experimental::count(send_recv_buf)),
+        mpi::experimental::type(send_recv_buf),
+        mpi::experimental::to_rank(root),
+        mpi::experimental::handle(comm)
 
     );
     if (err != MPI_SUCCESS) {

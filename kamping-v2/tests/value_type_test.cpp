@@ -342,7 +342,8 @@ TEST(ValueTypeEndToEndTest, SparseFlattenWithValuePoolThroughAlltoallv) {
     std::vector<MyStruct> recv_data;
     kamping::v2::alltoallv(
         per_dest | views::with_auto_value_pool(pool) | views::flatten_v(),
-        recv_data | views::with_type(pool.register_type<MyStruct>()) | views::auto_recv_v
+        recv_data | views::with_type(pool.register_type<MyStruct>()) | views::auto_recv_v,
+        MPI_COMM_WORLD
     );
 
     std::vector<MyStruct> expected;
@@ -405,7 +406,8 @@ TEST(ValueTypeEndToEndTest, FlattenedIntPairPayloadSurvivesWithAutoPool) {
     std::vector<Pair> recv_data;
     kamping::v2::alltoallv(
         flattened | views::with_auto_pool(pool),
-        recv_data | views::with_auto_pool(pool) | views::auto_recv_v
+        recv_data | views::with_auto_pool(pool) | views::auto_recv_v,
+        MPI_COMM_WORLD
     );
 
     std::vector<Pair> expected;

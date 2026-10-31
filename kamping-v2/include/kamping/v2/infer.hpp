@@ -35,9 +35,9 @@
 /// Dispatch is on operation tag types (comm_op::recv, comm_op::allgather, ...) rather than an enum, so
 /// users can add new tags without modifying this header.
 
-namespace kamping {
+namespace kamping::v2 {
 
-namespace v2::detail {
+namespace detail {
 /// Returns the probed element count, or terminates if the message is not a whole number of elements of the receive
 /// buffer's datatype (MPI_Get_count yields MPI_UNDEFINED).
 ///
@@ -56,7 +56,7 @@ inline std::ptrdiff_t checked_recv_count(std::optional<int> count) noexcept {
     }
     return static_cast<std::ptrdiff_t>(*count);
 }
-} // namespace v2::detail
+} // namespace detail
 
 // ---- Default infer() overloads ----------------------------------------------
 
@@ -267,4 +267,4 @@ void infer(comm_op::exscan, SBuf const& sbuf, RBuf& rbuf, MPI_Op, MPI_Comm) {
     }
 }
 
-} // namespace kamping
+} // namespace kamping::v2

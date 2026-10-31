@@ -25,7 +25,9 @@ TEST(V2AllgathervTest, VariableLengthSend) {
 
     kamping::v2::allgatherv(
         send_data,
-        recv_data | kamping::v2::views::auto_counts() | kamping::v2::views::auto_displs() | kamping::v2::views::resize_v
+        recv_data | kamping::v2::views::auto_counts() | kamping::v2::views::auto_displs()
+            | kamping::v2::views::resize_v,
+        MPI_COMM_WORLD
     );
 
     std::vector<int> expected;
@@ -46,7 +48,9 @@ TEST(V2AllgathervTest, UniformSingleElementSend) {
 
     kamping::v2::allgatherv(
         send_data,
-        recv_data | kamping::v2::views::auto_counts() | kamping::v2::views::auto_displs() | kamping::v2::views::resize_v
+        recv_data | kamping::v2::views::auto_counts() | kamping::v2::views::auto_displs()
+            | kamping::v2::views::resize_v,
+        MPI_COMM_WORLD
     );
 
     std::vector<int> expected(static_cast<std::size_t>(size));
@@ -65,7 +69,9 @@ TEST(V2AllgathervTest, RankZeroSendsEmptyBuffer) {
 
     kamping::v2::allgatherv(
         send_data,
-        recv_data | kamping::v2::views::auto_counts() | kamping::v2::views::auto_displs() | kamping::v2::views::resize_v
+        recv_data | kamping::v2::views::auto_counts() | kamping::v2::views::auto_displs()
+            | kamping::v2::views::resize_v,
+        MPI_COMM_WORLD
     );
 
     std::vector<int> expected;
@@ -88,7 +94,8 @@ TEST(V2AllgathervTest, UserProvidedCountsBuffer) {
     kamping::v2::allgatherv(
         send_data,
         recv_data | kamping::v2::views::auto_counts(counts) | kamping::v2::views::auto_displs()
-            | kamping::v2::views::resize_v
+            | kamping::v2::views::resize_v,
+        MPI_COMM_WORLD
     );
 
     std::vector<int> expected;
@@ -113,7 +120,8 @@ TEST(V2AllgathervTest, ExplicitCountsAutoDisplsNoResize) {
 
     kamping::v2::allgatherv(
         send_data,
-        recv_data | kamping::v2::views::with_counts(counts) | kamping::v2::views::auto_displs()
+        recv_data | kamping::v2::views::with_counts(counts) | kamping::v2::views::auto_displs(),
+        MPI_COMM_WORLD
     );
 
     std::vector<int> expected;

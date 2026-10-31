@@ -208,6 +208,8 @@ The same pattern applies to ranks (`to_rank`) and tags (`to_tag`), supporting bo
 - Doxygen required for all public API
 - No `using namespace` in headers
 - `auto` preferred for type deduction
+- Call the buffer and handle accessors qualified (`mpi::experimental::count(x)`, `mpi::experimental::handle(c)`), never unqualified, so ADL cannot pick up a user's function of the same name
+- Arguments: core wrappers mirror MPI without default arguments (except a trailing `status`/`info`). v2 wrappers take the communicator last and required (followed only by an optional `status`), and leave out optional arguments by arity, never by default arguments before `comm`; a caller-supplied request goes first. See "Arguments and defaults" in DESIGN.md
 
 ---
 

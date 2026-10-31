@@ -23,7 +23,7 @@ std::vector<int> const expected_data{1, 2, 3, 4, 5};
 bool send_to_rank_one(int tag) {
     kamping::v2::comm_view world{MPI_COMM_WORLD};
     if (world.rank() == 0) {
-        kamping::v2::send(expected_data, 1, tag);
+        kamping::v2::send(expected_data, 1, tag, MPI_COMM_WORLD);
     }
     return world.rank() == 1;
 }

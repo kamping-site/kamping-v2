@@ -40,10 +40,11 @@ TEST_F(ScattervTest, variable_length_recv_auto_resize) {
         }
         kamping::v2::scatterv(
             send_data | kamping::v2::views::with_counts(counts) | kamping::v2::views::auto_displs(),
-            recv_data | kamping::v2::views::resize
+            recv_data | kamping::v2::views::resize,
+            MPI_COMM_WORLD
         );
     } else {
-        kamping::v2::scatterv(kamping::v2::null_buf_v, recv_data | kamping::v2::views::resize);
+        kamping::v2::scatterv(kamping::v2::null_buf_v, recv_data | kamping::v2::views::resize, MPI_COMM_WORLD);
     }
 
     EXPECT_EQ(static_cast<int>(recv_data.size()), rank_ + 1);
@@ -62,10 +63,11 @@ TEST_F(ScattervTest, variable_length_recv_presized) {
         }
         kamping::v2::scatterv(
             send_data | kamping::v2::views::with_counts(counts) | kamping::v2::views::auto_displs(),
-            recv_data
+            recv_data,
+            MPI_COMM_WORLD
         );
     } else {
-        kamping::v2::scatterv(kamping::v2::null_buf_v, recv_data);
+        kamping::v2::scatterv(kamping::v2::null_buf_v, recv_data, MPI_COMM_WORLD);
     }
 
     EXPECT_EQ(static_cast<int>(recv_data.size()), rank_ + 1);
@@ -88,10 +90,11 @@ TEST_F(ScattervTest, deferred_send_buf_flatten_v_with_type) {
         }
         kamping::v2::scatterv(
             per_rank | kamping::v2::views::flatten_v() | kamping::v2::views::with_auto_pool(pool),
-            recv_data | kamping::v2::views::resize
+            recv_data | kamping::v2::views::resize,
+            MPI_COMM_WORLD
         );
     } else {
-        kamping::v2::scatterv(kamping::v2::null_buf_v, recv_data | kamping::v2::views::resize);
+        kamping::v2::scatterv(kamping::v2::null_buf_v, recv_data | kamping::v2::views::resize, MPI_COMM_WORLD);
     }
 
     EXPECT_EQ(static_cast<int>(recv_data.size()), rank_ + 1);
@@ -112,10 +115,11 @@ TEST_F(ScattervTest, non_default_root) {
         kamping::v2::scatterv(
             send_data | kamping::v2::views::with_counts(counts) | kamping::v2::views::auto_displs(),
             recv_data | kamping::v2::views::resize,
-            root
+            root,
+            MPI_COMM_WORLD
         );
     } else {
-        kamping::v2::scatterv(kamping::v2::null_buf_v, recv_data | kamping::v2::views::resize, root);
+        kamping::v2::scatterv(kamping::v2::null_buf_v, recv_data | kamping::v2::views::resize, root, MPI_COMM_WORLD);
     }
 
     EXPECT_EQ(static_cast<int>(recv_data.size()), rank_ + 1);

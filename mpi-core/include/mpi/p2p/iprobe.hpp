@@ -17,13 +17,19 @@ namespace mpi::experimental {
 ///               `MPI_STATUS_IGNORE`.
 /// @return `true` if a matching message is available.
 template <
-    rank                                      Source = int,
-    tag                                       Tag    = int,
-    convertible_to_mpi_handle<MPI_Comm>       Comm   = MPI_Comm,
+    rank                                      Source,
+    tag                                       Tag,
+    convertible_to_mpi_handle<MPI_Comm>       Comm,
     convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>
 bool iprobe(Source source, Tag tag, Comm const& comm, Status&& status = MPI_STATUS_IGNORE) {
     int flag = 0;
-    int err  = MPI_Iprobe(to_rank(source), to_tag(tag), handle(comm), &flag, handle_ptr(status));
+    int err  = MPI_Iprobe(
+        mpi::experimental::to_rank(source),
+        mpi::experimental::to_tag(tag),
+        mpi::experimental::handle(comm),
+        &flag,
+        mpi::experimental::handle_ptr(status)
+    );
     if (err != MPI_SUCCESS) {
         throw experimental::mpi_error(err);
     }

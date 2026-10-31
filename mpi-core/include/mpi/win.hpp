@@ -33,7 +33,7 @@ namespace mpi::experimental {
 /// @throws mpi_error if `MPI_Win_fence` fails.
 template <convertible_to_mpi_handle<MPI_Win> Win = MPI_Win>
 void fence(Win const& w, int assertion = 0) {
-    int err = MPI_Win_fence(assertion, handle(w));
+    int err = MPI_Win_fence(assertion, mpi::experimental::handle(w));
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);
     }
@@ -63,10 +63,10 @@ void win_allocate(std::size_t count, Comm const& c, T*& base, NewWin& new_win, I
     int err = MPI_Win_allocate(
         static_cast<MPI_Aint>(count * sizeof(T)),
         static_cast<int>(sizeof(T)),
-        handle(info),
-        handle(c),
+        mpi::experimental::handle(info),
+        mpi::experimental::handle(c),
         &base,
-        handle_ptr(new_win)
+        mpi::experimental::handle_ptr(new_win)
     );
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);

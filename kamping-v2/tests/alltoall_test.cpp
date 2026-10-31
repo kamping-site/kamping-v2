@@ -24,7 +24,7 @@ TEST(V2AlltoallTest, SendRankToAll) {
     std::vector<int> send_data(static_cast<std::size_t>(size), rank);
     std::vector<int> recv_data(static_cast<std::size_t>(size));
 
-    kamping::v2::alltoall(send_data, recv_data);
+    kamping::v2::alltoall(send_data, recv_data, MPI_COMM_WORLD);
 
     // recv_data[i] = i: received the rank of sender i from each sender.
     std::vector<int> expected(static_cast<std::size_t>(size));
@@ -41,7 +41,7 @@ TEST(V2AlltoallTest, DeferredRecvBuffer) {
     std::vector<int> send_data(static_cast<std::size_t>(size), rank);
     std::vector<int> recv_data;
 
-    kamping::v2::alltoall(send_data, recv_data | kamping::v2::views::resize);
+    kamping::v2::alltoall(send_data, recv_data | kamping::v2::views::resize, MPI_COMM_WORLD);
 
     std::vector<int> expected(static_cast<std::size_t>(size));
     std::iota(expected.begin(), expected.end(), 0);
@@ -60,7 +60,7 @@ TEST(V2AlltoallTest, Transpose) {
     }
     std::vector<int> recv_data(static_cast<std::size_t>(size));
 
-    kamping::v2::alltoall(send_data, recv_data);
+    kamping::v2::alltoall(send_data, recv_data, MPI_COMM_WORLD);
 
     // recv_data[i] = i * size + rank: the rank-th column of the matrix.
     std::vector<int> expected(static_cast<std::size_t>(size));

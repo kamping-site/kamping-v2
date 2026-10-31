@@ -21,7 +21,7 @@ template <
     convertible_to_mpi_handle_ptr<MPI_Request> Request,
     convertible_to_mpi_handle_ptr<MPI_Status>  Status = MPI_Status*>
 void wait(Request&& request, Status&& status = MPI_STATUS_IGNORE) {
-    int err = MPI_Wait(handle_ptr(request), handle_ptr(status));
+    int err = MPI_Wait(mpi::experimental::handle_ptr(request), mpi::experimental::handle_ptr(status));
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);
     }
@@ -40,7 +40,7 @@ template <
     convertible_to_mpi_handle_ptr<MPI_Status>  Status = MPI_Status*>
 bool test(Request&& request, Status&& status = MPI_STATUS_IGNORE) {
     int flag = 0;
-    int err  = MPI_Test(handle_ptr(request), &flag, handle_ptr(status));
+    int err  = MPI_Test(mpi::experimental::handle_ptr(request), &flag, mpi::experimental::handle_ptr(status));
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);
     }

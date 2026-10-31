@@ -30,9 +30,9 @@ TEST_F(ScatterTest, scatter_simple) {
     if (rank_ == 0) {
         std::vector<int> send_data(static_cast<std::size_t>(2 * size_));
         std::iota(send_data.begin(), send_data.end(), 0);
-        kamping::v2::scatter(send_data, recv_data);
+        kamping::v2::scatter(send_data, recv_data, MPI_COMM_WORLD);
     } else {
-        kamping::v2::scatter(recv_data);
+        kamping::v2::scatter(recv_data, MPI_COMM_WORLD);
     }
 
     EXPECT_EQ(recv_data[0], 2 * rank_);
@@ -45,9 +45,9 @@ TEST_F(ScatterTest, scatter_resize) {
     if (rank_ == 0) {
         std::vector<int> send_data(static_cast<std::size_t>(2 * size_));
         std::iota(send_data.begin(), send_data.end(), 0);
-        kamping::v2::scatter(send_data, recv_data | kamping::v2::views::resize);
+        kamping::v2::scatter(send_data, recv_data | kamping::v2::views::resize, MPI_COMM_WORLD);
     } else {
-        kamping::v2::scatter(recv_data | kamping::v2::views::resize);
+        kamping::v2::scatter(recv_data | kamping::v2::views::resize, MPI_COMM_WORLD);
     }
 
     EXPECT_EQ(recv_data[0], 2 * rank_);
@@ -59,13 +59,13 @@ TEST_F(ScatterTest, scatter_inplace_on_root) {
     std::iota(send_data.begin(), send_data.end(), 0);
 
     if (rank_ == 0) {
-        kamping::v2::scatter(send_data, kamping::v2::inplace);
+        kamping::v2::scatter(send_data, kamping::v2::inplace, MPI_COMM_WORLD);
         // root's portion is already at offset 0 in send_data, untouched
         EXPECT_EQ(send_data[0], 0);
         EXPECT_EQ(send_data[1], 1);
     } else {
         std::vector<int> recv_data(2);
-        kamping::v2::scatter(recv_data);
+        kamping::v2::scatter(recv_data, MPI_COMM_WORLD);
         EXPECT_EQ(recv_data[0], 2 * rank_);
         EXPECT_EQ(recv_data[1], 2 * rank_ + 1);
     }
@@ -78,9 +78,9 @@ TEST_F(ScatterTest, scatter_non_default_root) {
     if (rank_ == root) {
         std::vector<int> send_data(static_cast<std::size_t>(2 * size_));
         std::iota(send_data.begin(), send_data.end(), 0);
-        kamping::v2::scatter(send_data, recv_data, root);
+        kamping::v2::scatter(send_data, recv_data, root, MPI_COMM_WORLD);
     } else {
-        kamping::v2::scatter(recv_data, root);
+        kamping::v2::scatter(recv_data, root, MPI_COMM_WORLD);
     }
 
     EXPECT_EQ(recv_data[0], 2 * rank_);

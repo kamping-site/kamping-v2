@@ -14,17 +14,17 @@ namespace mpi::experimental {
 ///
 /// @param status Optional: filled with the status of the message. Defaults to `MPI_STATUS_IGNORE`.
 template <
-    rank                                      Source = int,
-    tag                                       Tag    = int,
-    convertible_to_mpi_handle<MPI_Comm>       Comm   = MPI_Comm,
+    rank                                      Source,
+    tag                                       Tag,
+    convertible_to_mpi_handle<MPI_Comm>       Comm,
     convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>
-void probe(
-    Source      source = MPI_ANY_SOURCE,
-    Tag         tag    = MPI_ANY_TAG,
-    Comm const& comm   = MPI_COMM_WORLD,
-    Status&&    status = MPI_STATUS_IGNORE
-) {
-    int err = MPI_Probe(to_rank(source), to_tag(tag), handle(comm), handle_ptr(status));
+void probe(Source source, Tag tag, Comm const& comm, Status&& status = MPI_STATUS_IGNORE) {
+    int err = MPI_Probe(
+        mpi::experimental::to_rank(source),
+        mpi::experimental::to_tag(tag),
+        mpi::experimental::handle(comm),
+        mpi::experimental::handle_ptr(status)
+    );
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);
     }

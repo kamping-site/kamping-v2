@@ -46,7 +46,7 @@ TEST_F(MakeOpTest, functor_from_captureless_lambda) {
     std::vector<int> recv_data(2);
 
     auto op = kamping::v2::make_op<int>([](int a, int b) { return a + b; });
-    kamping::v2::reduce(send_data, recv_data, op, 0);
+    kamping::v2::reduce(send_data, recv_data, op, 0, MPI_COMM_WORLD);
 
     if (rank_ == 0) {
         int const sum_ranks = size_ * (size_ - 1) / 2;
@@ -60,7 +60,7 @@ TEST_F(MakeOpTest, functor_from_struct_with_commutative_tag) {
     std::vector<int> recv_data(1);
 
     auto op = kamping::v2::make_op<int>(MaxFunctor{}, kamping::v2::commutative);
-    kamping::v2::allreduce(send_data, recv_data, op);
+    kamping::v2::allreduce(send_data, recv_data, op, MPI_COMM_WORLD);
 
     EXPECT_EQ(recv_data[0], size_ - 1);
 }
@@ -72,7 +72,7 @@ TEST_F(MakeOpTest, functor_default_is_non_commutative) {
     std::vector<int> recv_data(1);
 
     auto op = kamping::v2::make_op<int>(std::plus<int>{});
-    kamping::v2::allreduce(send_data, recv_data, op);
+    kamping::v2::allreduce(send_data, recv_data, op, MPI_COMM_WORLD);
 
     int const expected = size_ * (size_ + 1) / 2;
     EXPECT_EQ(recv_data[0], expected);
@@ -83,7 +83,7 @@ TEST_F(MakeOpTest, raw_mpi_callback) {
     std::vector<int> recv_data(2);
 
     auto op = kamping::v2::make_op(&int_sum_callback, kamping::v2::commutative);
-    kamping::v2::allreduce(send_data, recv_data, op);
+    kamping::v2::allreduce(send_data, recv_data, op, MPI_COMM_WORLD);
 
     int const sum_ranks = size_ * (size_ - 1) / 2;
     EXPECT_EQ(recv_data[0], sum_ranks);

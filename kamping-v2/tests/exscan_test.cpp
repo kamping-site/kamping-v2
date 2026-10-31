@@ -29,7 +29,7 @@ TEST_F(ExscanTest, exscan_sum) {
     std::vector<int> send_data = {rank_ + 1};
     std::vector<int> recv_data(1, 0);
 
-    auto [s, r] = kamping::v2::exscan(send_data, recv_data, MPI_SUM);
+    auto [s, r] = kamping::v2::exscan(send_data, recv_data, MPI_SUM, MPI_COMM_WORLD);
 
     if (rank_ > 0) {
         int expected = rank_ * (rank_ + 1) / 2;
@@ -41,7 +41,7 @@ TEST_F(ExscanTest, exscan_multi_element) {
     std::vector<int> send_data = {rank_, rank_ + 1};
     std::vector<int> recv_data(2, 0);
 
-    auto [s, r] = kamping::v2::exscan(send_data, recv_data, MPI_SUM);
+    auto [s, r] = kamping::v2::exscan(send_data, recv_data, MPI_SUM, MPI_COMM_WORLD);
 
     if (rank_ > 0) {
         int expected_0 = rank_ * (rank_ - 1) / 2;
@@ -55,7 +55,7 @@ TEST_F(ExscanTest, exscan_default_op) {
     std::vector<int> send_data = {rank_ + 1};
     std::vector<int> recv_data(1, 0);
 
-    auto [s, r] = kamping::v2::exscan(send_data, recv_data);
+    auto [s, r] = kamping::v2::exscan(send_data, recv_data, MPI_COMM_WORLD);
 
     if (rank_ > 0) {
         int expected = rank_ * (rank_ + 1) / 2;
@@ -67,7 +67,7 @@ TEST_F(ExscanTest, exscan_resize) {
     std::vector<int> send_data = {rank_ + 1, rank_ + 2};
     std::vector<int> recv_data;
 
-    auto [s, r] = kamping::v2::exscan(send_data, recv_data | kamping::v2::views::resize, MPI_SUM);
+    auto [s, r] = kamping::v2::exscan(send_data, recv_data | kamping::v2::views::resize, MPI_SUM, MPI_COMM_WORLD);
 
     ASSERT_EQ(static_cast<int>(r.size()), 2);
     if (rank_ > 0) {
@@ -81,7 +81,7 @@ TEST_F(ExscanTest, exscan_resize) {
 TEST_F(ExscanTest, exscan_inplace) {
     std::vector<int> data = {rank_ + 1};
 
-    kamping::v2::exscan(kamping::v2::inplace, data, MPI_SUM);
+    kamping::v2::exscan(kamping::v2::inplace, data, MPI_SUM, MPI_COMM_WORLD);
 
     if (rank_ > 0) {
         int expected = rank_ * (rank_ + 1) / 2;

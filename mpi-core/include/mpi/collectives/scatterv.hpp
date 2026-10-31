@@ -14,18 +14,18 @@
 namespace mpi::experimental {
 /// Distributes parts of the variadic buffer `sbuf` on `root` to all ranks, receiving into `rbuf` (`MPI_Scatterv`).
 /// `sbuf` is ignored on the other ranks.
-template <send_buffer_v SBuf, recv_buffer RBuf, rank Root, convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+template <send_buffer_v SBuf, recv_buffer RBuf, rank Root, convertible_to_mpi_handle<MPI_Comm> Comm>
 void scatterv(SBuf&& sbuf, RBuf&& rbuf, Root root, Comm const& comm) {
     int err = MPI_Scatterv(
-        ptr(sbuf),
-        std::ranges::data(counts(sbuf)),
-        std::ranges::data(displs(sbuf)),
-        type(sbuf),
-        ptr(rbuf),
-        static_cast<int>(count(rbuf)),
-        type(rbuf),
-        to_rank(root),
-        handle(comm)
+        mpi::experimental::ptr(sbuf),
+        std::ranges::data(mpi::experimental::counts(sbuf)),
+        std::ranges::data(mpi::experimental::displs(sbuf)),
+        mpi::experimental::type(sbuf),
+        mpi::experimental::ptr(rbuf),
+        static_cast<int>(mpi::experimental::count(rbuf)),
+        mpi::experimental::type(rbuf),
+        mpi::experimental::to_rank(root),
+        mpi::experimental::handle(comm)
     );
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);

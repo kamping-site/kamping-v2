@@ -198,20 +198,20 @@ constexpr T& handle_range(T& t) noexcept {
 /// A type from which `handle()` extracts an MPI handle of type `HandleType`.
 template <typename T, typename HandleType>
 concept convertible_to_mpi_handle = builtin_handle<HandleType> && requires(T const& t) {
-    { handle(t) } -> std::same_as<HandleType>;
+    { mpi::experimental::handle(t) } -> std::same_as<HandleType>;
 };
 
 /// A type from which `handle_ptr()` extracts a writable pointer to an MPI handle of type `HandleType`.
 template <typename T, typename HandleType>
 concept convertible_to_mpi_handle_ptr = builtin_handle<HandleType> && requires(T& t) {
-    { handle_ptr(t) } -> std::same_as<HandleType*>;
+    { mpi::experimental::handle_ptr(t) } -> std::same_as<HandleType*>;
 };
 
 /// A type whose handle_range() is a writable, contiguous range of `HandleType` that refers to the caller's storage:
 /// either an lvalue reference or a borrowed view (never a container returned by value, since MPI writes into it).
 template <typename T, typename HandleType>
 concept convertible_to_mpi_handle_range = builtin_handle<HandleType> && requires(T& t) {
-    { handle_range(t) } -> contiguous_handle_range_of<HandleType>;
+    { mpi::experimental::handle_range(t) } -> contiguous_handle_range_of<HandleType>;
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -295,13 +295,13 @@ constexpr int to_tag(T t) {
 /// A type usable as an MPI rank: `int`, a scoped enum, or a type adapted via @ref rank_traits.
 template <typename T>
 concept rank = requires(T const& t) {
-    { to_rank(t) } -> std::same_as<int>;
+    { mpi::experimental::to_rank(t) } -> std::same_as<int>;
 };
 
 /// A type usable as an MPI tag: `int`, a scoped enum, or a type adapted via @ref tag_traits.
 template <typename T>
 concept tag = requires(T const& t) {
-    { to_tag(t) } -> std::same_as<int>;
+    { mpi::experimental::to_tag(t) } -> std::same_as<int>;
 };
 
 } // namespace mpi::experimental

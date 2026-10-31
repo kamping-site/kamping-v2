@@ -51,7 +51,7 @@ int main(int argc, char* argv[]) {
         kamping::v2::send(std::move(v), 1, world);
     } else if (world.rank() == 1) {
         std::vector<int> v;
-        kamping::v2::recv(v | kamping::v2::views::resize);
+        kamping::v2::recv(v | kamping::v2::views::resize, world);
         std::cout << "result = [";
         bool first = true;
         for (auto const& x: v) {
@@ -65,10 +65,10 @@ int main(int argc, char* argv[]) {
 
     if (world.rank() == 0) {
         std::vector<int> const v{11, 12, 13, 14};
-        kamping::v2::isend(v, 1).wait();
+        kamping::v2::isend(v, 1, world).wait();
     } else if (world.rank() == 1) {
         MPI_Status status;
-        auto       v = kamping::v2::irecv(std::vector<int>{10} | kamping::v2::views::resize).wait(&status);
+        auto       v = kamping::v2::irecv(std::vector<int>{10} | kamping::v2::views::resize, world).wait(&status);
         std::cout << "v = [";
         bool first = true;
         for (auto const& x: v) {

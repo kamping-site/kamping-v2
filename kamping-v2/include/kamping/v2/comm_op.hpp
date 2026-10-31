@@ -9,7 +9,7 @@
 
 #pragma once
 
-namespace kamping::comm_op {
+namespace kamping::v2::comm_op {
 
 struct recv {};       ///< recv, irecv
 struct mrecv {};      ///< mrecv, imrecv
@@ -28,4 +28,4 @@ struct scatterv {};   ///< scatterv
 struct scan {};       ///< scan
 struct exscan {};     ///< exscan
 
-} // namespace kamping::comm_op
+} // namespace kamping::v2::comm_op

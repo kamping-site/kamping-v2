@@ -28,7 +28,7 @@ TEST_F(ScanTest, scan_sum) {
     std::vector<int> send_data = {rank_ + 1};
     std::vector<int> recv_data(1);
 
-    auto [s, r] = kamping::v2::scan(send_data, recv_data, MPI_SUM);
+    auto [s, r] = kamping::v2::scan(send_data, recv_data, MPI_SUM, MPI_COMM_WORLD);
 
     // Inclusive prefix sum of (0+1, 1+1, ..., rank+1)
     int expected = (rank_ + 1) * (rank_ + 2) / 2;
@@ -39,7 +39,7 @@ TEST_F(ScanTest, scan_multi_element) {
     std::vector<int> send_data = {rank_, rank_ + 1};
     std::vector<int> recv_data(2);
 
-    auto [s, r] = kamping::v2::scan(send_data, recv_data, MPI_SUM);
+    auto [s, r] = kamping::v2::scan(send_data, recv_data, MPI_SUM, MPI_COMM_WORLD);
 
     int expected_0 = rank_ * (rank_ + 1) / 2;
     int expected_1 = (rank_ + 1) * (rank_ + 2) / 2;
@@ -51,7 +51,7 @@ TEST_F(ScanTest, scan_default_op) {
     std::vector<int> send_data = {rank_ + 1};
     std::vector<int> recv_data(1);
 
-    auto [s, r] = kamping::v2::scan(send_data, recv_data);
+    auto [s, r] = kamping::v2::scan(send_data, recv_data, MPI_COMM_WORLD);
 
     int expected = (rank_ + 1) * (rank_ + 2) / 2;
     EXPECT_EQ(r[0], expected);
@@ -61,7 +61,7 @@ TEST_F(ScanTest, scan_resize) {
     std::vector<int> send_data = {rank_ + 1, rank_ + 2};
     std::vector<int> recv_data;
 
-    auto [s, r] = kamping::v2::scan(send_data, recv_data | kamping::v2::views::resize, MPI_SUM);
+    auto [s, r] = kamping::v2::scan(send_data, recv_data | kamping::v2::views::resize, MPI_SUM, MPI_COMM_WORLD);
 
     ASSERT_EQ(static_cast<int>(r.size()), 2);
     int expected_0 = (rank_ + 1) * (rank_ + 2) / 2;
@@ -73,7 +73,7 @@ TEST_F(ScanTest, scan_resize) {
 TEST_F(ScanTest, scan_inplace) {
     std::vector<int> data = {rank_ + 1};
 
-    kamping::v2::scan(kamping::v2::inplace, data, MPI_SUM);
+    kamping::v2::scan(kamping::v2::inplace, data, MPI_SUM, MPI_COMM_WORLD);
 
     int expected = (rank_ + 1) * (rank_ + 2) / 2;
     EXPECT_EQ(data[0], expected);
@@ -83,7 +83,7 @@ TEST_F(ScanTest, scan_max) {
     std::vector<int> send_data = {rank_};
     std::vector<int> recv_data(1);
 
-    auto [s, r] = kamping::v2::scan(send_data, recv_data, MPI_MAX);
+    auto [s, r] = kamping::v2::scan(send_data, recv_data, MPI_MAX, MPI_COMM_WORLD);
 
     // Inclusive prefix max: result on rank r is max(0..r) = r
     EXPECT_EQ(r[0], rank_);

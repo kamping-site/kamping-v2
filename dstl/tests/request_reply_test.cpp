@@ -102,7 +102,8 @@ TEST(RequestReplyExchange, ReverseLayoutRoundTrip) {
     std::vector<int> recv_requests;
     auto             fwd = kamping::v2::alltoallv(
         data | views::with_counts(counts) | views::with_displs(displs),
-        recv_requests | views::auto_recv_v
+        recv_requests | views::auto_recv_v,
+        MPI_COMM_WORLD
     );
     dstl::exchange_layout layout{fwd.send, fwd.recv};
 
@@ -116,7 +117,8 @@ TEST(RequestReplyExchange, ReverseLayoutRoundTrip) {
     std::vector<int>            back(static_cast<std::size_t>(rev.recv_total()));
     kamping::v2::alltoallv(
         replies | views::with_counts(rev.send_counts) | views::with_displs(rev.send_displs),
-        back | views::with_counts(rev.recv_counts) | views::with_displs(rev.recv_displs)
+        back | views::with_counts(rev.recv_counts) | views::with_displs(rev.recv_displs),
+        MPI_COMM_WORLD
     );
 
     ASSERT_EQ(back.size(), data.size());

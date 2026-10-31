@@ -31,35 +31,38 @@ template <
     send_buffer                                            SBuf,
     recv_buffer                                            RBuf,
     mpi::experimental::valid_op<SBuf, RBuf>                Op,
-    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
-void scan(SBuf&& sbuf, RBuf&& rbuf, Op const& op, Comm const& comm = MPI_COMM_WORLD) {
-    auto sbuf_ptr = ptr(sbuf);
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
+void scan(SBuf&& sbuf, RBuf&& rbuf, Op const& op, Comm const& comm) {
+    auto sbuf_ptr = mpi::experimental::ptr(sbuf);
     if (sbuf_ptr == MPI_IN_PLACE) {
         int err = MPI_Scan(
             sbuf_ptr,
-            ptr(rbuf),
-            static_cast<int>(count(rbuf)),
-            type(rbuf),
-            as_mpi_op(op, sbuf, rbuf),
-            handle(comm)
+            mpi::experimental::ptr(rbuf),
+            static_cast<int>(mpi::experimental::count(rbuf)),
+            mpi::experimental::type(rbuf),
+            mpi::experimental::as_mpi_op(op, sbuf, rbuf),
+            mpi::experimental::handle(comm)
         );
         if (err != MPI_SUCCESS) {
             throw mpi_error(err);
         }
     } else {
-        using scount_t = decltype(count(sbuf));
+        using scount_t = decltype(mpi::experimental::count(sbuf));
         KAMPING_V2_ASSERT(
-            count(sbuf) == static_cast<scount_t>(count(rbuf)),
+            mpi::experimental::count(sbuf) == static_cast<scount_t>(mpi::experimental::count(rbuf)),
             "send and receive buffer must have the same count"
         );
-        KAMPING_V2_ASSERT(type(sbuf) == type(rbuf), "send and receive buffer must have the same type");
+        KAMPING_V2_ASSERT(
+            mpi::experimental::type(sbuf) == mpi::experimental::type(rbuf),
+            "send and receive buffer must have the same type"
+        );
         int err = MPI_Scan(
             sbuf_ptr,
-            ptr(rbuf),
-            static_cast<int>(count(sbuf)),
-            type(sbuf),
-            as_mpi_op(op, sbuf, rbuf),
-            handle(comm)
+            mpi::experimental::ptr(rbuf),
+            static_cast<int>(mpi::experimental::count(sbuf)),
+            mpi::experimental::type(sbuf),
+            mpi::experimental::as_mpi_op(op, sbuf, rbuf),
+            mpi::experimental::handle(comm)
         );
         if (err != MPI_SUCCESS) {
             throw mpi_error(err);

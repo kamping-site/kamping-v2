@@ -107,7 +107,7 @@ constexpr MPI_Op as_mpi_op(Op const& op, SBuf const& sbuf, RBuf const& rbuf) {
 template <typename Op, send_buffer SBuf, recv_buffer RBuf>
     requires(!detail::traits_has_op<Op, SBuf, RBuf>) && detail::is_builtin_mpi_op<Op>
 constexpr MPI_Op as_mpi_op(Op const& op, SBuf const&, RBuf const&) {
-    return handle(op);
+    return mpi::experimental::handle(op);
 }
 
 /// @return The predefined `MPI_Op` for a standard functor such as `std::plus<>`, given the buffers' element type.
@@ -125,7 +125,8 @@ constexpr MPI_Op as_mpi_op(Op const&, SBuf const&, RBuf const&) {
 
 /// `Op` can be used as reduction operation on buffers of types `SBuf` and `RBuf`, i.e. `as_mpi_op` is defined.
 template <typename Op, typename SBuf, typename RBuf>
-concept valid_op = requires(Op const& op, SBuf const& sbuf, RBuf const& rbuf) { as_mpi_op(op, sbuf, rbuf); };
+concept valid_op =
+    requires(Op const& op, SBuf const& sbuf, RBuf const& rbuf) { mpi::experimental::as_mpi_op(op, sbuf, rbuf); };
 
 // ──────────────────────────────────────────────────────────────────────────────
 // make_op — ergonomic factory for user-defined MPI reduction operations

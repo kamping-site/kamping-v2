@@ -36,7 +36,7 @@ TEST(ProbeTest, iprobe) {
     static constexpr int   MY_TAG = 1358;
     kamping::v2::comm_view world{MPI_COMM_WORLD};
     if (world.rank() == 0) {
-        mpi::experimental::send(std::views::single(42), 1, MY_TAG);
+        mpi::experimental::send(std::views::single(42), 1, MY_TAG, MPI_COMM_WORLD);
     } else if (world.rank() == 1) {
         kamping::v2::status status;
         // first, try probing with the wrong tag a few times
@@ -60,7 +60,7 @@ TEST(ProbeTest, improbe) {
     static constexpr int   MY_TAG = 1358;
     kamping::v2::comm_view world{MPI_COMM_WORLD};
     if (world.rank() == 0) {
-        mpi::experimental::send(std::views::single(42), 1, MY_TAG);
+        mpi::experimental::send(std::views::single(42), 1, MY_TAG, MPI_COMM_WORLD);
     } else if (world.rank() == 1) {
         kamping::v2::status status;
         // first, try probing with the wrong tag a few times
@@ -86,10 +86,10 @@ TEST(ProbeTest, v2_mprobe) {
     kamping::v2::comm_view world{MPI_COMM_WORLD};
     if (world.rank() == 0) {
         std::vector<int> data{1, 2, 3};
-        mpi::experimental::send(data, 1, MY_TAG);
+        mpi::experimental::send(data, 1, MY_TAG, MPI_COMM_WORLD);
     } else if (world.rank() == 1) {
         // defaults: MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD
-        auto res = kamping::v2::mprobe();
+        auto res = kamping::v2::mprobe(MPI_COMM_WORLD);
         EXPECT_EQ(res.source(), 0);
         EXPECT_EQ(res.tag(), MY_TAG);
         EXPECT_EQ(res.count<int>(), 3);
@@ -104,7 +104,7 @@ TEST(ProbeTest, v2_improbe) {
     static constexpr int   MY_TAG = 1360;
     kamping::v2::comm_view world{MPI_COMM_WORLD};
     if (world.rank() == 0) {
-        mpi::experimental::send(std::views::single(42), 1, MY_TAG);
+        mpi::experimental::send(std::views::single(42), 1, MY_TAG, MPI_COMM_WORLD);
     } else if (world.rank() == 1) {
         // first, try probing with the wrong tag a few times
         for (auto i = 0; i < 4; i++) {

@@ -74,10 +74,10 @@ TEST_F(V2RecvTest, MatchedProbeUsedForResizableVector) {
 
     if (rank == 0) {
         std::vector<int> data = {10, 20, 30};
-        kamping::v2::send(data, 1, 0);
+        kamping::v2::send(data, 1, 0, MPI_COMM_WORLD);
     } else if (rank == 1) {
         std::vector<int> buf;
-        kamping::v2::recv(buf | kamping::v2::views::resize, 0, 0);
+        kamping::v2::recv(buf | kamping::v2::views::resize, 0, 0, MPI_COMM_WORLD);
         EXPECT_EQ(buf, (std::vector<int>{10, 20, 30}));
         EXPECT_EQ(g_mprobe_calls, 1);
         EXPECT_EQ(g_probe_calls, 0);
@@ -94,10 +94,10 @@ TEST_F(V2RecvTest, UnmatchedProbeUsedForOptOutBuffer) {
 
     if (rank == 0) {
         std::vector<int> data = {10, 20, 30};
-        kamping::v2::send(data, 1, 0);
+        kamping::v2::send(data, 1, 0, MPI_COMM_WORLD);
     } else if (rank == 1) {
         no_probe_buf buf;
-        kamping::v2::recv(buf, 0, 0);
+        kamping::v2::recv(buf, 0, 0, MPI_COMM_WORLD);
         EXPECT_EQ(buf.data, (std::vector<int>{10, 20, 30}));
         EXPECT_EQ(g_probe_calls, 1);
         EXPECT_EQ(g_mprobe_calls, 0);
@@ -115,10 +115,10 @@ TEST_F(V2RecvTest, UnmatchedProbeWildcardSourceResolvesCorrectly) {
 
     if (rank == 0) {
         std::vector<int> data = {rank};
-        kamping::v2::send(data, 1, 42);
+        kamping::v2::send(data, 1, 42, MPI_COMM_WORLD);
     } else if (rank == 1) {
         no_probe_buf buf;
-        kamping::v2::recv(buf, MPI_ANY_SOURCE, 42);
+        kamping::v2::recv(buf, MPI_ANY_SOURCE, 42, MPI_COMM_WORLD);
         EXPECT_EQ(buf.data, (std::vector<int>{0}));
         EXPECT_EQ(g_probe_calls, 1);
         EXPECT_EQ(g_mprobe_calls, 0);

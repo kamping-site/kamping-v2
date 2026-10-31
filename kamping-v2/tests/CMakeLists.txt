@@ -85,6 +85,9 @@ set_tests_properties(
                TIMEOUT 30
 )
 
+# Overload sets and default arguments of all operations
+kamping_v2_add_mpi_test(overloads CORES 1 2 4)
+
 # Point-to-point
 kamping_v2_add_mpi_test(mrecv CORES 2 4)
 kamping_v2_add_mpi_test(probe CORES 2)

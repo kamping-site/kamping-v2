@@ -34,7 +34,8 @@ TEST_F(GathervTest, variable_length_send_auto_recv) {
         auto [s, r] = kamping::v2::gatherv(
             send_data,
             recv_data | kamping::v2::views::auto_counts() | kamping::v2::views::auto_displs()
-                | kamping::v2::views::resize_v
+                | kamping::v2::views::resize_v,
+            MPI_COMM_WORLD
         );
         std::vector<int> expected;
         for (int i = 0; i < size_; ++i) {
@@ -42,7 +43,7 @@ TEST_F(GathervTest, variable_length_send_auto_recv) {
         }
         EXPECT_EQ(recv_data, expected);
     } else {
-        kamping::v2::gatherv(send_data, kamping::v2::auto_null_recv_v());
+        kamping::v2::gatherv(send_data, kamping::v2::auto_null_recv_v(), MPI_COMM_WORLD);
     }
 }
 
@@ -55,13 +56,14 @@ TEST_F(GathervTest, uniform_send_count) {
         kamping::v2::gatherv(
             send_data,
             recv_data | kamping::v2::views::auto_counts() | kamping::v2::views::auto_displs()
-                | kamping::v2::views::resize_v
+                | kamping::v2::views::resize_v,
+            MPI_COMM_WORLD
         );
         std::vector<int> expected(static_cast<std::size_t>(2 * size_));
         std::iota(expected.begin(), expected.end(), 0);
         EXPECT_EQ(recv_data, expected);
     } else {
-        kamping::v2::gatherv(send_data, kamping::v2::auto_null_recv_v());
+        kamping::v2::gatherv(send_data, kamping::v2::auto_null_recv_v(), MPI_COMM_WORLD);
     }
 }
 
@@ -76,7 +78,8 @@ TEST_F(GathervTest, non_default_root) {
             send_data,
             recv_data | kamping::v2::views::auto_counts() | kamping::v2::views::auto_displs()
                 | kamping::v2::views::resize_v,
-            root
+            root,
+            MPI_COMM_WORLD
         );
         std::vector<int> expected;
         for (int i = 0; i < size_; ++i) {
@@ -84,6 +87,6 @@ TEST_F(GathervTest, non_default_root) {
         }
         EXPECT_EQ(recv_data, expected);
     } else {
-        kamping::v2::gatherv(send_data, kamping::v2::auto_null_recv_v(), root);
+        kamping::v2::gatherv(send_data, kamping::v2::auto_null_recv_v(), root, MPI_COMM_WORLD);
     }
 }

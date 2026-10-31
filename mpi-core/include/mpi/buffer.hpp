@@ -255,19 +255,19 @@ constexpr decltype(auto) displs(T&& t) {
 /// `count()` is defined for `T`.
 template <typename T>
 concept has_mpi_count = requires(T const& t) {
-    { count(t) } -> detail::integer_like;
+    { mpi::experimental::count(t) } -> detail::integer_like;
 };
 
 /// `ptr()` is defined for `T`.
 template <typename T>
 concept has_mpi_ptr = requires(T&& t) {
-    { ptr(t) } -> detail::ptr_to_object;
+    { mpi::experimental::ptr(t) } -> detail::ptr_to_object;
 };
 
 /// `type()` is defined for `T`.
 template <typename T>
 concept has_mpi_type = requires(T const& t) {
-    { type(t) } -> std::convertible_to<MPI_Datatype>;
+    { mpi::experimental::type(t) } -> std::convertible_to<MPI_Datatype>;
 };
 
 /// A buffer of `count()` elements of MPI datatype `type()` at `ptr()`.
@@ -277,13 +277,13 @@ concept data_buffer = has_mpi_count<T> && has_mpi_ptr<T> && has_mpi_type<T>;
 /// A @ref data_buffer that can be sent from: its data pointer converts to `void const*`.
 template <typename T>
 concept send_buffer = data_buffer<T> && requires(T&& t) {
-    { ptr(t) } -> std::convertible_to<void const*>;
+    { mpi::experimental::ptr(t) } -> std::convertible_to<void const*>;
 };
 
 /// A @ref data_buffer that can be received into: its data pointer converts to `void*`.
 template <typename T>
 concept recv_buffer = data_buffer<T> && requires(T&& t) {
-    { ptr(t) } -> std::convertible_to<void*>;
+    { mpi::experimental::ptr(t) } -> std::convertible_to<void*>;
 };
 
 /// A buffer that can be used for both sending and receiving (i.e. satisfies recv_buffer).
@@ -293,22 +293,22 @@ concept send_recv_buffer = recv_buffer<T>;
 /// `counts()` is defined for `T` and yields a @ref count_range.
 template <typename T>
 concept has_mpi_counts = requires(T const& t) {
-    { counts(t) } -> count_range;
+    { mpi::experimental::counts(t) } -> count_range;
 };
 
 /// counts() on a non-const object returns a mutable contiguous range of int —
 /// used by infer() to write per-rank counts directly into the buffer.
 template <typename T>
 concept has_mpi_counts_mutable = requires(T& t) {
-    { counts(t) } -> std::ranges::contiguous_range;
-    requires std::same_as<int, std::remove_cvref_t<std::ranges::range_value_t<decltype(counts(t))>>>;
-    { std::ranges::data(counts(t)) } -> std::convertible_to<int*>;
+    { mpi::experimental::counts(t) } -> std::ranges::contiguous_range;
+    requires std::same_as<int, std::remove_cvref_t<std::ranges::range_value_t<decltype(mpi::experimental::counts(t))>>>;
+    { std::ranges::data(mpi::experimental::counts(t)) } -> std::convertible_to<int*>;
 };
 
 /// `displs()` is defined for `T` and yields a @ref count_range.
 template <typename T>
 concept has_mpi_displs = requires(T const& t) {
-    { displs(t) } -> count_range;
+    { mpi::experimental::displs(t) } -> count_range;
 };
 
 /// Variadic buffer: data + type + per-rank counts + displacements.
@@ -320,13 +320,13 @@ concept data_buffer_v = has_mpi_ptr<T> && has_mpi_type<T> && has_mpi_counts<T> &
 /// A @ref data_buffer_v that can be sent from.
 template <typename T>
 concept send_buffer_v = data_buffer_v<T> && requires(T&& t) {
-    { ptr(t) } -> std::convertible_to<void const*>;
+    { mpi::experimental::ptr(t) } -> std::convertible_to<void const*>;
 };
 
 /// A @ref data_buffer_v that can be received into.
 template <typename T>
 concept recv_buffer_v = data_buffer_v<T> && requires(T&& t) {
-    { ptr(t) } -> std::convertible_to<void*>;
+    { mpi::experimental::ptr(t) } -> std::convertible_to<void*>;
 };
 
 } // namespace mpi::experimental
