@@ -12,7 +12,6 @@
     #include "kamping/v2/views.hpp"
 #endif
 
-
 #if MPI_VERSION >= 4
 
 namespace {
@@ -34,19 +33,21 @@ TEST(V2IsendrecvTest, DeferredRecvBuffer) {
     }
     std::vector<int> send_data(static_cast<std::size_t>(2 + peer), 1 - peer); // rank 0 sends 3, rank 1 sends 2
     std::vector<int> recv_data;
-    auto             pending = kamping::v2::isendrecv(send_data, peer, recv_data | kamping::v2::views::resize, peer, MPI_COMM_WORLD);
+    auto             pending =
+        kamping::v2::isendrecv(send_data, peer, recv_data | kamping::v2::views::resize, peer, MPI_COMM_WORLD);
     pending.wait();
     EXPECT_EQ(recv_data, std::vector<int>(static_cast<std::size_t>(3 - peer), peer));
 }
 
-// iresult form with owned buffers and explicit tags; the buffers are handed back by wait().
+// iresult form with owned buffers and explicit tags; the buffers are handed back by wait(). Each rank sends with tag
+// 10 + its rank and receives with tag 10 + the peer's rank, so the receive only matches with the tags passed through.
+// (The status is not checked: Intel MPI reports tag 0 in the status of a completed MPI_Isendrecv.)
 TEST(V2IsendrecvTest, OwnedBuffersWithTags) {
     int peer;
     if (!paired(peer)) {
         GTEST_SKIP() << "needs ranks 0 and 1";
     }
-    MPI_Status status;
-    auto       result = kamping::v2::isendrecv(
+    auto result = kamping::v2::isendrecv(
                       std::vector<int>{1 - peer},
                       peer,
                       10 + (1 - peer),
@@ -55,10 +56,9 @@ TEST(V2IsendrecvTest, OwnedBuffersWithTags) {
                       10 + peer,
                       MPI_COMM_WORLD
     )
-                      .wait(&status);
+                      .wait();
     EXPECT_EQ(result.send, std::vector<int>{1 - peer});
     EXPECT_EQ(result.recv.underlying(), std::vector<int>{peer});
-    EXPECT_EQ(status.MPI_TAG, 10 + peer);
 }
 
 // Caller-supplied request, receiving from any source with any tag.
