@@ -89,11 +89,13 @@ set_tests_properties(
 kamping_v2_add_mpi_test(overloads CORES 1 2 4)
 
 # Point-to-point
+kamping_v2_add_mpi_test(isendrecv CORES 1 2 4)
 kamping_v2_add_mpi_test(mrecv CORES 2 4)
 kamping_v2_add_mpi_test(probe CORES 2)
 kamping_v2_add_mpi_test(recv CORES 2 4)
 
 # Collectives
+kamping_v2_add_mpi_test(allgather CORES 1 2 4)
 kamping_v2_add_mpi_test(allgatherv CORES 1 2 4)
 kamping_v2_add_mpi_test(allreduce CORES 1 2 4)
 kamping_v2_add_mpi_test(alltoall CORES 1 2 4)

@@ -8,8 +8,8 @@
 #include <gtest/gtest.h>
 #include <mpi.h>
 
-#include "kamping/ecosystem/kokkos_view.hpp"
 #include "kamping/v2/collectives/alltoallv.hpp"
+#include "kamping/v2/ecosystem/kokkos.hpp"
 #include "kamping/v2/p2p/recv.hpp"
 #include "kamping/v2/p2p/send.hpp"
 #include "kamping/v2/views/auto_counts_view.hpp"

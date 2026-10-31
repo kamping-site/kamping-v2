@@ -9,9 +9,9 @@
 
 #include <Kokkos_Core.hpp>
 
-#include "kamping/ecosystem/kokkos_view.hpp"
 #include "kamping/v2/collectives/alltoallv.hpp"
 #include "kamping/v2/comm.hpp"
+#include "kamping/v2/ecosystem/kokkos.hpp"
 #include "kamping/v2/environment.hpp"
 #include "kamping/v2/views/auto_counts_view.hpp"
 #include "kamping/v2/views/auto_displs_view.hpp"

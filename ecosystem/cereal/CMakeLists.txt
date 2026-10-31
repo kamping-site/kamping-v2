@@ -19,22 +19,16 @@ set(CEREAL_INSTALL ${KAMPING_V2_INSTALL})
 FetchContent_MakeAvailable(cereal)
 endblock()
 
-kamping_v2_add_header_only_library(
-    kamping_ecosystem_cereal kamping::ecosystem::cereal ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
-set_target_properties(kamping_ecosystem_cereal PROPERTIES EXPORT_NAME cereal)
-target_link_libraries(kamping_ecosystem_cereal INTERFACE kamping::v2 cereal::cereal)
+kamping_v2_add_header_only_library(kamping_v2_cereal kamping::v2::cereal ${CMAKE_CURRENT_SOURCE_DIR}/include)
+set_target_properties(kamping_v2_cereal PROPERTIES EXPORT_NAME cereal)
+target_link_libraries(kamping_v2_cereal INTERFACE kamping::v2 cereal::cereal)
 
 kamping_v2_install_component(
     cereal
-    TARGETS
-    kamping_ecosystem_cereal
-    NAMESPACE
-    kamping::ecosystem::
-    REQUIRES
-    v2
-    DEPENDENCIES
-    "find_dependency(cereal 1.3.2)"
+    TARGETS kamping_v2_cereal
+    NAMESPACE kamping::v2::
+    REQUIRES v2
+    DEPENDENCIES "find_dependency(cereal 1.3.2)"
 )
 
 if (PROJECT_IS_TOP_LEVEL OR KAMPING_V2_BUILD_EXAMPLES_AND_TESTS)

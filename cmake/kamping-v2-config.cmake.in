@@ -3,7 +3,7 @@
 #   find_package(kamping-v2 [<version>] [COMPONENTS <component>...])
 #
 # Components: core (mpi::core), v2 (kamping::v2), dstl (dstl::dstl), and the ecosystem adapters cereal, kokkos, thrust
-# and sycl (kamping::ecosystem::<name>), as far as they were installed. Without COMPONENTS, all installed components
+# and sycl (kamping::v2::<name>), as far as they were installed. Without COMPONENTS, all installed components
 # are loaded. Each component loads the components it depends on.
 
 @PACKAGE_INIT@

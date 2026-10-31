@@ -7,22 +7,16 @@ kamping_v2_require_component(kamping-v2 kamping::v2)
 # Thrust ships with the CUDA Toolkit.
 find_package(CUDAToolkit REQUIRED)
 
-kamping_v2_add_header_only_library(
-    kamping_ecosystem_thrust kamping::ecosystem::thrust ${CMAKE_CURRENT_SOURCE_DIR}/include
-)
-set_target_properties(kamping_ecosystem_thrust PROPERTIES EXPORT_NAME thrust)
-target_link_libraries(kamping_ecosystem_thrust INTERFACE kamping::v2 CUDA::cudart)
+kamping_v2_add_header_only_library(kamping_v2_thrust kamping::v2::thrust ${CMAKE_CURRENT_SOURCE_DIR}/include)
+set_target_properties(kamping_v2_thrust PROPERTIES EXPORT_NAME thrust)
+target_link_libraries(kamping_v2_thrust INTERFACE kamping::v2 CUDA::cudart)
 
 kamping_v2_install_component(
     thrust
-    TARGETS
-    kamping_ecosystem_thrust
-    NAMESPACE
-    kamping::ecosystem::
-    REQUIRES
-    v2
-    DEPENDENCIES
-    "find_dependency(CUDAToolkit)"
+    TARGETS kamping_v2_thrust
+    NAMESPACE kamping::v2::
+    REQUIRES v2
+    DEPENDENCIES "find_dependency(CUDAToolkit)"
 )
 
 if (PROJECT_IS_TOP_LEVEL OR KAMPING_V2_BUILD_EXAMPLES_AND_TESTS)

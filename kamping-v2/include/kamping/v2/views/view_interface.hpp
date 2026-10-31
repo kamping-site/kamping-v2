@@ -287,9 +287,9 @@ struct view_interface : public view_interface_base, public std::ranges::view_int
 };
 
 // Propagate supports_matched_probe through kamping view layers one step at a time via base().
-// Using base() rather than underlying() ensures intermediate views (e.g. device_ptr_view
+// Using base() rather than underlying() ensures intermediate views (e.g. thrust_view
 // with supports_matched_probe=false) are not skipped. Explicit per-type specializations
-// (e.g. device_ptr_view) take priority over this partial specialization.
+// (e.g. thrust_view) take priority over this partial specialization.
 template <typename T>
     requires std::derived_from<T, view_interface_base> && detail::has_base<T>
 inline constexpr bool supports_matched_probe<T> =

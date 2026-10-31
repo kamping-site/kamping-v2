@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <utility>
+
 #include <thrust/device_vector.h>
 
 #include "kamping/v2/views/adaptor.hpp"
@@ -22,21 +24,21 @@ namespace kamping::v2 {
 ///
 /// @code
 ///   // send from device
-///   kamping::v2::send(d_vec | kamping::v2::views::thrust::device_ptr, 1, comm);
+///   kamping::v2::send(d_vec | kamping::v2::views::thrust, 1, comm);
 ///
 ///   // receive into pre-sized device buffer
-///   kamping::v2::recv(d_recv | kamping::v2::views::thrust::device_ptr, 0, comm);
+///   kamping::v2::recv(d_recv | kamping::v2::views::thrust, 0, comm);
 ///
 ///   // receive with automatic resize (size probed via MPI_Probe)
-///   kamping::v2::recv(d_recv | kamping::v2::views::thrust::device_ptr | kamping::v2::views::resize, 0, comm);
+///   kamping::v2::recv(d_recv | kamping::v2::views::thrust | kamping::v2::views::resize, 0, comm);
 /// @endcode
 template <typename Base>
-class device_ptr_view : public view_interface<device_ptr_view<Base>> {
+class thrust_view : public view_interface<thrust_view<Base>> {
     Base _base;
 
 public:
     template <typename R>
-    explicit device_ptr_view(R&& base) : _base(kamping::v2::all(std::forward<R>(base))) {}
+    explicit thrust_view(R&& base) : _base(kamping::v2::all(std::forward<R>(base))) {}
 
     constexpr Base& base() & noexcept {
         return _base;
@@ -58,10 +60,10 @@ public:
 };
 
 template <typename R>
-device_ptr_view(R&&) -> device_ptr_view<kamping::v2::all_t<R>>;
+thrust_view(R&&) -> thrust_view<kamping::v2::all_t<R>>;
 
 template <typename Base>
-inline constexpr bool enable_borrowed_buffer<device_ptr_view<Base>> = enable_borrowed_buffer<Base>;
+inline constexpr bool enable_borrowed_buffer<thrust_view<Base>> = enable_borrowed_buffer<Base>;
 
 // supports_matched_probe propagates from Base via view_interface. If your MPI implementation
 // does not support GPU-aware matched receives (e.g. Intel MPI with MPI_Mrecv on device
@@ -72,16 +74,15 @@ inline constexpr bool enable_borrowed_buffer<device_ptr_view<Base>> = enable_bor
 
 } // namespace kamping::v2
 
-namespace kamping::v2::views::thrust {
+namespace kamping::v2::views {
 
-/// Pipe adaptor: redirects mpi_ptr() to the raw Thrust device pointer.
-///
-///   d_vec | kamping::v2::views::thrust::device_ptr
-inline constexpr struct device_ptr_fn : kamping::v2::adaptor_closure<device_ptr_fn> {
+/// Pipe adaptor: redirects mpi_ptr() to the raw Thrust device pointer, so CUDA-aware MPI reads and writes device
+/// memory directly: `d_vec | kamping::v2::views::thrust`.
+inline constexpr struct thrust_fn : kamping::v2::adaptor_closure<thrust_fn> {
     template <typename R>
     constexpr auto operator()(R&& r) const {
-        return kamping::v2::device_ptr_view(std::forward<R>(r));
+        return kamping::v2::thrust_view(std::forward<R>(r));
     }
-} device_ptr{};
+} thrust{};
 
-} // namespace kamping::v2::views::thrust
+} // namespace kamping::v2::views

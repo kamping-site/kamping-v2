@@ -19,15 +19,11 @@ target_compile_definitions(
 
 kamping_v2_install_component(
     core
-    TARGETS
-    mpi_core
-    NAMESPACE
-    mpi::
-    REQUIRES
-    types
-    DEPENDENCIES
-    "find_dependency(MPI COMPONENTS CXX)"
-    "find_dependency(kamping_v2 CONFIG PATHS \"\${CMAKE_CURRENT_LIST_DIR}/../kamping/v2\" NO_DEFAULT_PATH)"
+    TARGETS mpi_core
+    NAMESPACE mpi::
+    REQUIRES types
+    DEPENDENCIES "find_dependency(MPI COMPONENTS CXX)"
+                 "find_dependency(kamping_v2 CONFIG PATHS \"\${CMAKE_CURRENT_LIST_DIR}/../kamping/v2\" NO_DEFAULT_PATH)"
 )
 
 if (PROJECT_IS_TOP_LEVEL OR KAMPING_V2_BUILD_EXAMPLES_AND_TESTS)

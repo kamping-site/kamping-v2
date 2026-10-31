@@ -10,12 +10,9 @@ target_link_libraries(kamping_v2 INTERFACE mpi::core)
 
 kamping_v2_install_component(
     v2
-    TARGETS
-    kamping_v2
-    NAMESPACE
-    kamping::
-    REQUIRES
-    core
+    TARGETS kamping_v2
+    NAMESPACE kamping::
+    REQUIRES core
 )
 
 if (PROJECT_IS_TOP_LEVEL OR KAMPING_V2_BUILD_EXAMPLES_AND_TESTS)

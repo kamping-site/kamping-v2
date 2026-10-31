@@ -18,14 +18,10 @@ endif ()
 
 kamping_v2_install_component(
     dstl
-    TARGETS
-    dstl
-    NAMESPACE
-    dstl::
-    REQUIRES
-    v2
-    DEPENDENCIES
-    ${dstl_dependencies}
+    TARGETS dstl
+    NAMESPACE dstl::
+    REQUIRES v2
+    DEPENDENCIES ${dstl_dependencies}
 )
 
 if (PROJECT_IS_TOP_LEVEL OR KAMPING_V2_BUILD_EXAMPLES_AND_TESTS)

@@ -11,9 +11,9 @@
 #include <gtest/gtest.h>
 #include <mpi.h>
 
-#include "kamping/ecosystem/cereal_view.hpp"
 #include "kamping/v2/buffer.hpp"
 #include "kamping/v2/collectives/bcast.hpp"
+#include "kamping/v2/ecosystem/cereal.hpp"
 #include "kamping/v2/p2p/recv.hpp"
 #include "kamping/v2/p2p/send.hpp"
 #include "kamping/v2/views/concepts.hpp"

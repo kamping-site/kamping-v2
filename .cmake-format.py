@@ -4,6 +4,16 @@
 with section("parse"):
     # Specify structure for custom cmake functions
     additional_commands = {
+        'kamping_v2_install_component': {
+            'pargs': 1,
+            'kwargs': {'TARGETS': '+', 'NAMESPACE': '1', 'REQUIRES': '*', 'DEPENDENCIES': '*'}
+        },
+        'kamping_v2_add_header_only_library': {'pargs': 3},
+        'kamping_v2_require_component': {'pargs': 2},
+        'kamping_v2_add_unit_test': {'pargs': 1},
+        'kamping_v2_add_mpi_test': {'pargs': 1, 'kwargs': {'CORES': '*'}},
+        'mpi_core_add_unit_test': {'pargs': 1},
+        'mpi_core_add_mpi_test': {'pargs': 1, 'kwargs': {'CORES': '*'}},
         'katestophe_add_test_executable': {
             'flags': [],
             'kwargs': {'FILES': '*'}

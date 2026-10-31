@@ -13,7 +13,7 @@
 /// recv_buffer directly — no view piping required:
 ///
 /// @code
-///   #include "kamping/ecosystem/thrust_buffer_traits.hpp"
+///   #include "kamping/v2/ecosystem/thrust_buffer_traits.hpp"
 ///
 ///   thrust::device_vector<int> d(8);
 ///   kamping::v2::send(d, 1, 0, comm);   // raw device pointer used directly

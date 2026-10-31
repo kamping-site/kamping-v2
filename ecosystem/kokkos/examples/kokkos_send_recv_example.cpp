@@ -6,9 +6,9 @@
 #include <Kokkos_Core.hpp>
 #include <mpi.h>
 
-#include "kamping/ecosystem/kokkos_view.hpp"
 #include "kamping/v2/collectives/barrier.hpp"
 #include "kamping/v2/comm.hpp"
+#include "kamping/v2/ecosystem/kokkos.hpp"
 #include "kamping/v2/environment.hpp"
 #include "kamping/v2/p2p/irecv.hpp"
 #include "kamping/v2/p2p/recv.hpp"

@@ -240,12 +240,9 @@ function (_kamping_v2_install_types)
 
     kamping_v2_install_component(
         types
-        TARGETS
-        ${targets}
-        NAMESPACE
-        kamping_v2::
-        DEPENDENCIES
-        ${dependencies}
+        TARGETS ${targets}
+        NAMESPACE kamping_v2::
+        DEPENDENCIES ${dependencies}
     )
 endfunction ()
 

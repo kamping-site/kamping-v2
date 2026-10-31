@@ -4,8 +4,8 @@
 #include <iostream>
 #include <ranges>
 
-#include <kamping/ecosystem/sycl_view.hpp>
 #include <kamping/v2/comm.hpp>
+#include <kamping/v2/ecosystem/sycl.hpp>
 #include <kamping/v2/environment.hpp>
 #include <kamping/v2/p2p/recv.hpp>
 #include <kamping/v2/p2p/send.hpp>

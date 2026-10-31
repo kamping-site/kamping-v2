@@ -9,8 +9,8 @@
 #include <cereal/types/unordered_map.hpp>
 #include <mpi.h>
 
-#include "kamping/ecosystem/cereal_view.hpp"
 #include "kamping/v2/comm.hpp"
+#include "kamping/v2/ecosystem/cereal.hpp"
 #include "kamping/v2/environment.hpp"
 #include "kamping/v2/p2p/isend.hpp"
 #include "kamping/v2/p2p/recv.hpp"

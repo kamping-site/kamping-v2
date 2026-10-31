@@ -116,7 +116,7 @@ v2 is organized into four explicit layers. Each layer depends only on the layers
 - Sentinel buffers (`inplace`, `null_buf`, `bottom`) — zero-overhead special buffer values for collective shortcuts.
 - `kamping::v2::` wrappers (send, recv, bcast, …) that call `infer()` then delegate to `mpi::experimental::`.
 
-**Ecosystem bridges** — bindings to external C++ libraries, living in `ecosystem/`. Currently: Kokkos adapter, GPU (Thrust/SYCL) adapters, and Cereal serialization via `views::serialize` / `views::deserialize<T>()`.
+**Ecosystem bridges** — bindings to external C++ libraries, living in `ecosystem/<name>/`. They extend the v2 layer: code in `kamping::v2` / `kamping::v2::views`, headers `kamping/v2/ecosystem/<name>.hpp`, CMake targets `kamping::v2::<name>`, package components `<name>`. Currently: Kokkos adapter, GPU (Thrust/SYCL) adapters, and Cereal serialization via `views::serialize` / `views::deserialize<T>()`.
 
 ### Core Idea: Buffer Protocol + View Pipeline
 

@@ -200,7 +200,7 @@ cmake --install build --prefix /path/to/prefix
 
 ```cmake
 find_package(kamping-v2 0.1 REQUIRED COMPONENTS v2 cereal)
-target_link_libraries(my_app PRIVATE kamping::v2 kamping::ecosystem::cereal)
+target_link_libraries(my_app PRIVATE kamping::v2 kamping::v2::cereal)
 ```
 
 | Component | Target | Contents |
@@ -208,7 +208,7 @@ target_link_libraries(my_app PRIVATE kamping::v2 kamping::ecosystem::cereal)
 | `core` | `mpi::core` | The core layer |
 | `v2` | `kamping::v2` | The ergonomic layer (loads `core`) |
 | `dstl` | `dstl::dstl` | Distributed algorithms (loads `v2`) |
-| `cereal`, `kokkos`, `thrust`, `sycl` | `kamping::ecosystem::<name>` | Ecosystem adapters (load `v2`), if enabled when installing |
+| `cereal`, `kokkos`, `thrust`, `sycl` | `kamping::v2::<name>` | Ecosystem adapters (load `v2`), if enabled when installing |
 
 Without `COMPONENTS`, all installed components are loaded. The package bundles kamping-types.
 
@@ -242,7 +242,7 @@ KaMPIng v2 is built in layers. You can use the lower ones on their own.
 | `mpi-core/` | `mpi::experimental` | `mpi::core` | Thin, explicit MPI wrappers: one MPI call each, no inference or resizing |
 | `kamping-v2/` | `kamping::v2` | `kamping::v2` | The ergonomic layer: views, `infer()`, self-sizing buffers, `iresult` |
 | `dstl/` | `dstl` | `dstl::dstl` | Distributed algorithms built on top (sparse all-to-all, grid all-to-all, scans, …) |
-| `ecosystem/` | `kamping::v2`, `kamping::v2::views` | `kamping::ecosystem::<name>` | Adapters for Cereal, Kokkos, Thrust, and SYCL |
+| `ecosystem/` | `kamping::v2`, `kamping::v2::views` | `kamping::v2::<name>` | Adapters for Cereal, Kokkos, Thrust, and SYCL (`<kamping/v2/ecosystem/<name>.hpp>`) |
 
 MPI datatypes for user types come from `kamping-types`, which is shared with
 [KaMPIng v1](https://github.com/kamping-site/kamping) and fetched automatically. KaMPIng v1 and v2 are
