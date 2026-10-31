@@ -5,13 +5,13 @@
 #include <mpi.h>
 
 #include "kamping/types/contiguous_type.hpp"
+#include "kamping/v2/buffer.hpp"
 #include "kamping/v2/collectives/alltoallv.hpp"
 #include "kamping/v2/collectives/bcast.hpp"
 #include "kamping/v2/comm.hpp"
 #include "kamping/v2/comm_view_with_pool.hpp"
 #include "kamping/v2/type_pool.hpp"
 #include "kamping/v2/views.hpp"
-#include "mpi/comm.hpp"
 
 struct Payload {
     int    id;
@@ -28,7 +28,7 @@ TEST(CommViewWithPoolTest, Construction) {
     EXPECT_EQ(from_raw.mpi_handle(), MPI_COMM_WORLD);
     EXPECT_EQ(&from_raw.pool(), &pool);
 
-    mpi::experimental::comm_view     cv{MPI_COMM_WORLD};
+    kamping::v2::comm_view           cv{MPI_COMM_WORLD};
     kamping::v2::comm_view_with_pool from_view{cv, pool};
     EXPECT_EQ(from_view.mpi_handle(), MPI_COMM_WORLD);
     EXPECT_EQ(&from_view.pool(), &pool);
@@ -59,7 +59,7 @@ TEST(CommViewWithPoolTest, WithAutoPoolAcceptsEnv) {
     std::vector<Payload>             v{{1, 2.0}};
     auto                             view = v | kamping::v2::views::with_auto_pool(env);
     EXPECT_TRUE(pool.find<Payload>().has_value());
-    EXPECT_EQ(mpi::experimental::type(view), *pool.find<Payload>());
+    EXPECT_EQ(kamping::v2::type(view), *pool.find<Payload>());
 }
 
 // views::with_pool (pre-registered) also accepts comm_view_with_pool.
@@ -69,7 +69,7 @@ TEST(CommViewWithPoolTest, WithPoolAcceptsEnv) {
     kamping::v2::comm_view_with_pool env{MPI_COMM_WORLD, pool};
     std::vector<Payload>             v{{1, 2.0}};
     auto                             view = v | kamping::v2::views::with_pool(env);
-    EXPECT_EQ(mpi::experimental::type(view), registered);
+    EXPECT_EQ(kamping::v2::type(view), registered);
 }
 
 // Integration: bcast of custom struct via comm_view_with_pool.

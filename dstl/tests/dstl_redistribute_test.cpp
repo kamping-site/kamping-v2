@@ -25,8 +25,8 @@ std::vector<int> iota_vec(int start, int n) {
 
 TEST(Redistribute, Identity) {
     kamping::v2::comm_view comm{MPI_COMM_WORLD};
-    int const rank    = comm.rank();
-    int const local_n = 4;
+    int const              rank    = comm.rank();
+    int const              local_n = 4;
 
     auto sbuf = iota_vec(rank * local_n, local_n);
     auto rbuf = std::vector<int>(static_cast<std::size_t>(local_n), -1);
@@ -41,9 +41,9 @@ TEST(Redistribute, Identity) {
 
 TEST(Redistribute, Gather) {
     kamping::v2::comm_view comm{MPI_COMM_WORLD};
-    int const rank    = comm.rank();
-    int const p       = comm.size();
-    int const local_n = 3;
+    int const              rank    = comm.rank();
+    int const              p       = comm.size();
+    int const              local_n = 3;
 
     auto sbuf = iota_vec(rank * local_n, local_n);
 
@@ -64,9 +64,9 @@ TEST(Redistribute, Gather) {
 
 TEST(Redistribute, Scatter) {
     kamping::v2::comm_view comm{MPI_COMM_WORLD};
-    int const rank    = comm.rank();
-    int const p       = comm.size();
-    int const local_n = 3;
+    int const              rank    = comm.rank();
+    int const              p       = comm.size();
+    int const              local_n = 3;
 
     int const send_n = (rank == 0) ? p * local_n : 0;
     auto      sbuf   = iota_vec(0, send_n); // only non-empty on rank 0

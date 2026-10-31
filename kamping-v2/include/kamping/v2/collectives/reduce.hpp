@@ -18,6 +18,13 @@
 
 namespace kamping::v2 {
 
+/// Reduces `sbuf` across all ranks with `op` and stores the result in `rbuf` on `root` (`MPI_Reduce`).
+///
+/// Pass `inplace` as `sbuf` on root to reduce `rbuf` in place. On root, `rbuf` may be a deferred receive buffer (e.g.
+/// `views::resize`); on the other ranks it is ignored.
+/// @param op Reduction operation: an `MPI_Op`, a standard functor such as `std::plus<>` (the default), or the result of
+/// `make_op`.
+/// @return The send and receive buffer (owned if passed as rvalue, borrowed otherwise).
 template <
     mpi::experimental::send_buffer                         SBuf,
     mpi::experimental::recv_buffer                         RBuf,
@@ -39,6 +46,8 @@ auto reduce(SBuf&& sbuf, RBuf&& rbuf, Op const& op = std::plus<>{}, Root root = 
     return res;
 }
 
+/// Non-root shorthand of @ref reduce: contributes `sbuf` without a receive buffer.
+/// @return The send buffer.
 template <
     mpi::experimental::send_buffer                         SBuf,
     mpi::experimental::valid_op<SBuf, null_buf_t>          Op   = std::plus<>,

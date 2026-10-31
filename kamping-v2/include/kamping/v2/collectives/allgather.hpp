@@ -14,6 +14,10 @@
 #include "mpi/handle.hpp"
 
 namespace kamping::v2 {
+/// Gathers `sbuf` from all ranks into `rbuf` on every rank (`MPI_Allgather`).
+///
+/// `rbuf` may be a deferred receive buffer (e.g. `views::resize`), which is resized to `comm_size * count(sbuf)`.
+/// @return The send and receive buffer (owned if passed as rvalue, borrowed otherwise).
 template <
     mpi::experimental::send_buffer                         SBuf,
     mpi::experimental::recv_buffer                         RBuf,

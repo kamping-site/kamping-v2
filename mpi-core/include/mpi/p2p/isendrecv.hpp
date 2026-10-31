@@ -13,6 +13,8 @@
 
 namespace mpi::experimental {
 
+/// Starts sending `sbuf` to `dest` and receiving into `rbuf` from `source` (`MPI_Isendrecv`, MPI 4.0). The caller must
+/// keep both buffers alive and complete `request`.
 template <
     send_buffer                                SBuf,
     recv_buffer                                RBuf,

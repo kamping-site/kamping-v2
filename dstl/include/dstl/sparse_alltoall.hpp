@@ -18,10 +18,15 @@
 
 #include <mpi.h>
 
+#include "kamping/v2/buffer.hpp"
+#include "kamping/v2/cache.hpp"
 #include "kamping/v2/collectives/ibarrier.hpp"
 #include "kamping/v2/comm.hpp"
 #include "kamping/v2/completion.hpp"
+#include "kamping/v2/error.hpp"
+#include "kamping/v2/handle.hpp"
 #include "kamping/v2/infer.hpp"
+#include "kamping/v2/info.hpp"
 #include "kamping/v2/kassert.hpp"
 #include "kamping/v2/p2p/isend.hpp"
 #include "kamping/v2/p2p/probe.hpp"
@@ -30,6 +35,7 @@
 #include "kamping/v2/views/concepts.hpp"
 #include "kamping/v2/views/payload.hpp"
 #include "kamping/v2/views/with_type_view.hpp"
+#include "kamping/v2/win.hpp"
 #include "mpi/cache.hpp"
 #include "mpi/error.hpp"
 #include "mpi/handle.hpp"
@@ -103,13 +109,13 @@ public:
     /// Collective: allocates the window on `comm`.
     explicit rsx_counter(MPI_Comm comm) {
         // Optimization hints; implementations may ignore any of them.
-        mpi::experimental::info info;
+        kamping::v2::info info;
         info.set("no_locks", true);              // only fences, no passive-target locks
         info.set("accumulate_ordering", "none"); // the increments commute, no ordering needed
         info.set("accumulate_ops", "same_op");   // every accumulate is an MPI_SUM
         info.set("same_size", true);             // every process exposes a single counter
         info.set("same_disp_unit", true);        // with the same displacement unit
-        auto [w, local] = mpi::experimental::win_allocate<std::int64_t>(1, comm, info);
+        auto [w, local] = kamping::v2::win_allocate<std::int64_t>(1, comm, info);
         _win            = std::move(w);
         _count          = local.data();
         *_count         = 0;
@@ -125,10 +131,9 @@ public:
     /// Counts one message to `dest` (within the epoch).
     void add_message(int dest) {
         std::int64_t const one = 1;
-        int                err =
-            MPI_Accumulate(&one, 1, MPI_INT64_T, dest, 0, 1, MPI_INT64_T, MPI_SUM, mpi::experimental::handle(_win));
+        int err = MPI_Accumulate(&one, 1, MPI_INT64_T, dest, 0, 1, MPI_INT64_T, MPI_SUM, kamping::v2::handle(_win));
         if (err != MPI_SUCCESS) {
-            throw mpi::experimental::mpi_error(err);
+            throw kamping::v2::mpi_error(err);
         }
     }
 
@@ -142,9 +147,9 @@ public:
     }
 
 private:
-    mpi::experimental::win _win;
-    std::int64_t*          _count = nullptr;
-    std::int64_t           _last  = 0;
+    kamping::v2::win _win;
+    std::int64_t*    _count = nullptr;
+    std::int64_t     _last  = 0;
 };
 
 /// Posts a nonblocking send of every non-empty message in `sbuf` with `mode`, collecting the requests in `requests`.
@@ -161,7 +166,7 @@ void post_sends(
     );
     MPI_Datatype const type = kamping::v2::value_type(sbuf);
     auto               send = [&](int dest, auto const& message) {
-        if (mpi::experimental::count(message) == 0) {
+        if (kamping::v2::count(message) == 0) {
             return;
         }
         on_send(dest);
@@ -176,7 +181,7 @@ void post_sends(
     };
     if constexpr (kamping::v2::sparse_nested_send_buffer<SBuf>) {
         for (auto const& [dest, message]: sbuf) {
-            send(mpi::experimental::to_rank(dest), message);
+            send(kamping::v2::to_rank(dest), message);
         }
     } else {
         int dest = 0;
@@ -204,7 +209,7 @@ void receive_counted(
 /// Pass one to the RSX overload of @ref sparse_alltoall to allocate the counter window only on the first exchange on
 /// each communicator, instead of on every exchange. Destroying the cache frees the windows (collective). See
 /// `docs/attribute_caching.md`.
-using rsx_window_cache = mpi::experimental::cache<mpi::experimental::attribute::comm, detail::rsx_counter>;
+using rsx_window_cache = kamping::v2::cache<kamping::v2::attribute::comm, detail::rsx_counter>;
 
 /// @brief Sparse personalized all-to-all with the NBX protocol.
 ///
@@ -230,21 +235,21 @@ using rsx_window_cache = mpi::experimental::cache<mpi::experimental::attribute::
 ///
 /// @throws mpi_error if an MPI call fails.
 template <
-    sparse_alltoall_send_buffer                            SBuf,
-    std::invocable<kamping::v2::probe_result>              OnMessage,
-    mpi::experimental::tag                                 Tag  = int,
-    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+    sparse_alltoall_send_buffer                      SBuf,
+    std::invocable<kamping::v2::probe_result>        OnMessage,
+    kamping::v2::tag                                 Tag  = int,
+    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
 void sparse_alltoall(
     sparse_alltoall_algorithm::nbx_t, SBuf&& sbuf, OnMessage&& on_message, Tag tag, Comm const& comm = MPI_COMM_WORLD
 ) {
-    int const                   t = mpi::experimental::to_tag(tag);
+    int const                   t = kamping::v2::to_tag(tag);
     kamping::v2::request_vector sends;
     // Synchronous sends: a completed send means the receiver has matched it, which is what makes it safe to enter
     // the barrier once all own sends are complete.
     detail::post_sends(sbuf, kamping::v2::send_mode::sync, t, comm, sends, [](int) {});
 
-    mpi::experimental::request barrier;
-    bool                       barrier_started = false;
+    kamping::v2::request barrier;
+    bool                 barrier_started = false;
     while (true) {
         if (auto probe = kamping::v2::improbe(MPI_ANY_SOURCE, t, comm)) {
             std::invoke(on_message, std::move(*probe));
@@ -267,15 +272,15 @@ void sparse_alltoall(
 ///
 /// @throws mpi_error if an MPI call fails.
 template <
-    sparse_alltoall_send_buffer                            SBuf,
-    std::invocable<kamping::v2::probe_result>              OnMessage,
-    mpi::experimental::tag                                 Tag  = int,
-    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+    sparse_alltoall_send_buffer                      SBuf,
+    std::invocable<kamping::v2::probe_result>        OnMessage,
+    kamping::v2::tag                                 Tag  = int,
+    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
 void sparse_alltoall(
     sparse_alltoall_algorithm::pcx_t, SBuf&& sbuf, OnMessage&& on_message, Tag tag, Comm const& comm = MPI_COMM_WORLD
 ) {
-    int const                   t = mpi::experimental::to_tag(tag);
-    MPI_Comm const              c = mpi::experimental::handle(comm);
+    int const                   t = kamping::v2::to_tag(tag);
+    MPI_Comm const              c = kamping::v2::handle(comm);
     std::size_t const           p = static_cast<std::size_t>(kamping::v2::comm_view{c}.size());
     std::vector<int>            counts(p, 0);
     kamping::v2::request_vector sends;
@@ -287,7 +292,7 @@ void sparse_alltoall(
     int num_recvs = 0;
     int err       = MPI_Reduce_scatter_block(counts.data(), &num_recvs, 1, MPI_INT, MPI_SUM, c);
     if (err != MPI_SUCCESS) {
-        throw mpi::experimental::mpi_error(err);
+        throw kamping::v2::mpi_error(err);
     }
     detail::receive_counted(num_recvs, on_message, t, comm, sends);
 }
@@ -300,10 +305,10 @@ void sparse_alltoall(
 ///
 /// @throws mpi_error if an MPI call fails.
 template <
-    sparse_alltoall_send_buffer                            SBuf,
-    std::invocable<kamping::v2::probe_result>              OnMessage,
-    mpi::experimental::tag                                 Tag  = int,
-    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+    sparse_alltoall_send_buffer                      SBuf,
+    std::invocable<kamping::v2::probe_result>        OnMessage,
+    kamping::v2::tag                                 Tag  = int,
+    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
 void sparse_alltoall(
     sparse_alltoall_algorithm::rsx_t,
     SBuf&&            sbuf,
@@ -312,8 +317,8 @@ void sparse_alltoall(
     Comm const&       comm,
     rsx_window_cache& windows
 ) {
-    int const      t       = mpi::experimental::to_tag(tag);
-    MPI_Comm const c       = mpi::experimental::handle(comm);
+    int const      t       = kamping::v2::to_tag(tag);
+    MPI_Comm const c       = kamping::v2::handle(comm);
     auto&          counter = windows.get_or_create(c, [c] { return detail::rsx_counter(c); });
 
     kamping::v2::request_vector sends;
@@ -331,10 +336,10 @@ void sparse_alltoall(
 ///
 /// @throws mpi_error if an MPI call fails.
 template <
-    sparse_alltoall_send_buffer                            SBuf,
-    std::invocable<kamping::v2::probe_result>              OnMessage,
-    mpi::experimental::tag                                 Tag  = int,
-    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+    sparse_alltoall_send_buffer                      SBuf,
+    std::invocable<kamping::v2::probe_result>        OnMessage,
+    kamping::v2::tag                                 Tag  = int,
+    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
 void sparse_alltoall(
     sparse_alltoall_algorithm::rsx_t, SBuf&& sbuf, OnMessage&& on_message, Tag tag, Comm const& comm = MPI_COMM_WORLD
 ) {
@@ -351,10 +356,10 @@ void sparse_alltoall(
 
 /// @brief Sparse personalized all-to-all with the default protocol (NBX); see the NBX overload.
 template <
-    sparse_alltoall_send_buffer                            SBuf,
-    std::invocable<kamping::v2::probe_result>              OnMessage,
-    mpi::experimental::tag                                 Tag  = int,
-    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+    sparse_alltoall_send_buffer                      SBuf,
+    std::invocable<kamping::v2::probe_result>        OnMessage,
+    kamping::v2::tag                                 Tag  = int,
+    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
 void sparse_alltoall(SBuf&& sbuf, OnMessage&& on_message, Tag tag, Comm const& comm = MPI_COMM_WORLD) {
     sparse_alltoall(
         sparse_alltoall_algorithm::nbx,
@@ -371,7 +376,7 @@ void sparse_alltoall(SBuf&& sbuf, OnMessage&& on_message, Tag tag, Comm const& c
 /// (e.g. `views::resize`), that cannot be mistaken for a Layer 1 callback.
 template <typename RBuf>
 concept sparse_alltoall_recv_buffer =
-    mpi::experimental::recv_buffer<RBuf> && !std::invocable<RBuf, kamping::v2::probe_result>;
+    kamping::v2::recv_buffer<RBuf> && !std::invocable<RBuf, kamping::v2::probe_result>;
 
 /// @brief Sparse personalized all-to-all receiving all messages into `rbuf`, one after the other in arrival order.
 ///
@@ -403,12 +408,12 @@ template <
     typename... Args>
 std::size_t sparse_alltoall(Algorithm algorithm, SBuf&& sbuf, RBuf&& rbuf, Args&&... args) {
     constexpr bool     deferred = kamping::v2::deferred_recv_buf<RBuf>;
-    MPI_Datatype const type     = mpi::experimental::type(rbuf);
+    MPI_Datatype const type     = kamping::v2::type(rbuf);
     MPI_Aint           lb       = 0;
     MPI_Aint           extent   = 0;
     int                err      = MPI_Type_get_extent(type, &lb, &extent);
     if (err != MPI_SUCCESS) {
-        throw mpi::experimental::mpi_error(err);
+        throw kamping::v2::mpi_error(err);
     }
 
     std::size_t                 offset = 0;
@@ -419,12 +424,12 @@ std::size_t sparse_alltoall(Algorithm algorithm, SBuf&& sbuf, RBuf&& rbuf, Args&
             rbuf.set_recv_count(static_cast<std::ptrdiff_t>(offset + n));
         } else {
             KAMPING_V2_ASSERT(
-                offset + n <= static_cast<std::size_t>(mpi::experimental::count(rbuf)),
+                offset + n <= static_cast<std::size_t>(kamping::v2::count(rbuf)),
                 "sparse_alltoall: the recv buffer is too small for the received messages; pass views::resize to grow it"
             );
         }
-        auto* const                 base = static_cast<std::byte*>(static_cast<void*>(mpi::experimental::ptr(rbuf)));
-        mpi::experimental::mpi_span slot(
+        auto* const           base = static_cast<std::byte*>(static_cast<void*>(kamping::v2::ptr(rbuf)));
+        kamping::v2::mpi_span slot(
             base + static_cast<std::ptrdiff_t>(offset) * extent,
             static_cast<std::ptrdiff_t>(n),
             type

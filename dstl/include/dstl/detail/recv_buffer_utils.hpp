@@ -9,9 +9,9 @@
 #include <span>
 #include <vector>
 
+#include "kamping/v2/buffer.hpp"
 #include "kamping/v2/kassert.hpp"
 #include "kamping/v2/views/concepts.hpp"
-#include "mpi/buffer.hpp"
 
 /// @file
 /// Recv-buffer sizing utilities shared by the dstl collectives that deposit a routed/returned result into a
@@ -44,7 +44,7 @@ void ensure_recv_capacity(RBuf& rbuf, int total_recv) {
             "recv buffer (e.g. views::resize) or use the ordered (variadic) output."
         );
         KAMPING_V2_ASSERT(
-            static_cast<std::size_t>(mpi::experimental::count(rbuf)) >= static_cast<std::size_t>(total_recv),
+            static_cast<std::size_t>(kamping::v2::count(rbuf)) >= static_cast<std::size_t>(total_recv),
             "non-resizable recv buffer is smaller than the received element total; pass views::resize to opt "
             "into automatic resizing."
         );
@@ -61,7 +61,7 @@ template <typename RBuf>
 std::vector<int> size_from_source_counts(RBuf& rbuf, std::span<int const> per_source_counts, int total_recv) {
     if constexpr (kamping::v2::deferred_recv_buf_v<RBuf>) {
         rbuf.set_comm_size(static_cast<int>(per_source_counts.size()));
-        auto recv_counts = mpi::experimental::counts(rbuf); // mutable per-source counts buffer
+        auto recv_counts = kamping::v2::counts(rbuf); // mutable per-source counts buffer
         std::ranges::copy(per_source_counts, std::ranges::begin(recv_counts));
         rbuf.commit_counts();
         // Deliberate eager realization — NOT a strict correctness need (the lazy accessors self-realize:
@@ -70,7 +70,7 @@ std::vector<int> size_from_source_counts(RBuf& rbuf, std::span<int const> per_so
         // counts->displs derivation and the resize here, once and single-threaded, before any parallel
         // region — making it race-free regardless of where the accessors are first touched.
         kamping::v2::materialize(rbuf);
-        auto recv_displs = mpi::experimental::displs(rbuf); // derived from the counts written above
+        auto recv_displs = kamping::v2::displs(rbuf); // derived from the counts written above
         return std::vector<int>(std::ranges::begin(recv_displs), std::ranges::end(recv_displs));
     } else {
         ensure_recv_capacity(rbuf, total_recv);

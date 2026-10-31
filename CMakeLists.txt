@@ -104,8 +104,9 @@ endif ()
 add_subdirectory(mpi-core)
 add_subdirectory(kamping-v2)
 
-# Propagate -Werror to the v2 warnings target when requested.
+# Propagate -Werror to the warnings targets when requested.
 if (KAMPING_WARNINGS_ARE_ERRORS)
+    target_compile_options(mpi_core_warnings INTERFACE -Werror)
     target_compile_options(kamping_v2_warnings INTERFACE -Werror)
 endif ()
 

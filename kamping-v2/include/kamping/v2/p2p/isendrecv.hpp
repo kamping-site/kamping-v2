@@ -7,12 +7,12 @@
 
 #if MPI_VERSION >= 4
 
-#include "kamping/v2/infer.hpp"
-#include "kamping/v2/iresult.hpp"
-#include "kamping/v2/p2p/constants.hpp"
-#include "kamping/v2/result.hpp"
-#include "mpi/handle.hpp"
-#include "mpi/p2p/isendrecv.hpp"
+    #include "kamping/v2/infer.hpp"
+    #include "kamping/v2/iresult.hpp"
+    #include "kamping/v2/p2p/constants.hpp"
+    #include "kamping/v2/result.hpp"
+    #include "mpi/handle.hpp"
+    #include "mpi/p2p/isendrecv.hpp"
 
 namespace kamping::v2 {
 

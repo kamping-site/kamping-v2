@@ -6,13 +6,13 @@
 #include <Kokkos_Core.hpp>
 #include <mpi.h>
 
-#include "kamping/v2/environment.hpp"
 #include "kamping/ecosystem/kokkos_view.hpp"
-#include "kamping/v2/p2p/recv.hpp"
-#include "kamping/v2/p2p/irecv.hpp"
-#include "kamping/v2/p2p/send.hpp"
 #include "kamping/v2/collectives/barrier.hpp"
-#include "mpi/comm.hpp"
+#include "kamping/v2/comm.hpp"
+#include "kamping/v2/environment.hpp"
+#include "kamping/v2/p2p/irecv.hpp"
+#include "kamping/v2/p2p/recv.hpp"
+#include "kamping/v2/p2p/send.hpp"
 
 // Disable matched probing for Kokkos::View types whose memory space is not
 // directly accessible from the host (e.g. CudaSpace, HIPSpace). Those
@@ -20,9 +20,8 @@
 // back to plain MPI_Probe + MPI_Recv.
 namespace kamping::v2 {
 template <typename DataType, typename... Properties>
-inline constexpr bool supports_matched_probe<Kokkos::View<DataType, Properties...>> =
-    Kokkos::SpaceAccessibility<Kokkos::HostSpace,
-                               typename Kokkos::View<DataType, Properties...>::memory_space>::accessible;
+inline constexpr bool supports_matched_probe<Kokkos::View<DataType, Properties...>> = Kokkos::
+    SpaceAccessibility<Kokkos::HostSpace, typename Kokkos::View<DataType, Properties...>::memory_space>::accessible;
 } // namespace kamping::v2
 
 template <typename View>
@@ -42,10 +41,9 @@ void print_row(View const& to_print) {
     std::cout << "]\n";
 }
 
-
 int main(int argc, char* argv[]) {
-    kamping::v2::environment           env(argc, argv);
-    mpi::experimental::comm_view const world{MPI_COMM_WORLD};
+    kamping::v2::environment     env(argc, argv);
+    kamping::v2::comm_view const world{MPI_COMM_WORLD};
     Kokkos::initialize(argc, argv);
 
     KAMPING_V2_ASSERT(world.size() == 2, "This example must be run with exactly 2 ranks.");
@@ -65,29 +63,26 @@ int main(int argc, char* argv[]) {
 
     } else if (world.rank() == 1) {
         matrix_t matrix("recv_matrix", 4, 5);
-        auto    row      = Kokkos::subview(matrix, 2, Kokkos::ALL());
-        auto    req = kamping::v2::irecv(row | kamping::v2::views::kokkos, 0, 0, world);
-      
-	// Trigger deep copy back to the row view using unwrap()
-	req.wait().unwrap();
+        auto     row = Kokkos::subview(matrix, 2, Kokkos::ALL());
+        auto     req = kamping::v2::irecv(row | kamping::v2::views::kokkos, 0, 0, world);
+
+        // Trigger deep copy back to the row view using unwrap()
+        req.wait().unwrap();
 
         print_row(row);
-
     }
     kamping::v2::barrier(world);
 
     // Send vector and recv using kamping::views::unpack<int>
     if (world.rank() == 0) {
         Kokkos::View<int*> v("send_unpack", 6);
-        Kokkos::parallel_for(
-            "init_v", 6, KOKKOS_LAMBDA(int i) { v(i) = 200 + i; }
-			     );
+        Kokkos::parallel_for("init_v", 6, KOKKOS_LAMBDA(int i) { v(i) = 200 + i; });
         kamping::v2::send(v | kamping::v2::views::kokkos, 1, 0, world);
     } else if (world.rank() == 1) {
-        auto  received = kamping::v2::recv(kamping::v2::views::auto_kokkos_view<int>(), 0, 0, world);
+        auto received = kamping::v2::recv(kamping::v2::views::auto_kokkos_view<int>(), 0, 0, world);
 
         // Get the Kokkos::View, this won't trigger a deep copy, because auto_kokkos_view is contiguous
-        auto& data     = *received.underlying();
+        auto& data = *received.underlying();
         print_row(data);
     }
     kamping::v2::barrier(world);
@@ -103,10 +98,10 @@ int main(int argc, char* argv[]) {
         kamping::v2::send(matrix | kamping::v2::views::kokkos, 1, 0, world);
 
     } else if (world.rank() == 1) {
-        auto  received = kamping::v2::recv(kamping::v2::views::auto_kokkos_view<int>(), 0, 0, world);
+        auto received = kamping::v2::recv(kamping::v2::views::auto_kokkos_view<int>(), 0, 0, world);
 
         // Get the Kokkos::View, this won't trigger a deep copy, because auto_kokkos_view is contiguous
-        auto& data     = *received.underlying();
+        auto& data = *received.underlying();
         print_row(data);
     }
 

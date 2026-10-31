@@ -24,36 +24,36 @@ namespace kamping::v2 {
 /// next mpi_ptr() / materialize() resizes again, keeping the existing elements (see resize_for_receive's contract).
 template <typename Base>
 class resize_view : public view_interface<resize_view<Base>> {
-    Base                          base_;
-    std::optional<std::ptrdiff_t> recv_count_   = std::nullopt;
-    bool                          needs_resize_ = false;
+    Base                          _base;
+    std::optional<std::ptrdiff_t> _recv_count   = std::nullopt;
+    bool                          _needs_resize = false;
 
 public:
     template <typename R>
-    explicit resize_view(R&& base) : base_(kamping::v2::all(std::forward<R>(base))) {}
+    explicit resize_view(R&& base) : _base(kamping::v2::all(std::forward<R>(base))) {}
 
     constexpr Base& base() & noexcept {
-        return base_;
+        return _base;
     }
     constexpr Base const& base() const& noexcept {
-        return base_;
+        return _base;
     }
     constexpr Base&& base() && noexcept {
-        return std::move(base_);
+        return std::move(_base);
     }
 
     /// Called by the collective with the inferred recv count. Does not resize yet.
     void set_recv_count(std::ptrdiff_t n) {
-        recv_count_   = n;
-        needs_resize_ = true;
+        _recv_count   = n;
+        _needs_resize = true;
     }
 
     /// Returns the recv count set by set_recv_count(). Overrides view_interface::mpi_count().
     std::ptrdiff_t mpi_count() const {
-        if (recv_count_) {
-            return *recv_count_;
+        if (_recv_count) {
+            return *_recv_count;
         } else {
-            return static_cast<std::ptrdiff_t>(mpi::experimental::count(base_));
+            return static_cast<std::ptrdiff_t>(mpi::experimental::count(_base));
         }
     }
 
@@ -62,22 +62,19 @@ public:
     /// mpi_ptr(), or explicitly via kamping::v2::materialize() to realize the buffer
     /// before the MPI call.
     void materialize() {
-        if (needs_resize_) {
-            KAMPING_V2_ASSERT(recv_count_.has_value());
-            kamping::v2::resize_for_receive(base_, *recv_count_);
-            needs_resize_ = false;
+        if (_needs_resize) {
+            KAMPING_V2_ASSERT(_recv_count.has_value());
+            kamping::v2::resize_for_receive(_base, *_recv_count);
+            _needs_resize = false;
         }
-        // Defensive: realize a nested deferred buffer too. A guarded no-op for every
-        // base used today (plain containers / with_type), kept so materialize() stays
-        // correct if a deferred buffer is ever composed underneath.
-        kamping::v2::materialize(base_);
+        kamping::v2::materialize(_base);
     }
 
     /// Triggers the lazy resize on first access, then returns the data pointer.
     /// Overrides view_interface::mpi_ptr().
     auto mpi_ptr() {
         materialize();
-        return mpi::experimental::ptr(base_);
+        return mpi::experimental::ptr(_base);
     }
 };
 

@@ -15,9 +15,8 @@
 #include "dstl/factoring.hpp"
 #include "dstl/tags.hpp"
 #include "kamping/kassert/kassert.hpp"
-#include "mpi/comm.hpp"
-#include "mpi/environment.hpp"
-#include "mpi/thread_level.hpp"
+#include "kamping/v2/comm.hpp"
+#include "kamping/v2/environment.hpp"
 
 /// @file
 /// dstl::grid_comm — a k-dimensional grid communicator built from k iterated splits of a
@@ -59,17 +58,17 @@ namespace dstl {
 /// k-dimensional grid communicator. `k` (the number of dimensions) is a runtime value derived
 /// from the factoring strategy; the execution policy `Exec` is a compile-time tag (D2/D3).
 template <is_execution_policy Exec = execution_policy::par>
-class grid_comm : public mpi::experimental::comm_accessors<grid_comm<Exec>> {
+class grid_comm : public kamping::v2::comm_accessors<grid_comm<Exec>> {
 public:
     using execution_policy_type = Exec;
 
     /// Build a grid over `global` using the default factoring strategy (balanced 2-level grid).
-    explicit grid_comm(mpi::experimental::comm_view global) : grid_comm(global, dims_create{}) {}
+    explicit grid_comm(kamping::v2::comm_view global) : grid_comm(global, dims_create{}) {}
 
     /// Build a grid over `global` using a factoring strategy.
     template <factoring Strategy>
-    grid_comm(mpi::experimental::comm_view global, Strategy strategy) : _global(global),
-                                                                        _dims(strategy(global)) {
+    grid_comm(kamping::v2::comm_view global, Strategy strategy) : _global(global),
+                                                                  _dims(strategy(global)) {
         build();
     }
 
@@ -77,7 +76,7 @@ public:
     /// convertible to `std::size_t`; the product of `dims` must equal the size of `global` (a complete grid).
     template <std::ranges::input_range R>
         requires std::convertible_to<std::ranges::range_value_t<R>, std::size_t>
-    grid_comm(mpi::experimental::comm_view global, R&& dims) : _global(global) {
+    grid_comm(kamping::v2::comm_view global, R&& dims) : _global(global) {
         if constexpr (std::ranges::sized_range<R>) {
             _dims.reserve(std::ranges::size(dims));
         }
@@ -104,7 +103,7 @@ public:
     }
 
     /// @return A non-owning view of the subcommunicator for dimension i (size s_i).
-    [[nodiscard]] mpi::experimental::comm_view subcomm(std::size_t i) const {
+    [[nodiscard]] kamping::v2::comm_view subcomm(std::size_t i) const {
         return _subcomms[i];
     }
 
@@ -210,20 +209,20 @@ private:
         if constexpr (std::is_same_v<Exec, execution_policy::seq>) {
             return;
         } else {
-            using mpi::experimental::ThreadLevel;
+            using kamping::v2::ThreadLevel;
             ThreadLevel const required =
                 std::is_same_v<Exec, execution_policy::par_comm> ? ThreadLevel::multiple : ThreadLevel::funneled;
             KAMPING_V2_ASSERT(
-                mpi::experimental::environment::thread_level() >= required,
+                kamping::v2::environment::thread_level() >= required,
                 "grid_comm: the MPI runtime does not provide the thread support level required by this execution policy"
             );
         }
     }
 
-    mpi::experimental::comm_view         _global;
-    std::vector<std::size_t>             _dims;
-    std::vector<std::size_t>             _strides;
-    std::vector<mpi::experimental::comm> _subcomms;
+    kamping::v2::comm_view         _global;
+    std::vector<std::size_t>       _dims;
+    std::vector<std::size_t>       _strides;
+    std::vector<kamping::v2::comm> _subcomms;
 };
 
 } // namespace dstl

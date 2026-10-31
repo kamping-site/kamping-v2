@@ -13,14 +13,14 @@
 #include <kamping/types/reduce_ops.hpp>
 #include <mpi.h>
 
+#include "kamping/v2/buffer.hpp"
 #include "kamping/v2/collectives/allreduce.hpp"
 #include "kamping/v2/comm.hpp"
+#include "kamping/v2/handle.hpp"
 #include "kamping/v2/ops.hpp"
 #include "kamping/v2/sentinels.hpp"
 #include "kamping/v2/views/ref_single_view.hpp"
 #include "kamping/v2/views/with_type_view.hpp"
-#include "mpi/buffer.hpp"
-#include "mpi/handle.hpp"
 
 namespace dstl {
 
@@ -32,8 +32,8 @@ namespace detail {
 /// Comp and Proj are default-constructed on every invocation — matching make_op()'s contract
 /// that only stateless functors survive the trip through MPI_Op_create.
 ///
-/// Since kamping-types#808, ScopedFunctorOp (which make_op<T>() below builds on) combines by
-/// copy-construction, not assignment, so T only needs to be copy-constructible here -- e.g.
+/// ScopedFunctorOp (which make_op<T>() below builds on) combines by copy-construction, not
+/// assignment, so T only needs to be copy-constructible here -- e.g.
 /// std::pair<const K, V> (a std::map's/flat_hash_map's value type) works despite having a
 /// deleted operator=. Deliberately not gated on std::is_trivially_copyable_v<T> either: even an
 /// ordinary std::pair<int, int> is never trivially copyable (see
@@ -84,13 +84,13 @@ template <
     std::ranges::forward_range R,
     class Proj                                                                             = std::identity,
     std::indirect_strict_weak_order<std::projected<std::ranges::iterator_t<R>, Proj>> Comp = std::ranges::less,
-    mpi::experimental::convertible_to_mpi_handle<MPI_Comm>                            Comm = MPI_Comm>
-    requires mpi::experimental::has_mpi_type<R> && std::copy_constructible<std::ranges::range_value_t<R>>
+    kamping::v2::convertible_to_mpi_handle<MPI_Comm>                                  Comm = MPI_Comm>
+    requires kamping::v2::has_mpi_type<R> && std::copy_constructible<std::ranges::range_value_t<R>>
 auto max(R&& r, Comp comp, Proj proj, Comm const& comm, std::ranges::range_value_t<R> sentinel)
     -> std::ranges::range_value_t<R> {
     using T = std::ranges::range_value_t<R>;
 
-    kamping::v2::comm_view const cv{mpi::experimental::handle(comm)};
+    kamping::v2::comm_view const cv{kamping::v2::handle(comm)};
 
     T local_max = std::ranges::empty(r) ? sentinel : *std::ranges::max_element(r, std::ref(comp), std::ref(proj));
 
@@ -98,7 +98,7 @@ auto max(R&& r, Comp comp, Proj proj, Comm const& comm, std::ranges::range_value
         return local_max;
     }
 
-    MPI_Datatype const mpi_type = mpi::experimental::type(r);
+    MPI_Datatype const mpi_type = kamping::v2::type(r);
 
     if constexpr (detail::has_builtin_max<T, Comp, Proj>) {
         kamping::v2::allreduce(
@@ -126,8 +126,8 @@ template <
     std::ranges::forward_range R,
     class Proj                                                                             = std::identity,
     std::indirect_strict_weak_order<std::projected<std::ranges::iterator_t<R>, Proj>> Comp = std::ranges::less,
-    mpi::experimental::convertible_to_mpi_handle<MPI_Comm>                            Comm = MPI_Comm>
-    requires mpi::experimental::has_mpi_type<R> && std::numeric_limits<std::ranges::range_value_t<R>>::is_specialized
+    kamping::v2::convertible_to_mpi_handle<MPI_Comm>                                  Comm = MPI_Comm>
+    requires kamping::v2::has_mpi_type<R> && std::numeric_limits<std::ranges::range_value_t<R>>::is_specialized
              && std::copy_constructible<std::ranges::range_value_t<R>>
 auto max(R&& r, Comp comp = {}, Proj proj = {}, Comm const& comm = MPI_COMM_WORLD) -> std::ranges::range_value_t<R> {
     return max(

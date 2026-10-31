@@ -24,8 +24,8 @@ std::vector<int> iota_local(int rank, int local_n) {
 
 TEST(ShiftLeft, NoOp) {
     kamping::v2::comm_view comm{MPI_COMM_WORLD};
-    auto data = iota_local(comm.rank(), 4);
-    auto res  = dstl::shift_left(data, 0, comm);
+    auto                   data = iota_local(comm.rank(), 4);
+    auto                   res  = dstl::shift_left(data, 0, comm);
     EXPECT_EQ(res.begin(), data.begin());
     EXPECT_EQ(res.end(), data.end());
     EXPECT_EQ(data, iota_local(comm.rank(), 4));
@@ -33,11 +33,11 @@ TEST(ShiftLeft, NoOp) {
 
 TEST(ShiftLeft, ShiftByTwo) {
     kamping::v2::comm_view comm{MPI_COMM_WORLD};
-    int const rank     = comm.rank();
-    int const p        = comm.size();
-    int const local_n  = 4;
-    int const n        = 2;
-    auto      data     = iota_local(rank, local_n);
+    int const              rank    = comm.rank();
+    int const              p       = comm.size();
+    int const              local_n = 4;
+    int const              n       = 2;
+    auto                   data    = iota_local(rank, local_n);
 
     auto res = dstl::shift_left(data, n, comm);
 
@@ -45,7 +45,7 @@ TEST(ShiftLeft, ShiftByTwo) {
     // The last rank gets [rank*local_n + n .. rank*local_n + local_n) followed by T{} = 0.
     std::vector<int> expected(static_cast<std::size_t>(local_n));
     for (int i = 0; i < local_n; ++i) {
-        int global_src = rank * local_n + i + n;
+        int global_src                        = rank * local_n + i + n;
         expected[static_cast<std::size_t>(i)] = (rank < p - 1 || i < local_n - n) ? global_src : 0;
     }
     EXPECT_EQ(data, expected);
@@ -61,10 +61,10 @@ TEST(ShiftLeft, ShiftByTwo) {
 
 TEST(ShiftLeft, ShiftByLocalSize) {
     kamping::v2::comm_view comm{MPI_COMM_WORLD};
-    int const rank    = comm.rank();
-    int const p       = comm.size();
-    int const local_n = 4;
-    auto      data    = iota_local(rank, local_n);
+    int const              rank    = comm.rank();
+    int const              p       = comm.size();
+    int const              local_n = 4;
+    auto                   data    = iota_local(rank, local_n);
 
     // n == local_n: each rank's buffer is entirely replaced by the right neighbor's data.
     auto res = dstl::shift_left(data, local_n, comm);
@@ -92,8 +92,8 @@ TEST(ShiftLeft, ShiftByLocalSize) {
 
 TEST(ShiftRight, NoOp) {
     kamping::v2::comm_view comm{MPI_COMM_WORLD};
-    auto data = iota_local(comm.rank(), 4);
-    auto res  = dstl::shift_right(data, 0, comm);
+    auto                   data = iota_local(comm.rank(), 4);
+    auto                   res  = dstl::shift_right(data, 0, comm);
     EXPECT_EQ(res.begin(), data.begin());
     EXPECT_EQ(res.end(), data.end());
     EXPECT_EQ(data, iota_local(comm.rank(), 4));
@@ -101,10 +101,10 @@ TEST(ShiftRight, NoOp) {
 
 TEST(ShiftRight, ShiftByTwo) {
     kamping::v2::comm_view comm{MPI_COMM_WORLD};
-    int const rank    = comm.rank();
-    int const local_n = 4;
-    int const n       = 2;
-    auto      data    = iota_local(rank, local_n);
+    int const              rank    = comm.rank();
+    int const              local_n = 4;
+    int const              n       = 2;
+    auto                   data    = iota_local(rank, local_n);
 
     auto res = dstl::shift_right(data, n, comm);
 
@@ -112,8 +112,8 @@ TEST(ShiftRight, ShiftByTwo) {
     // Rank 0 gets T{}=0 in the first n positions, then its original first (local_n-n) elements.
     std::vector<int> expected(static_cast<std::size_t>(local_n));
     for (int i = 0; i < local_n; ++i) {
-        int global_dst = rank * local_n + i;
-        int global_src = global_dst - n; // element that lands here after the shift
+        int global_dst                        = rank * local_n + i;
+        int global_src                        = global_dst - n; // element that lands here after the shift
         expected[static_cast<std::size_t>(i)] = (rank > 0 || i >= n) ? global_src : 0;
     }
     EXPECT_EQ(data, expected);
@@ -129,10 +129,10 @@ TEST(ShiftRight, ShiftByTwo) {
 
 TEST(ShiftRight, ShiftByLocalSize) {
     kamping::v2::comm_view comm{MPI_COMM_WORLD};
-    int const rank    = comm.rank();
-    int const p       = comm.size();
-    int const local_n = 4;
-    auto      data    = iota_local(rank, local_n);
+    int const              rank    = comm.rank();
+    int const              p       = comm.size();
+    int const              local_n = 4;
+    auto                   data    = iota_local(rank, local_n);
 
     // n == local_n: each rank's buffer is entirely replaced by the left neighbor's data.
     auto res = dstl::shift_right(data, local_n, comm);
@@ -199,9 +199,7 @@ TEST(ShiftLeft, IrregularNExceedsLocalSizeOnSomeRanks) {
     // Elements outside [res.begin(), res.end()) are in a valid but unspecified state.
     EXPECT_EQ(res.begin(), data.begin());
     EXPECT_EQ(res.end(), data.begin() + valid_n);
-    EXPECT_EQ(
-        std::vector<int>(res.begin(), res.end()),
-        std::vector<int>(expected.begin(), expected.begin() + valid_n));
+    EXPECT_EQ(std::vector<int>(res.begin(), res.end()), std::vector<int>(expected.begin(), expected.begin() + valid_n));
 }
 
 // shift_right by more than local_size of the last rank (rank 3 has 2 elements, n=3).
@@ -259,18 +257,19 @@ TEST(ShiftRight, IrregularNExceedsLocalSizeOnSomeRanks) {
     EXPECT_EQ(res.end(), data.end());
     EXPECT_EQ(
         std::vector<int>(res.begin(), res.end()),
-        std::vector<int>(expected.begin() + valid_recv_start, expected.end()));
+        std::vector<int>(expected.begin() + valid_recv_start, expected.end())
+    );
 }
 
 // shift_left where n >= total global size: no effects (matches std::shift_left).
 TEST(ShiftLeft, ShiftByTotalOrMoreIsNoOp) {
     kamping::v2::comm_view comm{MPI_COMM_WORLD};
-    int const rank    = comm.rank();
-    int const p       = comm.size();
-    int const local_n = 3;
-    auto const original = iota_local(rank, local_n);
-    auto       data     = original;
-    int const  total    = p * local_n;
+    int const              rank     = comm.rank();
+    int const              p        = comm.size();
+    int const              local_n  = 3;
+    auto const             original = iota_local(rank, local_n);
+    auto                   data     = original;
+    int const              total    = p * local_n;
 
     auto res = dstl::shift_left(data, total, comm);
 
@@ -282,12 +281,12 @@ TEST(ShiftLeft, ShiftByTotalOrMoreIsNoOp) {
 // shift_right where n >= total global size: no effects (matches std::shift_right).
 TEST(ShiftRight, ShiftByTotalOrMoreIsNoOp) {
     kamping::v2::comm_view comm{MPI_COMM_WORLD};
-    int const rank    = comm.rank();
-    int const p       = comm.size();
-    int const local_n = 3;
-    auto const original = iota_local(rank, local_n);
-    auto       data     = original;
-    int const  total    = p * local_n;
+    int const              rank     = comm.rank();
+    int const              p        = comm.size();
+    int const              local_n  = 3;
+    auto const             original = iota_local(rank, local_n);
+    auto                   data     = original;
+    int const              total    = p * local_n;
 
     auto res = dstl::shift_right(data, total, comm);
 
@@ -304,9 +303,9 @@ TEST(ShiftLeft, SingleRankMatchesStd) {
     if (comm.size() != 1) {
         GTEST_SKIP() << "single-rank only";
     }
-    std::vector<int> data  = {1, 2, 3, 4, 5, 6};
-    std::vector<int> ref   = data;
-    int const        n     = 3;
+    std::vector<int> data = {1, 2, 3, 4, 5, 6};
+    std::vector<int> ref  = data;
+    int const        n    = 3;
     std::shift_left(ref.begin(), ref.end(), n);
     // Tail gets T{} = 0 in dstl version (MPI_PROC_NULL staging).
     std::fill(ref.end() - n, ref.end(), 0);

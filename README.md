@@ -1,155 +1,207 @@
-![GitHub](https://img.shields.io/github/license/kamping-site/kamping-v2)
+<p align="center">
+  <img src="docs/icon.svg" alt="KaMPIng logo" width="140">
+</p>
 
-# KaMPIng v2
+<h1 align="center">KaMPIng v2</h1>
 
-KaMPIng v2 is a next-generation C++20 MPI wrapper built around a *concept-based buffer protocol* and composable range adaptors. Instead of wrapping arguments in named-parameter factories, callers pipe standard C++ objects through `std::ranges`-style view chains that attach MPI metadata (element count, MPI datatype, per-rank counts, displacements). The resulting view satisfies one of the buffer concepts and is passed directly to a free-function MPI wrapper.
+<p align="center">
+  <em>MPI for modern C++: pass your containers, let the library figure out the rest.</em>
+</p>
 
-```cpp
-// Simple point-to-point
-kamping::v2::send(data, 1, comm);
-kamping::v2::recv(data | kamping::views::resize, comm);
+<p align="center">
+  <img src="https://img.shields.io/github/license/kamping-site/kamping-v2" alt="License">
+</p>
 
-// Variadic collective with automatic counts/displacements
-kamping::v2::alltoallv(send_buf | kamping::views::with_counts(scounts),
-                       kamping::v2::auto_recv_v<int>(),
-                       comm);
+---
 
-// Non-blocking with automatic resize
-auto req = kamping::v2::irecv(buf | kamping::views::resize, comm);
-// ... other work ...
-auto result = req.wait();
-```
-
-## Repository layout
-
-| Component | Description | C++ standard | CMake target |
-|-----------|-------------|:---:|---|
-| `mpi-core/` | Low-level MPI wrappers. Buffer concepts and accessor dispatch (`mpi::experimental::`). | C++20 | `mpi::core` |
-| `kamping-v2/` | High-level wrappers with ownership, infer, resize, auto-counts/displs (`kamping::v2::`). | C++20 | `kamping::v2` |
-| `ecosystem/cereal/` | Cereal serialization adapter. | C++20 | `kamping::ecosystem::cereal` |
-| `ecosystem/kokkos/` | Kokkos view adapter (device-aware MPI via `buffer_traits`). | C++20 | `kamping::ecosystem::kokkos` |
-| `ecosystem/sycl/` | SYCL accessor adapter via `sycl_view` (Intel oneAPI DPC++ only). | C++20 | `kamping::ecosystem::sycl` |
-| `ecosystem/thrust/` | Thrust `device_vector` adapter for CUDA-aware MPI. | C++20 | `kamping::ecosystem::thrust` |
-
-`kamping-types` (MPI datatype registry, `kamping::types`) is consumed from the [kamping-site/kamping](https://github.com/kamping-site/kamping) repository via FetchContent.
-
-## Quick Start
-
-### Using kamping-v2 via FetchContent
-
-```cmake
-include(FetchContent)
-FetchContent_Declare(
-    kamping_v2
-    GIT_REPOSITORY https://github.com/kamping-site/kamping-v2.git
-    GIT_TAG main
-)
-FetchContent_MakeAvailable(kamping_v2)
-target_link_libraries(myapp PRIVATE kamping::v2)
-```
-
-### Using only mpi-core via FetchContent
-
-```cmake
-include(FetchContent)
-FetchContent_Declare(
-    kamping_v2
-    GIT_REPOSITORY https://github.com/kamping-site/kamping-v2.git
-    GIT_TAG main
-    SOURCE_SUBDIR mpi-core
-)
-FetchContent_MakeAvailable(kamping_v2)
-target_link_libraries(myapp PRIVATE mpi::core)
-```
-
-## Supported Operations
-
-**Collectives:** `allgather`, `allgatherv`, `allreduce`, `alltoall`, `alltoallv`, `barrier`, `bcast`, `exscan`, `gather`, `gatherv`, `reduce`, `scan`, `scatter`, `scatterv`
-
-**Point-to-point:** `send`, `recv`, `sendrecv`, `isend`, `irecv`, `isendrecv`
-
-## Building
-
-Requires CMake 3.25+, a C++20 compiler, and an MPI installation.
-
-```bash
-# Configure (builds tests and examples)
-cmake --preset debug    # or: release, relwithdeb
-
-# Build
-cmake --build --preset debug --parallel
-
-# Test
-ctest --preset debug
-```
-
-Key CMake options:
-
-| Option | Default | Description |
-|--------|---------|-------------|
-| `KAMPING_BUILD_EXAMPLES_AND_TESTS` | `OFF` | Build tests and examples |
-| `KAMPING_WARNINGS_ARE_ERRORS` | `OFF` | Treat warnings as errors |
-| `KAMPING_ENABLE_SERIALIZATION` | `OFF` | Build the Cereal ecosystem adapter |
-| `KAMPING_ENABLE_KOKKOS` | `OFF` | Build the Kokkos ecosystem adapter |
-| `KAMPING_ENABLE_REFLECTION` | `ON` | Enable Boost.PFR struct reflection in kamping-types |
-
-## Buffer Protocol
-
-Any type satisfying the buffer concepts can be passed to MPI wrappers — no inheritance required. Accessor dispatch follows a three-tier priority:
-
-1. `mpi::experimental::buffer_traits<T>` specialization (non-intrusive, for types you don't own)
-2. `t.mpi_count()` / `t.mpi_ptr()` / `t.mpi_type()` member functions
-3. `std::ranges::size` / `std::ranges::data` + builtin MPI type deduction
+MPI is powerful, but calling it from C++ means juggling raw pointers, element counts, datatypes, and
+displacement arrays by hand, and getting any of them wrong usually crashes or hangs. **KaMPIng v2** lets you
+hand MPI the objects you already have, like a `std::vector`, a `std::span`, or a Kokkos view. The library works
+out the pointer, the count, and the datatype for you. When you need more, such as a receive buffer that grows to
+fit, per-rank counts, or a custom datatype, you add it with a small, readable `|` pipe, much like
+`std::ranges` views.
 
 ```cpp
-// Adapt any third-party type non-intrusively:
+#include <kamping/v2.hpp>
+
+namespace v2 = kamping::v2;
+
+int main(int argc, char* argv[]) {
+    v2::environment env(argc, argv);
+    v2::comm_view   comm{MPI_COMM_WORLD};
+
+    // Point-to-point: the receiver does not need to know the message size in advance.
+    if (comm.rank() == 0) {
+        std::vector<int> data{1, 2, 3, 4};
+        v2::send(data, 1, comm);
+    } else if (comm.rank() == 1) {
+        std::vector<int> data;
+        v2::recv(data | v2::views::resize, 0, v2::DEFAULT_SEND_TAG, comm); // resized to fit the message
+    }
+
+    // Collectives: every rank contributes a different amount; counts are exchanged for you.
+    std::vector<int> mine(static_cast<std::size_t>(comm.rank()) + 1, comm.rank());
+    auto [_, everything] = v2::allgatherv(mine, v2::auto_recv_v<int>(), comm);
+
+    // Reductions with standard functors; ref_single turns a single value into a buffer.
+    int rank = comm.rank();
+    int sum  = 0;
+    v2::allreduce(v2::views::ref_single(rank), v2::views::ref_single(sum), std::plus<>{}, comm);
+}
+```
+
+KaMPIng v2 is header-only and requires C++20. It is the successor of [KaMPIng](https://github.com/kamping-site/kamping),
+redesigned around C++20 concepts instead of named parameters.
+
+## Highlights
+
+- **Zero-boilerplate buffers.** Any contiguous range of a builtin type is a valid MPI buffer as is. Other types
+  plug in through a trait or a few member functions, with no inheritance and no wrappers.
+- **Receive buffers that size themselves.** Pipe a container through `views::resize`, and KaMPIng probes the
+  message or exchanges the counts before receiving.
+- **Composable views.** `with_type`, `with_counts`, `with_displs`, `auto_displs`, `flatten_v`, … combine with `|`
+  and compute their metadata lazily.
+- **Ownership you can see.** Pass an lvalue and the library borrows it. Pass an rvalue and it takes ownership
+  and hands the buffer back when the operation completes.
+- **Safe non-blocking operations.** `isend`/`irecv` return an `iresult` that keeps its buffer alive. Forgetting
+  to complete it is caught loudly instead of silently corrupting memory.
+- **Bring your own ecosystem.** Adapters for Cereal (serialization), Kokkos, Thrust, and SYCL.
+
+## How it works
+
+An MPI call needs a few facts about each buffer: where its data starts, how many elements it holds, and their
+MPI datatype. Variadic operations such as `alltoallv` also need per-rank counts and displacements. KaMPIng asks
+your object for these facts through a small set of accessor functions:
+
+| Accessor | Default for a `std::vector<int>` | Customize via |
+|----------|----------------------------------|---------------|
+| `count(buf)` | `std::ranges::size` | `mpi_count()` member or `buffer_traits` |
+| `ptr(buf)` | `std::ranges::data` | `mpi_ptr()` member or `buffer_traits` |
+| `type(buf)` | `MPI_INT` (deduced) | `mpi_type()` member, `buffer_traits`, or `views::with_type(dt)` |
+| `counts(buf)`, `displs(buf)` | — | `mpi_counts()`/`mpi_displs()` members, `views::with_counts`, `views::auto_displs`, … |
+
+To adapt a type you can't modify, specialize `buffer_traits`:
+
+```cpp
 template <>
 struct mpi::experimental::buffer_traits<MyType> {
-    static std::ptrdiff_t count(MyType const& t) { return 1; }
-    static int const*     ptr(MyType const& t)   { return &t.val; }
-    static int*           ptr(MyType& t)         { return &t.val; }
+    static std::ptrdiff_t count(MyType const& t) { return t.size; }
+    static int const*     ptr(MyType const& t)   { return t.values; } // used for sending
+    static int*           ptr(MyType& t)         { return t.values; } // used for receiving
     static MPI_Datatype   type(MyType const&)    { return MPI_INT; }
 };
 ```
 
-## View Adaptors
+Before each operation, KaMPIng calls a customization point named `infer()`. It fills in whatever a buffer left
+open, for example by probing a message to size a `views::resize` buffer. You can overload `infer()` for your
+own buffer types to exchange extra metadata.
 
-All views are composable with `|` and lazy:
+## Views
 
-| View factory | Effect |
-|---|---|
-| `views::resize` | Marks a container as resizable; MPI recv resizes before writing |
-| `views::with_type(dt)` | Overrides the MPI datatype |
-| `views::with_size(n)` | Overrides element count |
-| `views::with_counts(range)` | Attaches per-rank send/recv counts (variadic operations) |
-| `views::with_displs(range)` | Attaches per-rank displacements |
-| `views::auto_displs([resize,] [container])` | Computes displacements via exclusive_scan of counts; pass `resize` tag to auto-resize the displacement buffer, `container` to use custom storage (default `std::vector<int>`) |
-| `views::resize_v` | Variadic recv buffer: resizes from counts+displs before receive |
-| `views::auto_counts([buf])` | Deferred variadic counts buffer |
-| `views::auto_recv_v` | Shorthand for `auto_counts() \| auto_displs() \| resize_v` |
-| `views::ref_single(val)` | Wraps a single scalar as a one-element contiguous buffer |
-| `views::serialize` / `views::deserialize<T>()` | Cereal serialization (ecosystem/cereal) |
+All views compose with `|` and live in `kamping::v2::views`.
 
-## Non-Blocking Operations
+| View | What it does |
+|------|--------------|
+| `resize` | Resizes the container to fit the incoming data before receiving |
+| `with_type(dt)` | Uses the MPI datatype `dt` |
+| `with_count(n)` | Uses `n` as the element count |
+| `with_counts(counts)` | Attaches per-rank counts (variadic operations) |
+| `with_displs([monotonic,] displs)` | Attaches per-rank displacements |
+| `auto_counts([[resize,] counts])` | Per-rank counts that the operation exchanges for you |
+| `auto_displs([[resize,] displs])` | Computes displacements from the counts (exclusive prefix sum) |
+| `resize_v` | Resizes a variadic receive buffer to fit its counts and displacements |
+| `auto_recv_v` | Shorthand for `auto_counts() \| auto_displs() \| resize_v` |
+| `flatten_v()` | Turns a range of per-rank ranges (or `(rank, value)` pairs) into one variadic send buffer |
+| `chunked` | The inverse: splits a variadic buffer into per-rank `std::span`s |
+| `ref_single(x)` | Treats a single value as a one-element buffer |
+| `with_pool(pool)` / `with_auto_pool(pool)` | Attaches a derived datatype from a `type_pool` |
 
-Non-blocking calls return `iresult<Buf>` — a move-only handle that stores the buffer on the heap so the pointer captured by MPI stays stable. The destructor calls `MPI_Wait` if not already completed.
+The factories `auto_recv<T>()` and `auto_recv_v<T>()` create a fresh, owned receive buffer that sizes itself.
+
+## Non-blocking operations
+
+Non-blocking operations return an `iresult`, which owns the request and, for rvalue buffers, the buffer as well.
+The buffer lives on the heap, so moving the `iresult` around never invalidates the pointer MPI is writing to.
 
 ```cpp
-auto req = kamping::v2::isend(data, 1, comm);
-// ... other work ...
-req.wait();
+// Receiver: the iresult owns the vector until the receive completes.
+auto pending = v2::irecv(std::vector<int>{} | v2::views::resize, 0, MPI_ANY_TAG, comm);
+// ... do other work ...
+std::vector<int> data = pending.wait().underlying(); // the owned buffer is handed back
 
-auto req2 = kamping::v2::irecv(buf | kamping::views::resize, comm);
-auto result = req2.wait();  // returns the resized buffer
-
-// Poll without blocking: bool for borrowed buffers, std::optional<T> for owned
-if (auto r = req2.test()) { /* completed */ }
+// Sender: `data` is borrowed, so test() just reports completion.
+auto sending = v2::isend(data, 1, comm);
+while (!sending.test()) { /* do other work */ }
 ```
 
-## Relation to KaMPIng v1
+An `iresult` must be completed with `wait()` or a successful `test()`. KaMPIng never completes a request
+behind your back. Destroying one that is still active prints a diagnostic and calls `std::terminate()`, so the
+buffer is never freed while MPI may still use it.
 
-The original KaMPIng (named-parameter / template-metaprogramming API, C++17) lives in [kamping-site/kamping](https://github.com/kamping-site/kamping). v1 and v2 share the `kamping-types` type-registry library (maintained in the v1 repo). The two APIs are independent and can coexist in the same binary.
+## Supported operations
+
+**Point-to-point:** `send` (standard, buffered, synchronous, and ready modes), `recv`, `sendrecv`, `isend`, `irecv`,
+`isendrecv`, `probe`, `iprobe`, `mprobe`, `improbe`, `mrecv`, `imrecv`
+
+**Collectives:** `allgather`, `allgatherv`, `allreduce`, `alltoall`, `alltoallv`, `barrier`, `ibarrier`, `bcast`,
+`exscan`, `gather`, `gatherv`, `reduce`, `scan`, `scatter`, `scatterv`
+
+**Completion:** `wait`, `waitall`, `waitany`, `waitsome`, and their `test` counterparts
+
+**Objects:** communicators, groups, windows, info objects, sessions (MPI 4), attribute caching, and custom
+reduction operations via `make_op`
+
+## Getting started
+
+KaMPIng v2 needs CMake 3.25+, a C++20 compiler, and an MPI installation. The easiest way to use it is
+`FetchContent`:
+
+```cmake
+include(FetchContent)
+FetchContent_Declare(
+    kamping_v2
+    GIT_REPOSITORY https://github.com/kamping-site/kamping-v2.git
+    GIT_TAG main
+)
+FetchContent_MakeAvailable(kamping_v2)
+
+target_link_libraries(my_app PRIVATE kamping::v2)
+```
+
+Include `<kamping/v2.hpp>` for everything, or individual headers such as `<kamping/v2/collectives/alltoallv.hpp>`
+to keep compile times down.
+
+### Building the tests and examples
+
+```bash
+cmake --preset debug                     # or: release, relwithdeb
+cmake --build --preset debug --parallel
+ctest --preset debug
+```
+
+| CMake option | Default | Description |
+|--------------|---------|-------------|
+| `KAMPING_BUILD_EXAMPLES_AND_TESTS` | `OFF` | Build tests and examples (on in the presets) |
+| `KAMPING_WARNINGS_ARE_ERRORS` | `OFF` | Treat warnings as errors |
+| `KAMPING_ENABLE_SERIALIZATION` | `OFF` | Build the Cereal adapter |
+| `KAMPING_ENABLE_KOKKOS` | `OFF` | Build the Kokkos adapter |
+| `KAMPING_ENABLE_REFLECTION` | `ON` | Derive MPI datatypes for plain structs via Boost.PFR |
+
+## Repository layout
+
+KaMPIng v2 is built in layers. You can use the lower ones on their own.
+
+| Directory | Namespace | CMake target | What it is |
+|-----------|-----------|--------------|------------|
+| `mpi-core/` | `mpi::experimental` | `mpi::core` | Thin, explicit MPI wrappers: one MPI call each, no inference or resizing |
+| `kamping-v2/` | `kamping::v2` | `kamping::v2` | The ergonomic layer: views, `infer()`, self-sizing buffers, `iresult` |
+| `dstl/` | `dstl` | `dstl` | Distributed algorithms built on top (sparse all-to-all, grid all-to-all, scans, …) |
+| `ecosystem/` | `kamping::ecosystem` | `kamping::ecosystem::<name>` | Adapters for Cereal, Kokkos, Thrust, and SYCL |
+
+MPI datatypes for user types come from `kamping-types`, which is shared with
+[KaMPIng v1](https://github.com/kamping-site/kamping) and fetched automatically. KaMPIng v1 and v2 are
+independent and can be used in the same program.
 
 ## License
 
-KaMPIng-v2 is released under the Boost Software License 1.0. See [LICENSE](LICENSE) for details.
+KaMPIng v2 is released under the [Boost Software License 1.0](LICENSE).

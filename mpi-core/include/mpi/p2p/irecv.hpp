@@ -10,6 +10,8 @@
 #include "mpi/handle.hpp"
 
 namespace mpi::experimental {
+/// Starts receiving a message from `source` with `tag` into `rbuf` (`MPI_Irecv`). The caller must keep `rbuf` alive and
+/// complete `request`.
 template <
     recv_buffer                                RBuf,
     rank                                       Source  = int,

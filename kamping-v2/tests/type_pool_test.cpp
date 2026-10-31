@@ -6,10 +6,10 @@
 
 #include "kamping/types/contiguous_type.hpp"
 #include "kamping/types/mpi_type_traits.hpp"
+#include "kamping/v2/buffer.hpp"
 #include "kamping/v2/collectives/bcast.hpp"
+#include "kamping/v2/comm.hpp"
 #include "kamping/v2/type_pool.hpp"
-#include "mpi/buffer.hpp"
-#include "mpi/comm.hpp"
 
 struct MyStruct {
     int    x;
@@ -63,7 +63,7 @@ TEST(TypePoolTest, WithPoolSetsCorrectType) {
     MPI_Datatype           registered = pool.register_type<MyStruct>();
     std::vector<MyStruct>  v{{1, 2.0}};
     auto                   view = v | kamping::v2::views::with_pool(pool);
-    EXPECT_EQ(mpi::experimental::type(view), registered);
+    EXPECT_EQ(kamping::v2::type(view), registered);
 }
 
 // with_auto_pool registers the type on first use; find() returns it afterwards.
@@ -73,12 +73,12 @@ TEST(TypePoolTest, WithAutoPoolRegistersType) {
     std::vector<MyStruct> v{{1, 2.0}};
     auto                  view = v | kamping::v2::views::with_auto_pool(pool);
     ASSERT_TRUE(pool.find<MyStruct>().has_value());
-    EXPECT_EQ(mpi::experimental::type(view), *pool.find<MyStruct>());
+    EXPECT_EQ(kamping::v2::type(view), *pool.find<MyStruct>());
 }
 
 // Integration: bcast a vector of custom structs using with_pool.
 TEST(TypePoolTest, BcastWithPool) {
-    mpi::experimental::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm{MPI_COMM_WORLD};
     kamping::v2::type_pool pool;
     pool.register_type<MyStruct>();
     std::vector<MyStruct> v;

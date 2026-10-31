@@ -32,17 +32,17 @@ namespace kamping::v2 {
 /// @endcode
 template <typename Base>
 class device_ptr_view : public view_interface<device_ptr_view<Base>> {
-    Base base_;
+    Base _base;
 
 public:
     template <typename R>
-    explicit device_ptr_view(R&& base) : base_(kamping::v2::all(std::forward<R>(base))) {}
+    explicit device_ptr_view(R&& base) : _base(kamping::v2::all(std::forward<R>(base))) {}
 
     constexpr Base& base() & noexcept {
-        return base_;
+        return _base;
     }
     constexpr Base const& base() const& noexcept {
-        return base_;
+        return _base;
     }
 
     /// Returns the raw device pointer via thrust::device_ptr::get().

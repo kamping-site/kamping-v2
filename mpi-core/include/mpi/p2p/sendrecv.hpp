@@ -11,6 +11,9 @@
 
 namespace mpi::experimental {
 
+/// Sends `sbuf` to `dest` and receives into `rbuf` from `source` in one call (`MPI_Sendrecv`).
+///
+/// @param status Filled with the status of the received message; pass `MPI_STATUS_IGNORE` if not needed.
 template <
     send_buffer                               SBuf,
     recv_buffer                               RBuf,

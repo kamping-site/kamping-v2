@@ -7,7 +7,7 @@
 
 #if defined(MPI_VERSION) && MPI_VERSION >= 4
 
-#include <string_view>
+    #include <string_view>
 
 namespace kamping::v2 {
 

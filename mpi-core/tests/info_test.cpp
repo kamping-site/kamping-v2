@@ -5,8 +5,8 @@
 #include <string>
 #include <vector>
 
-#include <gtest/gtest.h>
 #include <gmock/gmock.h>
+#include <gtest/gtest.h>
 #include <mpi.h>
 
 #include "mpi/handle.hpp"
@@ -39,7 +39,7 @@ TEST(InfoTest, DefaultConstructCreatesHandle) {
 }
 
 TEST(InfoTest, MoveConstructTransfersOwnership) {
-    info a;
+    info     a;
     MPI_Info raw = a.mpi_handle();
     info     b(std::move(a));
     EXPECT_EQ(a.mpi_handle(), MPI_INFO_NULL); // moved-from is null
@@ -47,8 +47,8 @@ TEST(InfoTest, MoveConstructTransfersOwnership) {
 }
 
 TEST(InfoTest, MoveAssignTransfersOwnership) {
-    info a;
-    info b;
+    info     a;
+    info     b;
     MPI_Info raw = a.mpi_handle();
     b            = std::move(a);
     EXPECT_EQ(a.mpi_handle(), MPI_INFO_NULL);
@@ -87,7 +87,7 @@ TEST(InfoTest, ReleaseRelinquishesOwnership) {
 }
 
 TEST(InfoTest, ImplicitConversionToView) {
-    info      i;
+    info i;
     i.set("k", "v");
     info_view iv = i;
     EXPECT_EQ(iv.mpi_handle(), i.mpi_handle());
@@ -95,7 +95,7 @@ TEST(InfoTest, ImplicitConversionToView) {
 }
 
 TEST(InfoViewTest, DupViaAccessorBase) {
-    info      i;
+    info i;
     i.set("k", "v");
     info_view iv  = i;
     info      dup = iv.dup();
@@ -188,9 +188,9 @@ TEST(InfoTest, SentinelConcept) {
 }
 
 TEST(InfoTest, EmptyInfoIteratesZeroTimes) {
-    info        i;
-    int         count = 0;
-    for (auto [k, v] : i.entries()) {
+    info i;
+    int  count = 0;
+    for (auto [k, v]: i.entries()) {
         (void)k;
         (void)v;
         ++count;
@@ -205,7 +205,7 @@ TEST(InfoTest, IteratesAllEntries) {
     i.set("z", "3");
 
     std::vector<std::pair<std::string, std::string>> collected;
-    for (auto kv : i.entries()) {
+    for (auto kv: i.entries()) {
         collected.push_back(kv);
     }
     EXPECT_EQ(collected.size(), 3u);
@@ -238,7 +238,7 @@ TEST(InfoTest, SetGetThreadLevel) {
 TEST(InfoTest, StructuredBindingsRangeFor) {
     info i;
     i.set("hello", "world");
-    for (auto [k, v] : i) { // begin()/end() on i itself
+    for (auto [k, v]: i) { // begin()/end() on i itself
         EXPECT_EQ(k, "hello");
         EXPECT_EQ(v, "world");
     }

@@ -12,11 +12,9 @@
 #include "mpi/handle.hpp"
 
 namespace mpi::experimental {
-template <
-    send_buffer_v                       SBuf,
-    recv_buffer                         RBuf,
-    rank                                Root,
-    convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+/// Distributes parts of the variadic buffer `sbuf` on `root` to all ranks, receiving into `rbuf` (`MPI_Scatterv`).
+/// `sbuf` is ignored on the other ranks.
+template <send_buffer_v SBuf, recv_buffer RBuf, rank Root, convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
 void scatterv(SBuf&& sbuf, RBuf&& rbuf, Root root, Comm const& comm) {
     int err = MPI_Scatterv(
         ptr(sbuf),

@@ -10,6 +10,9 @@
 
 namespace mpi::experimental {
 
+/// Blocks until a message matching `source` and `tag` arrives and matches it (`MPI_Mprobe`).
+///
+/// The message is removed from the matching queue and must be received through `message` with `mrecv()` or `imrecv()`.
 template <
     rank                                       Source  = int,
     tag                                        Tag     = int,

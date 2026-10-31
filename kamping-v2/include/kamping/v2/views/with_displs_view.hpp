@@ -14,50 +14,54 @@
 
 namespace kamping::v2 {
 
+/// Attaches per-rank displacements (`mpi_displs()`) to the wrapped buffer, for variadic collectives.
+///
+/// @tparam monotonic If true, the displacements are declared monotonically non-decreasing (see @ref monotonic_t).
 template <typename Base, mpi::experimental::count_range Displs, bool monotonic = false>
 class with_displs_view : public view_interface<with_displs_view<Base, Displs, monotonic>> {
-    Base   base_;
-    Displs displs_;
+    Base   _base;
+    Displs _displs;
 
 public:
     constexpr Base const& base() const& noexcept {
-        return base_;
+        return _base;
     }
     constexpr Base& base() & noexcept {
-        return base_;
+        return _base;
     }
     constexpr Base&& base() && noexcept {
-        return std::move(base_);
+        return std::move(_base);
     }
 
     template <typename R, typename C>
     with_displs_view(R&& base, C&& displs)
-        : base_(kamping::v2::all(std::forward<R>(base))),
-          displs_(kamping::v2::all(std::forward<C>(displs))) {}
+        : _base(kamping::v2::all(std::forward<R>(base))),
+          _displs(kamping::v2::all(std::forward<C>(displs))) {}
 
     /// Tag-dispatch constructor: marks displacements as monotonically non-decreasing,
     /// enabling the O(1) fast path in resize_v_view.
     template <typename R, typename C>
     with_displs_view(kamping::v2::monotonic_t, R&& base, C&& displs)
-        : base_(kamping::v2::all(std::forward<R>(base))),
-          displs_(kamping::v2::all(std::forward<C>(displs))) {}
+        : _base(kamping::v2::all(std::forward<R>(base))),
+          _displs(kamping::v2::all(std::forward<C>(displs))) {}
 
     constexpr Displs const& displs() const& {
-        return displs_;
+        return _displs;
     }
     constexpr Displs& displs() & {
-        return displs_;
+        return _displs;
     }
     constexpr Displs&& displs() && {
-        return std::move(displs_);
+        return std::move(_displs);
     }
 
+    /// Moves out the wrapped buffer and the displacements.
     constexpr std::pair<Base, Displs> extract() && {
-        return {std::move(base_), std::move(displs_)};
+        return {std::move(_base), std::move(_displs)};
     }
 
     std::span<int const> mpi_displs() const {
-        return {displs_};
+        return {_displs};
     }
 
     /// User-declared displacements are monotonic when constructed with the monotonic tag.
@@ -83,6 +87,8 @@ inline constexpr bool enable_borrowed_buffer<with_displs_view<Base, Displs, mono
 
 namespace kamping::v2::views {
 
+/// Attaches per-rank displacements: `buf | views::with_displs(displs)`, or `buf | views::with_displs(monotonic,
+/// displs)` to declare them monotonically non-decreasing. The displacements are borrowed if passed as lvalue.
 inline constexpr struct with_displs_fn {
     // Partial / full (non-monotonic): with_displs(displs)  or  with_displs(r, displs)
     template <typename... Args>

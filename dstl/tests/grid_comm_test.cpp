@@ -8,10 +8,10 @@
 #include <mpi.h>
 
 #include "dstl/dstl.hpp"
-#include "mpi/comm.hpp"
+#include "kamping/v2/comm.hpp"
 
 using namespace ::testing;
-using mpi::experimental::comm_view;
+using kamping::v2::comm_view;
 
 namespace {
 int world_size() {
@@ -29,7 +29,7 @@ int world_rank() {
 // The default factoring (dims_create{2}) yields a complete grid whose factors multiply to p.
 TEST(GridCommTest, DefaultDimsAreComplete) {
     dstl::grid_comm<dstl::execution_policy::seq> grid{comm_view{MPI_COMM_WORLD}};
-    std::size_t                       product = 1;
+    std::size_t                                  product = 1;
     for (std::size_t i = 0; i < grid.num_dims(); ++i) {
         product *= grid.dim_size(i);
     }
@@ -50,7 +50,7 @@ TEST(GridCommTest, CoordRoundTrip) {
 // the subcommunicator has the expected size s_i.
 TEST(GridCommTest, SubcommRankMatchesCoordinate) {
     dstl::grid_comm<dstl::execution_policy::seq> grid{comm_view{MPI_COMM_WORLD}};
-    auto                              coords = grid.coords(world_rank());
+    auto                                         coords = grid.coords(world_rank());
     for (std::size_t i = 0; i < grid.num_dims(); ++i) {
         EXPECT_EQ(static_cast<std::size_t>(grid.subcomm(i).size()), grid.dim_size(i));
         EXPECT_EQ(static_cast<std::size_t>(grid.subcomm(i).rank()), coords[i]) << "dimension " << i;
@@ -59,7 +59,7 @@ TEST(GridCommTest, SubcommRankMatchesCoordinate) {
 
 // Explicit dimensions are honored verbatim (here: a 1-D grid degenerates to the flat communicator).
 TEST(GridCommTest, ExplicitOneDimension) {
-    std::vector<std::size_t>          dims = {static_cast<std::size_t>(world_size())};
+    std::vector<std::size_t>                     dims = {static_cast<std::size_t>(world_size())};
     dstl::grid_comm<dstl::execution_policy::seq> grid{comm_view{MPI_COMM_WORLD}, std::span<std::size_t const>{dims}};
     EXPECT_EQ(grid.num_dims(), 1u);
     EXPECT_EQ(grid.dim_size(0), static_cast<std::size_t>(world_size()));
@@ -72,7 +72,7 @@ TEST(GridCommTest, ExplicitTwoByTwo) {
     if (world_size() != 4) {
         GTEST_SKIP() << "requires exactly 4 ranks";
     }
-    std::vector<std::size_t>          dims = {2, 2};
+    std::vector<std::size_t>                     dims = {2, 2};
     dstl::grid_comm<dstl::execution_policy::seq> grid{comm_view{MPI_COMM_WORLD}, std::span<std::size_t const>{dims}};
     // Row-major (c0 most significant): rank 0->(0,0), 1->(0,1), 2->(1,0), 3->(1,1).
     EXPECT_EQ(grid.coords(0), (std::vector<std::size_t>{0, 0}));

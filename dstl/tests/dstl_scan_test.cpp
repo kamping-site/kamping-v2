@@ -46,8 +46,8 @@ TEST(Reduce, WithInit) {
     int const                    n   = 2;
     auto const                   vec = iota_vec(comm.rank() * n, n);
 
-    int const total    = n * comm.size() * (n * comm.size() - 1) / 2;
-    int const result   = dstl::reduce(vec, 100, std::plus<int>{}, comm);
+    int const total  = n * comm.size() * (n * comm.size() - 1) / 2;
+    int const result = dstl::reduce(vec, 100, std::plus<int>{}, comm);
     EXPECT_EQ(result, 100 + total);
 }
 

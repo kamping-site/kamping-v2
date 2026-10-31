@@ -8,7 +8,9 @@
 #include <gtest/gtest.h>
 #include <mpi.h>
 
+#include "kamping/v2/comm.hpp"
 #include "kamping/v2/p2p/probe.hpp"
+#include "kamping/v2/status.hpp"
 #include "kamping/v2/views/ref_single_view.hpp"
 #include "mpi/comm.hpp"
 #include "mpi/message.hpp"
@@ -31,12 +33,12 @@ TEST(ProbeTest, improbe_no_message) {
 }
 
 TEST(ProbeTest, iprobe) {
-    static constexpr int         MY_TAG = 1358;
-    mpi::experimental::comm_view world{MPI_COMM_WORLD};
+    static constexpr int   MY_TAG = 1358;
+    kamping::v2::comm_view world{MPI_COMM_WORLD};
     if (world.rank() == 0) {
         mpi::experimental::send(std::views::single(42), 1, MY_TAG);
     } else if (world.rank() == 1) {
-        mpi::experimental::status status;
+        kamping::v2::status status;
         // first, try probing with the wrong tag a few times
         for (auto i = 0; i < 4; i++) {
             bool probed = mpi::experimental::iprobe(0, 0, MPI_COMM_WORLD);
@@ -55,12 +57,12 @@ TEST(ProbeTest, iprobe) {
 }
 
 TEST(ProbeTest, improbe) {
-    static constexpr int         MY_TAG = 1358;
-    mpi::experimental::comm_view world{MPI_COMM_WORLD};
+    static constexpr int   MY_TAG = 1358;
+    kamping::v2::comm_view world{MPI_COMM_WORLD};
     if (world.rank() == 0) {
         mpi::experimental::send(std::views::single(42), 1, MY_TAG);
     } else if (world.rank() == 1) {
-        mpi::experimental::status status;
+        kamping::v2::status status;
         // first, try probing with the wrong tag a few times
         mpi::experimental::message msg;
         for (auto i = 0; i < 4; i++) {
@@ -80,8 +82,8 @@ TEST(ProbeTest, improbe) {
 }
 
 TEST(ProbeTest, v2_mprobe) {
-    static constexpr int         MY_TAG = 1359;
-    mpi::experimental::comm_view world{MPI_COMM_WORLD};
+    static constexpr int   MY_TAG = 1359;
+    kamping::v2::comm_view world{MPI_COMM_WORLD};
     if (world.rank() == 0) {
         std::vector<int> data{1, 2, 3};
         mpi::experimental::send(data, 1, MY_TAG);
@@ -99,8 +101,8 @@ TEST(ProbeTest, v2_mprobe) {
 }
 
 TEST(ProbeTest, v2_improbe) {
-    static constexpr int         MY_TAG = 1360;
-    mpi::experimental::comm_view world{MPI_COMM_WORLD};
+    static constexpr int   MY_TAG = 1360;
+    kamping::v2::comm_view world{MPI_COMM_WORLD};
     if (world.rank() == 0) {
         mpi::experimental::send(std::views::single(42), 1, MY_TAG);
     } else if (world.rank() == 1) {

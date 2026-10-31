@@ -14,6 +14,12 @@
 #include "mpi/handle.hpp"
 
 namespace kamping::v2 {
+/// Exchanges variable amounts of data between all ranks (`MPI_Alltoallv`).
+///
+/// `sbuf` is a variadic buffer, e.g. `data | views::with_counts(c) | views::auto_displs()` or `nested |
+/// views::flatten_v()`. If `rbuf` has deferred counts (e.g. `auto_recv_v<T>()`), the counts are exchanged first and
+/// `rbuf` is sized to fit.
+/// @return The send and receive buffer (owned if passed as rvalue, borrowed otherwise).
 template <
     mpi::experimental::send_buffer_v                       SBuf,
     mpi::experimental::recv_buffer_v                       RBuf,

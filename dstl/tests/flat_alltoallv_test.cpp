@@ -10,11 +10,11 @@
 
 #include "alltoallv_test_common.hpp"
 #include "dstl/dstl.hpp"
+#include "kamping/v2/comm.hpp"
+#include "kamping/v2/environment.hpp"
 #include "kamping/v2/views.hpp"
-#include "mpi/comm.hpp"
-#include "mpi/environment.hpp"
 
-using mpi::experimental::comm_view;
+using kamping::v2::comm_view;
 namespace views = kamping::v2::views;
 using dstl_test::build_send;
 using dstl_test::sorted;
@@ -28,7 +28,7 @@ using dstl_test::world_size;
 // thread_multiple: the per-thread recv displacements reassemble each source's block contiguously in
 // rank-then-thread order, so the result is element-identical to the flat alltoallv.
 TEST(FlatAlltoallvTest, EqualsFlat) {
-    if (mpi::experimental::environment::thread_level() < mpi::experimental::ThreadLevel::multiple) {
+    if (kamping::v2::environment::thread_level() < kamping::v2::ThreadLevel::multiple) {
         GTEST_SKIP() << "runtime does not provide MPI_THREAD_MULTIPLE";
     }
     int rank                    = world_rank();
@@ -38,11 +38,7 @@ TEST(FlatAlltoallvTest, EqualsFlat) {
 
     dstl::thread_multiple_comm fc{comm_view{MPI_COMM_WORLD}};
     std::vector<int>           recv;
-    dstl::alltoallv(
-        data | views::with_counts(counts) | views::with_displs(displs),
-        recv | views::auto_recv_v,
-        fc
-    );
+    dstl::alltoallv(data | views::with_counts(counts) | views::with_displs(displs), recv | views::auto_recv_v, fc);
 
     EXPECT_EQ(sorted(recv), sorted(expected)); // multiset always holds
     EXPECT_EQ(recv, expected);                 // and the layout is flat-identical here
@@ -50,7 +46,7 @@ TEST(FlatAlltoallvTest, EqualsFlat) {
 
 // Owned (rvalue) recv buffer: the data lives in the returned result.
 TEST(FlatAlltoallvTest, OwnedRecvBuffer) {
-    if (mpi::experimental::environment::thread_level() < mpi::experimental::ThreadLevel::multiple) {
+    if (kamping::v2::environment::thread_level() < kamping::v2::ThreadLevel::multiple) {
         GTEST_SKIP() << "runtime does not provide MPI_THREAD_MULTIPLE";
     }
     int rank                    = world_rank();
@@ -69,7 +65,7 @@ TEST(FlatAlltoallvTest, OwnedRecvBuffer) {
 
 // Each rank sends exactly one element to each rank.
 TEST(FlatAlltoallvTest, UniformSingleElement) {
-    if (mpi::experimental::environment::thread_level() < mpi::experimental::ThreadLevel::multiple) {
+    if (kamping::v2::environment::thread_level() < kamping::v2::ThreadLevel::multiple) {
         GTEST_SKIP() << "runtime does not provide MPI_THREAD_MULTIPLE";
     }
     int              rank = world_rank();
@@ -91,7 +87,7 @@ TEST(FlatAlltoallvTest, UniformSingleElement) {
 // Deferred send buffer: sparse flatten_v() sends require set_comm_size() before counts/displs are
 // read. Without the fix, ensure_flattened() would assert comm_size_.has_value() and abort.
 TEST(FlatAlltoallvTest, DeferredSendBuf_SparseFlattenV) {
-    if (mpi::experimental::environment::thread_level() < mpi::experimental::ThreadLevel::multiple) {
+    if (kamping::v2::environment::thread_level() < kamping::v2::ThreadLevel::multiple) {
         GTEST_SKIP() << "runtime does not provide MPI_THREAD_MULTIPLE";
     }
     int rank                    = world_rank();
@@ -116,7 +112,7 @@ TEST(FlatAlltoallvTest, DeferredSendBuf_SparseFlattenV) {
 
 // Degenerate: every rank sends nothing.
 TEST(FlatAlltoallvTest, AllEmpty) {
-    if (mpi::experimental::environment::thread_level() < mpi::experimental::ThreadLevel::multiple) {
+    if (kamping::v2::environment::thread_level() < kamping::v2::ThreadLevel::multiple) {
         GTEST_SKIP() << "runtime does not provide MPI_THREAD_MULTIPLE";
     }
     int              size = world_size();

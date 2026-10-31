@@ -8,20 +8,20 @@
 #include <gtest/gtest.h>
 #include <mpi.h>
 
+#include "kamping/v2/comm.hpp"
 #include "kamping/v2/p2p/mrecv.hpp"
 #include "kamping/v2/p2p/probe.hpp"
 #include "kamping/v2/p2p/send.hpp"
 #include "kamping/v2/request.hpp"
 #include "kamping/v2/status.hpp"
 #include "kamping/v2/views.hpp"
-#include "mpi/comm.hpp"
 
 namespace {
 std::vector<int> const expected_data{1, 2, 3, 4, 5};
 
 /// Rank 0 sends `expected_data` to rank 1 with `tag`; returns true on rank 1, which should receive it.
 bool send_to_rank_one(int tag) {
-    mpi::experimental::comm_view world{MPI_COMM_WORLD};
+    kamping::v2::comm_view world{MPI_COMM_WORLD};
     if (world.rank() == 0) {
         kamping::v2::send(expected_data, 1, tag);
     }

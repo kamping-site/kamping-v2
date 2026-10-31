@@ -10,6 +10,7 @@
 #include "mpi/handle.hpp"
 
 namespace mpi::experimental {
+/// Starts sending `sbuf` to `dest` (`MPI_Isend`). The caller must keep `sbuf` alive and complete `request`.
 template <
     send_buffer                                SBuf,
     rank                                       Dest    = int,
@@ -31,6 +32,8 @@ void isend(SBuf&& sbuf, Dest dest, Tag tag, Comm const& comm, Request&& request)
     }
 }
 
+/// Starts sending `sbuf` to `dest` in buffered mode (`MPI_Ibsend`). The caller must keep `sbuf` alive and complete
+/// `request`.
 template <
     send_buffer                                SBuf,
     rank                                       Dest    = int,
@@ -52,6 +55,8 @@ void ibsend(SBuf&& sbuf, Dest dest, Tag tag, Comm const& comm, Request&& request
     }
 }
 
+/// Starts sending `sbuf` to `dest` in synchronous mode (`MPI_Issend`). The caller must keep `sbuf` alive and complete
+/// `request`.
 template <
     send_buffer                                SBuf,
     rank                                       Dest    = int,
@@ -73,6 +78,8 @@ void issend(SBuf&& sbuf, Dest dest, Tag tag, Comm const& comm, Request&& request
     }
 }
 
+/// Starts sending `sbuf` to `dest` in ready mode (`MPI_Irsend`). The caller must keep `sbuf` alive and complete
+/// `request`.
 template <
     send_buffer                                SBuf,
     rank                                       Dest    = int,

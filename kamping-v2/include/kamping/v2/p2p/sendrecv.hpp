@@ -13,6 +13,11 @@
 
 namespace kamping::v2 {
 
+/// Sends `sbuf` to `dest` and receives into `rbuf` from `source` in one call (`MPI_Sendrecv`).
+///
+/// If `rbuf` is a deferred receive buffer (e.g. `views::resize`), the counts are exchanged first and `rbuf` is resized.
+/// @param status Optional: filled with the status of the received message. Defaults to `MPI_STATUS_IGNORE`.
+/// @return The send and receive buffer (owned if passed as rvalue, borrowed otherwise).
 template <
     mpi::experimental::send_buffer                               SBuf,
     mpi::experimental::recv_buffer                               RBuf,
@@ -56,6 +61,7 @@ auto sendrecv(
     return res;
 }
 
+/// Like the overload above, but sends and receives with @ref DEFAULT_SEND_TAG.
 template <
     mpi::experimental::send_buffer                               SBuf,
     mpi::experimental::recv_buffer                               RBuf,

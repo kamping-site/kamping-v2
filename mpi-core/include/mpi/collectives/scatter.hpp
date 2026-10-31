@@ -11,6 +11,9 @@
 #include "mpi/handle.hpp"
 
 namespace mpi::experimental {
+/// Distributes equal shares of `sbuf` on `root` to all ranks, receiving into `rbuf` (`MPI_Scatter`).
+///
+/// On root, the per-rank send count is `count(sbuf) / comm_size`; `sbuf` is ignored on the other ranks.
 template <send_buffer SBuf, recv_buffer RBuf, rank Root, convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
 void scatter(SBuf&& sbuf, RBuf&& rbuf, Root root, Comm const& comm) {
     int comm_size = 0;

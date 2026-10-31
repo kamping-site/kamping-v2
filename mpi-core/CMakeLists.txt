@@ -50,7 +50,7 @@ target_compile_features(mpi_core INTERFACE cxx_std_20)
 target_link_libraries(mpi_core INTERFACE MPI::MPI_CXX kamping_v2::kassert kamping::types)
 
 # Set a sensible default assertion level so kassert does not warn about a missing definition
-# when mpi-core is used without kamping-v1 (which sets its own level on the kamping target).
+# when mpi-core is used on its own.
 # Debug → normal assertions (level 30, the level of a plain KAMPING_V2_ASSERT(...)); otherwise → exceptions only
 # (level 10). The Debug level must be at least 30, or every KAMPING_V2_ASSERT without an explicit level is
 # compiled out.
@@ -68,3 +68,15 @@ target_compile_definitions(
 )
 
 add_library(mpi::core ALIAS mpi_core)
+
+# Interface target for warning flags, used by the tests. The monorepo root appends -Werror on request.
+add_library(mpi_core_warnings INTERFACE)
+target_compile_options(
+    mpi_core_warnings INTERFACE
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion>
+    $<$<CXX_COMPILER_ID:MSVC>:/W4>
+)
+
+if (PROJECT_IS_TOP_LEVEL OR KAMPING_BUILD_EXAMPLES_AND_TESTS)
+    add_subdirectory(tests)
+endif ()

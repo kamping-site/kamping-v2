@@ -73,10 +73,8 @@ void win_allocate(std::size_t count, Comm const& c, T*& base, NewWin& new_win, I
     }
 }
 
-// ── CRTP mixin ──────────────────────────────────────────────────────────────
-// Provides accessors and synchronization for any window wrapper: `.group()`, `.fence()`.
-// Derived must implement `mpi_handle() const → MPI_Win`.
-
+/// CRTP mixin providing accessors and synchronization for any window wrapper: `.group()`, `.fence()`. `Derived` must
+/// implement `MPI_Win mpi_handle() const`.
 template <typename Derived>
 class win_accessors {
     [[nodiscard]] MPI_Win underlying() const noexcept {

@@ -11,6 +11,9 @@
 #include "mpi/handle.hpp"
 
 namespace mpi::experimental {
+/// Sends an equal share of `sbuf` to every rank and receives one share from every rank into `rbuf` (`MPI_Alltoall`).
+///
+/// The per-rank counts are `count(sbuf) / comm_size` and `count(rbuf) / comm_size`.
 template <send_buffer SBuf, recv_buffer RBuf, convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
 void alltoall(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = MPI_COMM_WORLD) {
     int comm_size = 0;

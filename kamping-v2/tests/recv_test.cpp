@@ -31,10 +31,18 @@ int MPI_Mprobe(int source, int tag, MPI_Comm comm, MPI_Message* message, MPI_Sta
 struct no_probe_buf {
     std::vector<int> data;
 
-    void          set_recv_count(std::ptrdiff_t n) { data.resize(static_cast<std::size_t>(n)); }
-    std::ptrdiff_t mpi_count() const { return static_cast<std::ptrdiff_t>(data.size()); }
-    int*          mpi_ptr() { return data.data(); }
-    MPI_Datatype  mpi_type() const { return MPI_INT; }
+    void set_recv_count(std::ptrdiff_t n) {
+        data.resize(static_cast<std::size_t>(n));
+    }
+    std::ptrdiff_t mpi_count() const {
+        return static_cast<std::ptrdiff_t>(data.size());
+    }
+    int* mpi_ptr() {
+        return data.data();
+    }
+    MPI_Datatype mpi_type() const {
+        return MPI_INT;
+    }
 };
 
 template <>
@@ -44,8 +52,7 @@ inline constexpr bool kamping::v2::supports_matched_probe<no_probe_buf> = false;
 
 static_assert(kamping::v2::supports_matched_probe<std::vector<int>>);
 static_assert(!kamping::v2::supports_matched_probe<no_probe_buf>);
-static_assert(!kamping::v2::supports_matched_probe<
-              kamping::v2::resize_view<kamping::v2::ref_view<no_probe_buf>>>);
+static_assert(!kamping::v2::supports_matched_probe<kamping::v2::resize_view<kamping::v2::ref_view<no_probe_buf>>>);
 
 // ── MPI functional tests ──────────────────────────────────────────────────────
 
@@ -62,7 +69,8 @@ TEST_F(V2RecvTest, MatchedProbeUsedForResizableVector) {
     int rank, size;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
-    if (size < 2) GTEST_SKIP();
+    if (size < 2)
+        GTEST_SKIP();
 
     if (rank == 0) {
         std::vector<int> data = {10, 20, 30};
@@ -81,7 +89,8 @@ TEST_F(V2RecvTest, UnmatchedProbeUsedForOptOutBuffer) {
     int rank, size;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
-    if (size < 2) GTEST_SKIP();
+    if (size < 2)
+        GTEST_SKIP();
 
     if (rank == 0) {
         std::vector<int> data = {10, 20, 30};
@@ -101,7 +110,8 @@ TEST_F(V2RecvTest, UnmatchedProbeWildcardSourceResolvesCorrectly) {
     int rank, size;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
-    if (size < 2) GTEST_SKIP();
+    if (size < 2)
+        GTEST_SKIP();
 
     if (rank == 0) {
         std::vector<int> data = {rank};

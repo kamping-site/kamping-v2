@@ -3,9 +3,8 @@
 
 #pragma once
 
-#include <thrust/device_vector.h>
-
 #include <mpi/buffer.hpp>
+#include <thrust/device_vector.h>
 
 /// @file
 /// Non-intrusive MPI buffer support for thrust::device_vector<T>.

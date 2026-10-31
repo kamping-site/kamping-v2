@@ -77,7 +77,7 @@ TEST_F(ScattervTest, variable_length_recv_presized) {
 // flatten_v_view::set_comm_size which uses mutable members), so this exercises the
 // deferred-send infer() overload that takes SBuf& rather than SBuf const&.
 TEST_F(ScattervTest, deferred_send_buf_flatten_v_with_type) {
-    std::vector<int> recv_data;
+    std::vector<int>       recv_data;
     kamping::v2::type_pool pool;
 
     if (rank_ == 0) {

@@ -12,6 +12,9 @@
 #include "mpi/ops.hpp"
 
 namespace mpi::experimental {
+/// Reduces `sbuf` across all ranks with `op` and stores the result in `rbuf` on every rank (`MPI_Allreduce`).
+///
+/// Pass `inplace` as `sbuf` to reduce `rbuf` in place. Otherwise `sbuf` and `rbuf` must have the same count and type.
 template <
     send_buffer                                            SBuf,
     recv_buffer                                            RBuf,

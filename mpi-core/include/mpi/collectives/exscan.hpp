@@ -24,7 +24,7 @@ namespace mpi::experimental {
 /// @tparam Op   Operation type satisfying valid_op<Op, SBuf, RBuf>
 /// @tparam Comm Communicator type convertible to MPI_Comm
 ///
-/// @param sbuf Send buffer; pass MPI_IN_PLACE to use rbuf for both send and recv.
+/// @param sbuf Send buffer; pass `inplace` to use rbuf for both send and recv.
 /// @param rbuf Receive buffer. Content undefined on rank 0 after the call.
 /// @param op   Reduction operation.
 /// @param comm MPI communicator (default: MPI_COMM_WORLD).

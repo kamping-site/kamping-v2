@@ -15,7 +15,7 @@ KaMPIng v2 uses a **layered architecture** with a clear separation of concerns:
 └──────────────┬──────────────────────────────────┘
                ↓ delegates to
 ┌──────────────────────────────────────────────────┐
-│  Core Layer (include/mpi/)                      │
+│  Core Layer (mpi-core/include/mpi/)             │
 │  - Buffer protocol (concepts, accessors)        │
 │  - Bare MPI wrappers (one call each)           │
 │  - Handle dispatch (traits-based)               │
@@ -144,7 +144,7 @@ Here's a step-by-step walkthrough using `allgather` as an example.
 
 ### Step 1: Implement the Core Wrapper
 
-**File:** `include/mpi/collectives/allgather.hpp`
+**File:** `mpi-core/include/mpi/collectives/allgather.hpp`
 
 ```cpp
 namespace mpi::experimental {
@@ -185,7 +185,7 @@ void allgather(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = MPI_COMM_WORLD) {
 
 ### Step 2: Define the Infer Overload
 
-**File:** `include/kamping/v2/infer.hpp`
+**File:** `kamping-v2/include/kamping/v2/infer.hpp`
 
 The operation tag lives in `comm_op` namespace, and the infer overload is generic:
 
@@ -224,7 +224,7 @@ The infer is called by the v2 wrapper before delegating to the core layer.
 
 ### Step 3: Implement the v2 Wrapper
 
-**File:** `include/kamping/v2/collectives/allgather.hpp`
+**File:** `kamping-v2/include/kamping/v2/collectives/allgather.hpp`
 
 ```cpp
 namespace kamping::v2 {
@@ -259,7 +259,7 @@ auto allgather(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = MPI_COMM_WORLD)
 
 ### Step 4: Tests
 
-Create `tests/v2/v2_allgather_test.cpp` with:
+Create `kamping-v2/tests/allgather_test.cpp` and register it in `kamping-v2/tests/CMakeLists.txt` with `kamping_v2_add_mpi_test(allgather CORES 1 2 4)`. Cover:
 - Single-rank send/recv
 - Multi-rank with uniform sizes
 - Multi-rank with non-uniform send sizes (validate recv sizing)
@@ -298,7 +298,7 @@ This means a view automatically satisfies `recv_buffer` if its base does, even i
 std::vector<int> data = {...};
 
 // Composed view: resize on receive, override element type
-auto view = data | kamping::views::resize | kamping::views::with_type(MPI_INT);
+auto view = data | kamping::v2::views::resize | kamping::v2::views::with_type(MPI_INT);
 
 // Lazy: metadata is computed only when MPI operation queries it
 // resize is forwarded through the adaptor chain via mpi_resize_for_receive()
@@ -307,7 +307,7 @@ auto view = data | kamping::views::resize | kamping::views::with_type(MPI_INT);
 **Implementation sketch:**
 
 ```cpp
-namespace kamping::views {
+namespace kamping::v2::views {
 
 struct resize_adaptor : adaptor_closure<resize_adaptor> {
     template <std::ranges::range R>
@@ -318,7 +318,7 @@ struct resize_adaptor : adaptor_closure<resize_adaptor> {
 
 inline constexpr resize_adaptor resize;
 
-} // namespace kamping::views
+} // namespace kamping::v2::views
 ```
 
 The `adaptor_closure` base provides `operator|` overloads that call `operator()`.
@@ -356,11 +356,11 @@ void allgatherv(SBuf&& sbuf, RBuf&& rbuf, MPI_Comm comm) {
 
 ## Reduction Operations (`make_op`)
 
-Reduce-like collectives (`reduce`, `allreduce`, `scan`, `exscan`) take an **operation** argument alongside their buffers. Operations follow the same **core-layer, traits-dispatched** design as buffers and handles — everything lives in `include/mpi/ops.hpp` (`mpi::experimental`), with the `kamping::v2` layer only re-exporting the user-facing names.
+Reduce-like collectives (`reduce`, `allreduce`, `scan`, `exscan`) take an **operation** argument alongside their buffers. Operations follow the same **core-layer, traits-dispatched** design as buffers and handles — everything lives in `mpi-core/include/mpi/ops.hpp` (`mpi::experimental`), with the `kamping::v2` layer only re-exporting the user-facing names.
 
 ### Operation dispatch (`as_mpi_op`)
 
-**File:** `include/mpi/ops.hpp`
+**File:** `mpi-core/include/mpi/ops.hpp`
 
 Every reduce-like wrapper resolves its operation argument to a raw `MPI_Op` via `mpi::experimental::as_mpi_op(op, sbuf, rbuf)`, with a 3-tier priority mirroring the buffer/handle accessors:
 
@@ -398,7 +398,7 @@ Overload (a) is constrained on `is_default_constructible_v<Op> && is_invocable_r
 
 ### Making the result flow through collectives
 
-`make_op` returns `ScopedFunctorOp` / `ScopedCallbackOp`, which expose their `MPI_Op` via `.get()` but have no `mpi_handle()` member. Two `handle_traits` specializations (also in `include/mpi/ops.hpp`) bridge that gap:
+`make_op` returns `ScopedFunctorOp` / `ScopedCallbackOp`, which expose their `MPI_Op` via `.get()` but have no `mpi_handle()` member. Two `handle_traits` specializations (also in `mpi-core/include/mpi/ops.hpp`) bridge that gap:
 
 ```cpp
 template <bool Commutative, typename T, typename Op>
@@ -601,7 +601,7 @@ TEST_F(AllgatherTest, DeferredRecvBuffer) {
     
     auto [s, r] = kamping::v2::allgather(
         send_data,
-        recv_data | kamping::views::resize,
+        recv_data | kamping::v2::views::resize,
         comm
     );
     
@@ -621,11 +621,11 @@ ctest --test-dir build -R test_v2_allgather  # Runs with 1, 2, 4, 8 ranks
 
 | Feature | Files | Key Classes/Functions |
 |---------|-------|----------------------|
-| New collective | `include/mpi/collectives/*.hpp` (core), `include/kamping/v2/collectives/*.hpp` (v2), `include/kamping/v2/infer.hpp` (infer tag + overload) | `mpi::experimental::foo()`, `comm_op::foo`, `infer(comm_op::foo, ...)` |
-| New view adaptor | `include/kamping/v2/views/*.hpp` | Derive from `view_interface<Derived>`, implement `base()` |
+| New collective | `mpi-core/include/mpi/collectives/*.hpp` (core), `kamping-v2/include/kamping/v2/collectives/*.hpp` (v2), `kamping-v2/include/kamping/v2/infer.hpp` (infer tag + overload) | `mpi::experimental::foo()`, `comm_op::foo`, `infer(comm_op::foo, ...)` |
+| New view adaptor | `kamping-v2/include/kamping/v2/views/*.hpp` | Derive from `view_interface<Derived>`, implement `base()` |
 | Custom buffer | User code | Specialize `buffer_traits<T>` or provide `mpi_count()`, `mpi_ptr()`, `mpi_type()` |
 | Custom handle | User code | Specialize `handle_traits<T>` or provide `mpi_handle()` |
-| Reduction operation | `include/mpi/ops.hpp` (core), re-exported in `include/kamping/v2/ops.hpp` | `mpi::experimental::make_op()`, `as_mpi_op()`, `valid_op` |
+| Reduction operation | `mpi-core/include/mpi/ops.hpp` (core), re-exported in `kamping-v2/include/kamping/v2/ops.hpp` | `mpi::experimental::make_op()`, `as_mpi_op()`, `valid_op` |
 | Custom operation type | User code | Specialize `op_traits<Op, SBuf, RBuf>` (or make it convertible to `MPI_Op` via `handle()`) |
 | Non-blocking variant | Same files as blocking | Return `iresult<Buf>` instead of `void` |
 
@@ -690,4 +690,3 @@ specializations on the accessor type carry through automatically.
 ## See Also
 
 - `CLAUDE.md` — project structure, build commands, code conventions
-- `include/kamping/v2/TODO.md` — remaining work and design decisions

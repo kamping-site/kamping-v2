@@ -12,10 +12,9 @@
 #include "mpi/handle.hpp"
 
 namespace mpi::experimental {
-template <
-    send_buffer_v                       SBuf,
-    recv_buffer_v                       RBuf,
-    convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+/// Exchanges variable amounts of data between all ranks, as described by the counts and displacements of the variadic
+/// buffers `sbuf` and `rbuf` (`MPI_Alltoallv`).
+template <send_buffer_v SBuf, recv_buffer_v RBuf, convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
 void alltoallv(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = MPI_COMM_WORLD) {
     int err = MPI_Alltoallv(
         ptr(sbuf),

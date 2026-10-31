@@ -14,6 +14,10 @@
 #include "mpi/handle.hpp"
 
 namespace kamping::v2 {
+/// Sends an equal share of `sbuf` to every rank and receives one share from every rank into `rbuf` (`MPI_Alltoall`).
+///
+/// `rbuf` may be a deferred receive buffer (e.g. `views::resize`), which is resized to `count(sbuf)`.
+/// @return The send and receive buffer (owned if passed as rvalue, borrowed otherwise).
 template <
     mpi::experimental::send_buffer                         SBuf,
     mpi::experimental::recv_buffer                         RBuf,

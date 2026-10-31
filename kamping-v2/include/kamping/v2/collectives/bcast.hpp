@@ -12,6 +12,11 @@
 #include "mpi/handle.hpp"
 
 namespace kamping::v2 {
+/// Broadcasts `send_recv_buf` from `root` to all ranks (`MPI_Bcast`).
+///
+/// If the buffer is a deferred receive buffer (e.g. `views::resize`), root's count is broadcast first and the buffer is
+/// resized on the other ranks.
+/// @return The buffer (owned if passed as rvalue, borrowed otherwise).
 template <
     mpi::experimental::send_recv_buffer                    SRBuf,
     mpi::experimental::rank                                Root = int,

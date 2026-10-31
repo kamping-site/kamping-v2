@@ -10,6 +10,7 @@
 #include "mpi/handle.hpp"
 
 namespace mpi::experimental {
+/// Receives the matched message `message` into `rbuf` (`MPI_Mrecv`); resets `message` to `MPI_MESSAGE_NULL`.
 template <
     recv_buffer                                RBuf,
     convertible_to_mpi_handle_ptr<MPI_Message> Message = MPI_Message*,

@@ -96,18 +96,21 @@ concept is_builtin_range_op =
 // as_mpi_op() — priority: op_traits > builtin handle > range builtin op
 // ──────────────────────────────────────────────────────────────────────────────
 
+/// @return The `MPI_Op` for `op`, obtained via `op_traits`.
 template <typename Op, send_buffer SBuf, recv_buffer RBuf>
     requires detail::traits_has_op<Op, SBuf, RBuf>
 constexpr MPI_Op as_mpi_op(Op const& op, SBuf const& sbuf, RBuf const& rbuf) {
     return op_traits<std::remove_cvref_t<Op>, SBuf, RBuf>::op(op, sbuf, rbuf);
 }
 
+/// @return The `MPI_Op` for `op`, which is (or wraps) a raw `MPI_Op` handle.
 template <typename Op, send_buffer SBuf, recv_buffer RBuf>
     requires(!detail::traits_has_op<Op, SBuf, RBuf>) && detail::is_builtin_mpi_op<Op>
 constexpr MPI_Op as_mpi_op(Op const& op, SBuf const&, RBuf const&) {
     return handle(op);
 }
 
+/// @return The predefined `MPI_Op` for a standard functor such as `std::plus<>`, given the buffers' element type.
 template <typename Op, send_buffer SBuf, recv_buffer RBuf>
     requires(!detail::traits_has_op<Op, SBuf, RBuf>) && (!detail::is_builtin_mpi_op<Op>)
             && (detail::is_builtin_range_op<Op, SBuf> || detail::is_builtin_range_op<Op, RBuf>)
@@ -120,6 +123,7 @@ constexpr MPI_Op as_mpi_op(Op const&, SBuf const&, RBuf const&) {
 // valid_op concept — checks if as_mpi_op is well-defined
 // ──────────────────────────────────────────────────────────────────────────────
 
+/// `Op` can be used as reduction operation on buffers of types `SBuf` and `RBuf`, i.e. `as_mpi_op` is defined.
 template <typename Op, typename SBuf, typename RBuf>
 concept valid_op = requires(Op const& op, SBuf const& sbuf, RBuf const& rbuf) { as_mpi_op(op, sbuf, rbuf); };
 

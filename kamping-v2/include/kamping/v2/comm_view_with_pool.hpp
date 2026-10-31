@@ -25,10 +25,10 @@ namespace kamping::v2 {
 /// @code
 /// // Typical class member pattern:
 /// class MyGraph {
-///     kamping::v2::comm_view  comm_;
-///     kamping::v2::type_pool  pool_;
+///     kamping::v2::comm_view _comm;
+///     kamping::v2::type_pool _pool;
 ///
-///     kamping::v2::comm_view_with_pool env() const { return {comm_, pool_}; }
+///     kamping::v2::comm_view_with_pool env() { return {_comm, _pool}; }
 /// };
 ///
 /// // Generic function accepting a pooled comm:
@@ -45,9 +45,7 @@ public:
     ///
     /// Both must outlive this view. Accepts `MPI_Comm` implicitly via `comm_view`'s
     /// non-explicit constructor, so `MPI_COMM_WORLD` can be passed directly.
-    comm_view_with_pool(kamping::v2::comm_view comm, type_pool& pool) noexcept
-        : _comm{comm},
-          _pool{&pool} {}
+    comm_view_with_pool(kamping::v2::comm_view comm, type_pool& pool) noexcept : _comm{comm}, _pool{&pool} {}
 
     /// @return The underlying `MPI_Comm` (for `handle()` dispatch).
     [[nodiscard]] MPI_Comm mpi_handle() const noexcept {

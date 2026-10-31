@@ -17,6 +17,7 @@
 #include "kamping/types/contiguous_type.hpp"
 #include "kamping/types/mpi_type_traits.hpp"
 #include "kamping/types/std/unsafe/utility.hpp"
+#include "kamping/v2/buffer.hpp"
 #include "kamping/v2/collectives/alltoallv.hpp"
 #include "kamping/v2/type_pool.hpp"
 #include "kamping/v2/views.hpp"
@@ -24,7 +25,6 @@
 #include "kamping/v2/views/payload.hpp"
 #include "kamping/v2/views/with_type_view.hpp"
 #include "kamping/v2/views/with_value_type_view.hpp"
-#include "mpi/buffer.hpp"
 
 namespace views = kamping::v2::views;
 
@@ -181,7 +181,7 @@ TEST(WithValueTypeViewTest, SetsValueTypeChannelOnly) {
 
     auto view = pairs | views::with_value_type(dt);
     EXPECT_EQ(kamping::v2::value_type(view), dt);
-    EXPECT_FALSE(mpi::experimental::has_mpi_type<decltype(view)>);
+    EXPECT_FALSE(kamping::v2::has_mpi_type<decltype(view)>);
     // Still recognizable as a value_destination_pair_buffer: begin/end forwarded transparently.
     EXPECT_EQ(std::ranges::distance(view), 1);
     static_assert(kamping::v2::value_destination_pair_buffer<decltype(view)>);
@@ -227,7 +227,7 @@ TEST(FlattenVValueTypeTest, ReportsAnnotatedValueTypeAsFlatBufferType) {
 
     auto flat = pairs | views::with_value_type(dt) | views::flatten_v();
     flat.set_comm_size(1);
-    EXPECT_EQ(mpi::experimental::type(flat), dt);
+    EXPECT_EQ(kamping::v2::type(flat), dt);
 
     MPI_Type_free(&dt);
 }
@@ -236,7 +236,7 @@ TEST(FlattenVValueTypeTest, FallsBackToDeducedFlatTypeWithoutAnnotation) {
     std::vector<std::pair<int, int>> pairs{{1, 0}, {2, 0}};
     auto                             flat = pairs | views::flatten_v();
     flat.set_comm_size(1);
-    EXPECT_EQ(mpi::experimental::type(flat), MPI_INT);
+    EXPECT_EQ(kamping::v2::type(flat), MPI_INT);
 }
 
 // ── type_pool: one-shot register_type(dt) + trait-free find<T>() ──────────────────────────
@@ -394,9 +394,8 @@ TEST(ValueTypeEndToEndTest, FlattenedIntPairPayloadSurvivesWithAutoPool) {
     auto flattened  = msgs | views::flatten_v();
     using Flattened = decltype(flattened);
 
-    // A flatten_v_view is already-flat: both resolvers must now agree (payload_element_t no
-    // longer misfires on it, per already_flat_buffer), and it must no longer satisfy any of the
-    // still-structured concepts it flattened away from.
+    // A flatten_v_view is flat: both resolvers agree (see already_flat_buffer), and it satisfies
+    // none of the structure concepts of its source.
     static_assert(std::is_same_v<kamping::v2::mpi_element_type_t<Flattened>, Pair>);
     static_assert(std::is_same_v<kamping::v2::payload_element_t<Flattened>, Pair>);
     static_assert(!kamping::v2::flattenable_send_buffer<Flattened>);

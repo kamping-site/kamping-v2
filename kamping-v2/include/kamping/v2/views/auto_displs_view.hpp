@@ -17,47 +17,57 @@
 
 namespace kamping::v2 {
 
+/// Attaches displacements computed from the counts of the wrapped buffer via an exclusive prefix sum.
+///
+/// The displacements are computed lazily on the first `mpi_displs()` call and recomputed after `commit_counts()`, so
+/// the view can sit on top of a deferred counts buffer (`auto_counts_view`). Always reports monotonic displacements
+/// (`displs_monotonic()`), which lets `resize_v_view` size the receive buffer in O(1).
+///
+/// @tparam Base   The wrapped buffer; must provide counts.
+/// @tparam Displs The displacements storage (after all() wrapping).
+/// @tparam resize If true, `Displs` is resized to the number of counts; otherwise it must already be large enough.
 template <typename Base, mpi::experimental::count_range Displs, bool resize = false>
     requires mpi::experimental::has_mpi_counts<Base> && std::ranges::output_range<Displs, int>
              && (!resize || has_resize<Displs> || has_mpi_resize_for_receive<Displs>)
-class auto_displs_view : public view_interface<auto_displs_view<Base, Displs>> {
-    Base           base_;
-    mutable Displs displs_;
-    mutable bool   needs_to_compute_displs_ = true;
+class auto_displs_view : public view_interface<auto_displs_view<Base, Displs, resize>> {
+    Base           _base;
+    mutable Displs _displs;
+    mutable bool   _needs_to_compute_displs = true;
 
 public:
     constexpr Base const& base() const& noexcept {
-        return base_;
+        return _base;
     }
     constexpr Base& base() & noexcept {
-        return base_;
+        return _base;
     }
     constexpr Base&& base() && noexcept {
-        return std::move(base_);
+        return std::move(_base);
     }
 
     template <typename R, typename C>
     auto_displs_view(R&& base, C&& displs)
-        : base_(kamping::v2::all(std::forward<R>(base))),
-          displs_(kamping::v2::all(std::forward<C>(displs))) {}
+        : _base(kamping::v2::all(std::forward<R>(base))),
+          _displs(kamping::v2::all(std::forward<C>(displs))) {}
 
     template <typename R, typename C>
     auto_displs_view(kamping::v2::resize_t, R&& base, C&& displs)
-        : base_(kamping::v2::all(std::forward<R>(base))),
-          displs_(kamping::v2::all(std::forward<C>(displs))) {}
+        : _base(kamping::v2::all(std::forward<R>(base))),
+          _displs(kamping::v2::all(std::forward<C>(displs))) {}
 
     constexpr Displs const& displs() const& {
-        return displs_;
+        return _displs;
     }
     constexpr Displs& displs() & {
-        return displs_;
+        return _displs;
     }
     constexpr Displs&& displs() && {
-        return std::move(displs_);
+        return std::move(_displs);
     }
 
+    /// Moves out the wrapped buffer and the displacements storage.
     constexpr std::pair<Base, Displs> extract() && {
-        return {std::move(base_), std::move(displs_)};
+        return {std::move(_base), std::move(_displs)};
     }
 
     /// Displacements are always computed via exclusive_scan — monotonically non-decreasing.
@@ -69,23 +79,24 @@ public:
     /// next mpi_displs() call. Called automatically when commit_counts() propagates
     /// through from an inner auto_counts_view.
     void commit_counts() {
-        needs_to_compute_displs_ = true;
+        _needs_to_compute_displs = true;
     }
 
+    /// @return The displacements, computing them first if the counts changed.
     std::span<int const> mpi_displs() const {
-        if (needs_to_compute_displs_) {
+        if (_needs_to_compute_displs) {
             auto&& counts = mpi::experimental::counts(base());
             if constexpr (resize) {
-                if (static_cast<std::ptrdiff_t>(std::ranges::size(displs_))
+                if (static_cast<std::ptrdiff_t>(std::ranges::size(_displs))
                     < static_cast<std::ptrdiff_t>(std::ranges::size(counts))) {
-                    kamping::v2::resize_for_receive(displs_, static_cast<std::ptrdiff_t>(std::ranges::size(counts)));
+                    kamping::v2::resize_for_receive(_displs, static_cast<std::ptrdiff_t>(std::ranges::size(counts)));
                 }
             }
-            KAMPING_V2_ASSERT(std::ranges::size(displs_) >= std::ranges::size(counts));
-            std::exclusive_scan(std::ranges::begin(counts), std::ranges::end(counts), std::ranges::begin(displs_), 0);
-            needs_to_compute_displs_ = false;
+            KAMPING_V2_ASSERT(std::ranges::size(_displs) >= std::ranges::size(counts));
+            std::exclusive_scan(std::ranges::begin(counts), std::ranges::end(counts), std::ranges::begin(_displs), 0);
+            _needs_to_compute_displs = false;
         }
-        return {displs_};
+        return {_displs};
     }
 };
 
@@ -96,15 +107,16 @@ template <typename R, typename C>
 auto_displs_view(kamping::v2::resize_t, R&&, C&&)
     -> auto_displs_view<kamping::v2::all_t<R>, kamping::v2::all_t<C>, true>;
 
-template <typename Base, typename Displs>
-inline constexpr bool enable_borrowed_buffer<auto_displs_view<Base, Displs>> =
+template <typename Base, typename Displs, bool resize>
+inline constexpr bool enable_borrowed_buffer<auto_displs_view<Base, Displs, resize>> =
     enable_borrowed_buffer<Base> && enable_borrowed_buffer<Displs>;
 
 } // namespace kamping::v2
 
 namespace kamping::v2::views {
 
-// 0-arg: owned Container (default std::vector<int>), auto-resized on mpi_displs().
+/// Attaches displacements computed from the buffer's counts, stored in an owned `Container` that is resized as needed:
+/// `buf | auto_counts() | auto_displs()`.
 template <typename Container = std::vector<int>>
 constexpr auto auto_displs() {
     return kamping::v2::adaptor<1, decltype([](auto&& r, auto&& displs) {
@@ -116,7 +128,8 @@ constexpr auto auto_displs() {
                                 })>{}(Container{});
 }
 
-// (container) partial or (r, container) full — no resize.
+/// Attaches displacements computed from the buffer's counts, stored in a caller-provided container that must already be
+/// large enough: `buf | auto_displs(displs)` or `auto_displs(buf, displs)`.
 template <typename... Args>
     requires(
         sizeof...(Args) >= 1
@@ -131,7 +144,8 @@ constexpr auto auto_displs(Args&&... args) {
                                 })>{}(std::forward<Args>(args)...);
 }
 
-// (resize, container) partial or (resize, r, container) full — with resize.
+/// Like the overload without the tag, but resizes the caller-provided container as needed:
+/// `buf | auto_displs(resize, displs)` or `auto_displs(resize, buf, displs)`.
 template <typename... Args>
     requires(sizeof...(Args) >= 1)
 constexpr auto auto_displs(kamping::v2::resize_t, Args&&... args) {

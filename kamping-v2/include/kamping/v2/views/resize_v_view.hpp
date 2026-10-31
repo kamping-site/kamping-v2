@@ -17,37 +17,34 @@ namespace kamping::v2 {
 /// Variadic-receive counterpart of resize_view.
 ///
 /// Wraps a base buffer that already exposes mpi_counts() (per-process counts) and
-/// mpi_displs() (per-process displacements). On mpi_data() the underlying data
+/// mpi_displs() (per-process displacements). On mpi_ptr() the underlying data
 /// buffer is resized to fit all incoming elements.
 ///
-/// The required size is max(counts[i] + displs[i]) over all i — the same formula
-/// as kamping::internal::compute_required_recv_buf_size_in_vectorized_communication.
-/// Correct for both monotonically-increasing (auto-computed) and user-provided
-/// non-monotonic displacements.
+/// The required size is max(counts[i] + displs[i]) over all i, which is correct for
+/// arbitrary displacements; for monotonic displacements (see has_monotonic_displs)
+/// it is displs.back() + counts.back().
 ///
 /// Typical composition:
-///   recv_buf | with_counts(auto_counts()) | auto_displs(resize, displs) | resize_v
-///   recv_buf | with_counts(auto_counts()) | with_displs(user_displs)         | resize_v
+///   recv_buf | auto_counts() | auto_displs()            | resize_v
+///   recv_buf | auto_counts() | with_displs(user_displs) | resize_v
 template <typename Base>
     requires mpi::experimental::has_mpi_counts<Base> && mpi::experimental::has_mpi_displs<Base>
 class resize_v_view : public view_interface<resize_v_view<Base>> {
-    Base base_;
+    Base _base;
 
 public:
     template <typename R>
-    explicit resize_v_view(R&& base) : base_(kamping::v2::all(std::forward<R>(base))) {}
+    explicit resize_v_view(R&& base) : _base(kamping::v2::all(std::forward<R>(base))) {}
 
     constexpr Base& base() & noexcept {
-        return base_;
+        return _base;
     }
     constexpr Base const& base() const& noexcept {
-        return base_;
+        return _base;
     }
     constexpr Base&& base() && noexcept {
-        return std::move(base_);
+        return std::move(_base);
     }
-
-    // mpi_counts, mpi_displs, mpi_type, mpi_count are all forwarded through view_interface.
 
     /// Eagerly resizes the underlying data buffer to fit all incoming elements,
     /// reading the (committed) counts and displacements from the base — which in turn
@@ -55,8 +52,8 @@ public:
     /// stack. Idempotent. Called automatically by mpi_ptr(), or explicitly via
     /// kamping::v2::materialize() to realize the buffer before the MPI call.
     void materialize() {
-        auto const&    counts     = mpi::experimental::counts(base_);
-        auto const&    displs     = mpi::experimental::displs(base_);
+        auto const&    counts     = mpi::experimental::counts(_base);
+        auto const&    displs     = mpi::experimental::displs(_base);
         auto const*    counts_ptr = std::ranges::data(counts);
         auto const*    displs_ptr = std::ranges::data(displs);
         auto const     n          = std::ranges::size(counts);
@@ -70,7 +67,7 @@ public:
         // conditionally report non-monotonic displacements, e.g. when the same view type
         // is used with both monotonic and non-monotonic data depending on construction.
         if constexpr (has_monotonic_displs<Base>) {
-            if (n > 0 && base_.displs_monotonic()) {
+            if (n > 0 && _base.displs_monotonic()) {
                 total = static_cast<std::ptrdiff_t>(displs_ptr[n - 1]) + counts_ptr[n - 1];
             }
         } else {
@@ -78,16 +75,14 @@ public:
                 total = std::max(total, static_cast<std::ptrdiff_t>(displs_ptr[i] + counts_ptr[i]));
             }
         }
-        kamping::v2::resize_for_receive(base_, total);
-        // Defensive: realize a nested deferred buffer too. A guarded no-op for every
-        // base used today (auto_displs / auto_counts have no materialize() member and
-        // already realize lazily on the accessor reads above).
-        kamping::v2::materialize(base_);
+        kamping::v2::resize_for_receive(_base, total);
+        kamping::v2::materialize(_base);
     }
 
+    /// Triggers the lazy resize, then returns the data pointer.
     auto mpi_ptr() {
         materialize();
-        return mpi::experimental::ptr(base_);
+        return mpi::experimental::ptr(_base);
     }
 };
 
@@ -101,10 +96,10 @@ inline constexpr bool enable_borrowed_buffer<resize_v_view<Base>> = enable_borro
 
 namespace kamping::v2::views {
 
-/// Wraps a base buffer (which must already provide mpi_counts() and mpi_displs()
-/// via e.g. with_counts | auto_displs or with_counts | with_displs) so the
+/// Wraps a base buffer (which must already provide mpi_counts() and mpi_displs(),
+/// e.g. via auto_counts | auto_displs or with_counts | with_displs) so the
 /// underlying data buffer is resized to the correct total size on mpi_ptr().
-/// Use as: buf | with_counts(...) | auto_displs(...) | resize_v
+/// Use as: buf | auto_counts() | auto_displs() | resize_v
 inline constexpr struct resize_v_fn : kamping::v2::adaptor_closure<resize_v_fn> {
     template <typename R>
     constexpr auto operator()(R&& r) const {

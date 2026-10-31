@@ -14,6 +14,12 @@
 #include "mpi/p2p/recv.hpp"
 
 namespace kamping::v2 {
+/// Receives a message from `source` with `tag` into `rbuf` (`MPI_Recv`).
+///
+/// If `rbuf` is a deferred receive buffer (e.g. `views::resize` or `auto_recv<T>()`), the message is matched with
+/// `MPI_Mprobe` first and `rbuf` is resized to fit, then received with `MPI_Mrecv`.
+/// @param status Optional: filled with the status of the received message. Defaults to `MPI_STATUS_IGNORE`.
+/// @return The receive buffer (owned if passed as rvalue, borrowed otherwise).
 template <
     mpi::experimental::recv_buffer                               RBuf,
     mpi::experimental::rank                                      Source = int,
@@ -68,6 +74,8 @@ auto recv(
         return std::forward<RBuf>(rbuf);
     }
 }
+/// Receives a message from any source with any tag on `comm` into `rbuf`; see the overload above.
+/// @return The receive buffer (owned if passed as rvalue, borrowed otherwise).
 template <
     mpi::experimental::recv_buffer                               RBuf,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>       Comm,

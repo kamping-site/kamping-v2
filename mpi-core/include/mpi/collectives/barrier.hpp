@@ -9,6 +9,7 @@
 #include "mpi/handle.hpp"
 
 namespace mpi::experimental {
+/// Blocks until all ranks of `comm` have called it (`MPI_Barrier`).
 template <convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
 void barrier(Comm const& comm = MPI_COMM_WORLD) {
     int err = MPI_Barrier(handle(comm));

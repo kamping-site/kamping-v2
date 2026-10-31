@@ -12,9 +12,14 @@
 #include "mpi/handle.hpp"
 #include "mpi/message.hpp"
 #include "mpi/p2p/improbe.hpp"
+#include "mpi/p2p/iprobe.hpp"
 #include "mpi/p2p/mprobe.hpp"
+#include "mpi/p2p/probe.hpp"
 
 namespace kamping::v2 {
+using mpi::experimental::iprobe;
+using mpi::experimental::probe;
+
 /// @brief Result of a matched probe: the matched message together with its status.
 ///
 /// Provides the status accessors (`source()`, `tag()`, `count()`) directly and satisfies
@@ -57,16 +62,16 @@ private:
     kamping::v2::status        _status;
 };
 
-using mpi::experimental::mprobe;
+using mpi::experimental::mprobe; // matches into a caller-supplied message; see mpi/p2p/mprobe.hpp
 
-template <
-    mpi::experimental::rank                                Source = int,
-    mpi::experimental::tag                                 Tag    = int,
-    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm   = MPI_Comm>
 /// @brief Blocks until a message matching `source` and `tag` arrives and matches it (`MPI_Mprobe`).
 ///
 /// The message is removed from the matching queue and must be received through the returned @ref probe_result.
 /// @return The matched message and its status.
+template <
+    mpi::experimental::rank                                Source = int,
+    mpi::experimental::tag                                 Tag    = int,
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm   = MPI_Comm>
 [[nodiscard]] probe_result
 mprobe(Source source = MPI_ANY_SOURCE, Tag tag = MPI_ANY_TAG, Comm const& comm = MPI_COMM_WORLD) {
     probe_result res;
@@ -74,16 +79,16 @@ mprobe(Source source = MPI_ANY_SOURCE, Tag tag = MPI_ANY_TAG, Comm const& comm =
     return res;
 }
 
-using mpi::experimental::improbe;
+using mpi::experimental::improbe; // matches into a caller-supplied message; see mpi/p2p/improbe.hpp
 
-template <
-    mpi::experimental::rank                                Source = int,
-    mpi::experimental::tag                                 Tag    = int,
-    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm   = MPI_Comm>
 /// @brief Matches a message matching `source` and `tag` if one is available, without blocking (`MPI_Improbe`).
 ///
 /// A matched message is removed from the matching queue and must be received through the returned @ref probe_result.
 /// @return The matched message and its status, or `std::nullopt` if no matching message is available.
+template <
+    mpi::experimental::rank                                Source = int,
+    mpi::experimental::tag                                 Tag    = int,
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm   = MPI_Comm>
 [[nodiscard]] std::optional<probe_result>
 improbe(Source source = MPI_ANY_SOURCE, Tag tag = MPI_ANY_TAG, Comm const& comm = MPI_COMM_WORLD) {
     probe_result res;

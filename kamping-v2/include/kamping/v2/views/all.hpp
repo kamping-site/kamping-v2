@@ -13,7 +13,7 @@ namespace kamping::v2 {
 
 /// Non-owning view over an lvalue. T is unconstrained — supports both ranges and
 /// non-range buffer types (e.g. a struct with mpi_ptr()/mpi_count() but no begin()/end()).
-/// All MPI protocol methods (mpi_ptr, mpi_count, mpi_type, and future mpi_resize_for_receive)
+/// All MPI protocol methods (mpi_ptr, mpi_count, mpi_type, mpi_resize_for_receive, ...)
 /// are forwarded automatically via view_interface.
 template <typename T>
 class ref_view : public view_interface<ref_view<T>> {
@@ -22,6 +22,7 @@ class ref_view : public view_interface<ref_view<T>> {
 public:
     constexpr explicit ref_view(T& r) noexcept : r_(std::addressof(r)) {}
 
+    /// @return The referenced object.
     constexpr T& base() const noexcept {
         return *r_;
     }
@@ -41,6 +42,7 @@ public:
     owning_view(owning_view&&)                 = default;
     owning_view& operator=(owning_view&&)      = default;
 
+    /// @return The owned object.
     constexpr T& base() & noexcept {
         return r_;
     }
@@ -82,11 +84,11 @@ constexpr auto all(R&& r) {
         return owning_view<T>{std::forward<R>(r)};
 }
 
+/// The view type all() wraps an `R` in.
 template <typename R>
 using all_t = decltype(all(std::declval<R>()));
 
-// ref_view is non-owning — always borrowed.
-// owning_view owns its data — not borrowed (default false is correct).
+// ref_view is non-owning, so always borrowed; owning_view owns its data, so it keeps the default (not borrowed).
 template <typename T>
 inline constexpr bool enable_borrowed_buffer<ref_view<T>> = true;
 

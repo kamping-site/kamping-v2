@@ -7,7 +7,7 @@
 #include <ranges>
 #include <vector>
 
-#include "mpi/buffer.hpp"
+#include "kamping/v2/buffer.hpp"
 
 /// @file
 /// dstl::exchange_layout / dstl::reverse_layout — the retained per-rank routing of an all-to-all-v, and its
@@ -33,12 +33,12 @@ struct exchange_layout {
     /// forward `kamping::v2::alltoallv` into an auto-managed recv buffer (`views::auto_recv_v`), the send
     /// buffer carries the send layout and the recv buffer the negotiated recv layout (counts + derived
     /// displs); both are copied out here so they outlive the buffers.
-    template <mpi::experimental::send_buffer_v SBuf, mpi::experimental::recv_buffer_v RBuf>
+    template <kamping::v2::send_buffer_v SBuf, kamping::v2::recv_buffer_v RBuf>
     exchange_layout(SBuf const& sbuf, RBuf const& rbuf) {
-        snapshot(send_counts, mpi::experimental::counts(sbuf));
-        snapshot(send_displs, mpi::experimental::displs(sbuf));
-        snapshot(recv_counts, mpi::experimental::counts(rbuf));
-        snapshot(recv_displs, mpi::experimental::displs(rbuf));
+        snapshot(send_counts, kamping::v2::counts(sbuf));
+        snapshot(send_displs, kamping::v2::displs(sbuf));
+        snapshot(recv_counts, kamping::v2::counts(rbuf));
+        snapshot(recv_displs, kamping::v2::displs(rbuf));
     }
 
     /// Total elements sent (== `sum(send_counts)`).

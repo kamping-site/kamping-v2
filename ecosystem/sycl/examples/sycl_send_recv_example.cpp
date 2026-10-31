@@ -3,13 +3,13 @@
 
 #include <iostream>
 #include <ranges>
-#include <sycl/sycl.hpp>
 
 #include <kamping/ecosystem/sycl_view.hpp>
 #include <kamping/v2/comm.hpp>
 #include <kamping/v2/environment.hpp>
 #include <kamping/v2/p2p/recv.hpp>
 #include <kamping/v2/p2p/send.hpp>
+#include <sycl/sycl.hpp>
 
 // Demonstrates both paths of views::sycl:
 //
@@ -34,16 +34,13 @@ int main(int argc, char* argv[]) {
 
     sycl::queue       q;
     sycl::buffer<int> buf{sycl::range{10}};
-    std::cout << "[rank " << world.rank() << "] using "
-              << q.get_device().get_info<sycl::info::device::name>() << '\n';
+    std::cout << "[rank " << world.rank() << "] using " << q.get_device().get_info<sycl::info::device::name>() << '\n';
 
     if (world.rank() == 0) {
         // Fill with 0..9 on device and send via device-aware MPI.
         q.submit([&](sycl::handler& h) {
             sycl::accessor acc{buf, h, sycl::write_only};
-            h.parallel_for(acc.get_range(), [=](sycl::id<1> idx) {
-                acc[idx] = static_cast<int>(idx[0]);
-            });
+            h.parallel_for(acc.get_range(), [=](sycl::id<1> idx) { acc[idx] = static_cast<int>(idx[0]); });
         });
         q.submit([&](sycl::handler& h) {
             sycl::accessor acc{buf, h, sycl::read_only};
@@ -57,7 +54,7 @@ int main(int argc, char* argv[]) {
         sycl::host_accessor hacc{buf, sycl::write_only};
         kamping::v2::recv(hacc | kamping::v2::views::sycl, world);
         std::cout << "squared: ";
-        for (auto& x : hacc) {
+        for (auto& x: hacc) {
             std::cout << x << ' ';
         }
         std::cout << '\n';
@@ -65,15 +62,11 @@ int main(int argc, char* argv[]) {
         // Receive from rank 0 into device memory and square each element.
         q.submit([&](sycl::handler& h) {
             sycl::accessor acc{buf, h, sycl::write_only};
-            h.host_task([=](sycl::interop_handle ih) {
-                kamping::v2::recv(acc | kamping::v2::views::sycl(ih), world);
-            });
+            h.host_task([=](sycl::interop_handle ih) { kamping::v2::recv(acc | kamping::v2::views::sycl(ih), world); });
         });
         q.submit([&](sycl::handler& h) {
             sycl::accessor acc{buf, h, sycl::read_write};
-            h.parallel_for(acc.get_range(), [=](sycl::id<1> idx) {
-                acc[idx] *= acc[idx];
-            });
+            h.parallel_for(acc.get_range(), [=](sycl::id<1> idx) { acc[idx] *= acc[idx]; });
         });
         q.wait();
 

@@ -9,18 +9,17 @@
 #include <vector>
 
 #include <gtest/gtest.h>
-#include <mpi.h>
-
 #include <kamping/types/contiguous_type.hpp>
 #include <kamping/types/mpi_type_traits.hpp>
+#include <mpi.h>
 
 #include "dstl/dstl.hpp"
+#include "kamping/v2/comm.hpp"
 #include "kamping/v2/type_pool.hpp"
 #include "kamping/v2/views.hpp"
-#include "mpi/comm.hpp"
 
 namespace views = kamping::v2::views;
-using mpi::experimental::comm_view;
+using kamping::v2::comm_view;
 
 // A custom request value type. It carries no datatype on the pair-range input, so request_reply requires
 // the MPI_Datatype overload; the datatype is built by registering the type (made known to kamping-types via
@@ -60,8 +59,7 @@ std::vector<std::pair<int, int>> build_pairs(int rank, int size) {
 /// exclusive-scan offset), each block holding the replies to this rank's requests bound for r in input
 /// order — exactly the layout the reverse exchange deposits.
 template <typename Reply, typename ReplyOf>
-std::vector<Reply>
-expected_grouped(std::vector<std::pair<int, int>> const& reqs, int size, ReplyOf reply_of) {
+std::vector<Reply> expected_grouped(std::vector<std::pair<int, int>> const& reqs, int size, ReplyOf reply_of) {
     std::vector<int> counts(static_cast<std::size_t>(size), 0);
     for (auto const& [v, d]: reqs) {
         ++counts[static_cast<std::size_t>(d)];
@@ -102,8 +100,10 @@ TEST(RequestReplyExchange, ReverseLayoutRoundTrip) {
 
     // Forward, then snapshot the negotiated layout off the two buffers.
     std::vector<int> recv_requests;
-    auto             fwd =
-        kamping::v2::alltoallv(data | views::with_counts(counts) | views::with_displs(displs), recv_requests | views::auto_recv_v);
+    auto             fwd = kamping::v2::alltoallv(
+        data | views::with_counts(counts) | views::with_displs(displs),
+        recv_requests | views::auto_recv_v
+    );
     dstl::exchange_layout layout{fwd.send, fwd.recv};
 
     std::vector<int> replies(recv_requests.size());
@@ -131,7 +131,9 @@ TEST(RequestReply, UnorderedGrouped) {
     int  rank  = world_rank();
     int  size  = world_size();
     auto reqs  = build_pairs(rank, size);
-    auto reply = [](int v) { return v + 1; };
+    auto reply = [](int v) {
+        return v + 1;
+    };
 
     std::vector<int> result;
     dstl::request_reply(reqs, result | views::resize, reply);
@@ -146,7 +148,9 @@ TEST(RequestReply, PreSizedOutput) {
     int  rank  = world_rank();
     int  size  = world_size();
     auto reqs  = build_pairs(rank, size);
-    auto reply = [](int v) { return v * 5; };
+    auto reply = [](int v) {
+        return v * 5;
+    };
 
     std::vector<int> result(reqs.size());
     dstl::request_reply(reqs, result, reply);
@@ -159,7 +163,9 @@ TEST(RequestReply, ReturnedOwnedOutput) {
     int  rank  = world_rank();
     int  size  = world_size();
     auto reqs  = build_pairs(rank, size);
-    auto reply = [](int v) { return v - 7; };
+    auto reply = [](int v) {
+        return v - 7;
+    };
 
     auto             res = dstl::request_reply(reqs, std::vector<int>{} | views::resize, reply);
     std::vector<int> got(std::ranges::begin(res), std::ranges::end(res));
@@ -173,11 +179,19 @@ TEST(RequestReply, OrderedVariadic) {
     int  rank  = world_rank();
     int  size  = world_size();
     auto reqs  = build_pairs(rank, size);
-    auto reply = [](int v) { return v + 1; };
+    auto reply = [](int v) {
+        return v + 1;
+    };
 
     std::vector<int> result;
-    dstl::request_reply(reqs, result | views::auto_recv_v, reply, MPI_COMM_WORLD, dstl::execution_policy::seq{},
-                        dstl::layout::ordered_by_source{});
+    dstl::request_reply(
+        reqs,
+        result | views::auto_recv_v,
+        reply,
+        MPI_COMM_WORLD,
+        dstl::execution_policy::seq{},
+        dstl::layout::ordered_by_source{}
+    );
 
     EXPECT_EQ(result, (expected_grouped<int>(reqs, size, reply)));
 }
@@ -188,7 +202,9 @@ TEST(RequestReply, ParMatchesSeq) {
     int  rank  = world_rank();
     int  size  = world_size();
     auto reqs  = build_pairs(rank, size);
-    auto reply = [](int v) { return v * 3 - 5; };
+    auto reply = [](int v) {
+        return v * 3 - 5;
+    };
 
     std::vector<int> seq;
     std::vector<int> par;
@@ -207,7 +223,9 @@ TEST(RequestReply, OrderedFixedSizeBuffer) {
     int  rank  = world_rank();
     int  size  = world_size();
     auto reqs  = build_pairs(rank, size);
-    auto reply = [](int v) { return v + 1; };
+    auto reply = [](int v) {
+        return v + 1;
+    };
 
     std::vector<int> counts(static_cast<std::size_t>(size), 0);
     for (auto const& [v, d]: reqs) {
@@ -243,7 +261,9 @@ TEST(RequestReply, StructReplyTypeFromBuffer) {
     int  rank  = world_rank();
     int  size  = world_size();
     auto reqs  = build_pairs(rank, size);
-    auto reply = [](int v) { return Pair{v, v + 1}; };
+    auto reply = [](int v) {
+        return Pair{v, v + 1};
+    };
 
     MPI_Datatype pair_dt = MPI_DATATYPE_NULL;
     MPI_Type_contiguous(static_cast<int>(sizeof(Pair)), MPI_BYTE, &pair_dt);
@@ -271,7 +291,9 @@ TEST(RequestReply, StructRequestWithDatatype) {
     auto found = pool.find<MyStruct>();
     ASSERT_TRUE(found.has_value());
 
-    auto reply = [](MyStruct const& s) { return s.x + static_cast<int>(s.y); }; // builtin (int) reply
+    auto reply = [](MyStruct const& s) {
+        return s.x + static_cast<int>(s.y);
+    }; // builtin (int) reply
 
     std::vector<std::pair<MyStruct, int>> reqs;
     for (int k = 0; k < 3 * size + rank; ++k) {
@@ -300,7 +322,9 @@ TEST(RequestReply, StructRequestWithDatatype) {
 
 TEST(RequestReply, AllEmpty) {
     std::vector<std::pair<int, int>> reqs;
-    auto                             reply = [](int v) { return v + 1; };
+    auto                             reply = [](int v) {
+        return v + 1;
+    };
 
     std::vector<int> result;
     dstl::request_reply(reqs, result | views::resize, reply);
@@ -310,7 +334,9 @@ TEST(RequestReply, AllEmpty) {
 TEST(RequestReply, UniformSingleElement) {
     int  rank  = world_rank();
     int  size  = world_size();
-    auto reply = [](int v) { return v + 100; };
+    auto reply = [](int v) {
+        return v + 100;
+    };
 
     std::vector<std::pair<int, int>> reqs;
     for (int j = 0; j < size; ++j) {

@@ -14,6 +14,11 @@
 #include "mpi/handle.hpp"
 
 namespace kamping::v2 {
+/// Gathers `sbuf` from all ranks into `rbuf` on `root` (`MPI_Gather`).
+///
+/// On root, `rbuf` may be a deferred receive buffer (e.g. `views::resize`); on the other ranks it is ignored, so pass
+/// `null_buf` or use the overload without receive buffer.
+/// @return The send and receive buffer (owned if passed as rvalue, borrowed otherwise).
 template <
     mpi::experimental::send_buffer                         SBuf,
     mpi::experimental::recv_buffer                         RBuf,
@@ -26,6 +31,8 @@ auto gather(SBuf&& sbuf, RBuf&& rbuf, Root root = 0, Comm const& comm = MPI_COMM
     return res;
 }
 
+/// Non-root shorthand of @ref gather: contributes `sbuf` without a receive buffer.
+/// @return The send buffer.
 template <
     mpi::experimental::send_buffer                         SBuf,
     mpi::experimental::rank                                Root = int,

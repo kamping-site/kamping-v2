@@ -15,6 +15,11 @@
 #include "mpi/p2p/irecv.hpp"
 
 namespace kamping::v2 {
+/// Starts receiving a message into `rbuf`, using a caller-supplied request (`MPI_Irecv` / `MPI_Imrecv`).
+///
+/// The caller must keep `rbuf` alive and complete `request`. Like the iresult-returning overload below, this may block
+/// to size a deferred receive buffer.
+/// @return The receive buffer (owned if passed as rvalue, borrowed otherwise).
 template <
     mpi::experimental::recv_buffer                                RBuf,
     mpi::experimental::rank                                       Source  = int,

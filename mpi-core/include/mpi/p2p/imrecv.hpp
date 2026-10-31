@@ -10,18 +10,15 @@
 #include "mpi/handle.hpp"
 
 namespace mpi::experimental {
+/// Starts receiving the matched message `message` into `rbuf` (`MPI_Imrecv`); resets `message` to `MPI_MESSAGE_NULL`.
+/// The caller must keep `rbuf` alive and complete `request`.
 template <
     recv_buffer                                RBuf,
     convertible_to_mpi_handle_ptr<MPI_Message> Message,
     convertible_to_mpi_handle_ptr<MPI_Request> Request>
 void imrecv(RBuf&& rbuf, Message&& message, Request&& request) {
-    int err = MPI_Imrecv(
-        ptr(rbuf),
-        static_cast<int>(count(rbuf)),
-        type(rbuf),
-        handle_ptr(message),
-        handle_ptr(request)
-    );
+    int err =
+        MPI_Imrecv(ptr(rbuf), static_cast<int>(count(rbuf)), type(rbuf), handle_ptr(message), handle_ptr(request));
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);
     }

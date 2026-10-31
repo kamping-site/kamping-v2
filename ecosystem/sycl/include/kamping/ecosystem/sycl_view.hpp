@@ -16,9 +16,10 @@
 /// adaptor is needed.
 #pragma once
 
-#include <sycl/sycl.hpp>
 #include <type_traits>
 #include <variant>
+
+#include <sycl/sycl.hpp>
 
 #include "kamping/v2/views/adaptor.hpp"
 #include "kamping/v2/views/concepts.hpp"
@@ -48,7 +49,8 @@ inline void* get_device_pointer(Accessor const& acc, sycl::interop_handle const&
             break;
         default:
             throw std::runtime_error{
-                "Backend does not support buffer interop required for device-aware MPI with sycl::buffer"};
+                "Backend does not support buffer interop required for device-aware MPI with sycl::buffer"
+            };
     }
     return device_ptr;
 }
@@ -58,11 +60,10 @@ inline void* get_device_pointer(Accessor const& acc, sycl::interop_handle const&
 template <typename T>
 struct sycl_accessor_traits {};
 
-template <typename DataT, int Dims, sycl::access_mode Mode, sycl::target Tgt,
-          sycl::access::placeholder PH>
+template <typename DataT, int Dims, sycl::access_mode Mode, sycl::target Tgt, sycl::access::placeholder PH>
 struct sycl_accessor_traits<sycl::accessor<DataT, Dims, Mode, Tgt, PH>> {
-    static constexpr sycl::access_mode mode     = Mode;
-    static constexpr bool              is_host  = false;
+    static constexpr sycl::access_mode mode    = Mode;
+    static constexpr bool              is_host = false;
 };
 
 template <typename DataT, int Dims, sycl::access_mode Mode>
@@ -91,13 +92,11 @@ concept sycl_accessor = requires { detail::sycl_accessor_traits<std::remove_cvre
 /// True if T is a sycl::accessor (used inside kernels or host_task; requires an interop_handle
 /// to access device memory).
 template <typename T>
-concept sycl_device_accessor =
-    sycl_accessor<T> && !detail::sycl_accessor_traits<std::remove_cvref_t<T>>::is_host;
+concept sycl_device_accessor = sycl_accessor<T> && !detail::sycl_accessor_traits<std::remove_cvref_t<T>>::is_host;
 
 /// True if T is a sycl::host_accessor (host-side access; pointer available via get_pointer()).
 template <typename T>
-concept sycl_host_accessor =
-    sycl_accessor<T> && detail::sycl_accessor_traits<std::remove_cvref_t<T>>::is_host;
+concept sycl_host_accessor = sycl_accessor<T> && detail::sycl_accessor_traits<std::remove_cvref_t<T>>::is_host;
 
 /// Wraps a SYCL accessor and exposes it as an MPI data buffer.
 ///
@@ -112,33 +111,31 @@ concept sycl_host_accessor =
 /// @tparam Base  A sycl::accessor or sycl::host_accessor specialization.
 template <sycl_accessor Base>
 class sycl_view : public view_interface<sycl_view<Base>> {
-    // ih_ only exists for device accessors; [[no_unique_address]] eliminates it for host path.
-    using ih_storage_t = std::conditional_t<sycl_device_accessor<Base>,
-                                            sycl::interop_handle const*,
-                                            std::monostate>;
+    // _ih only exists for device accessors; [[no_unique_address]] eliminates it for host path.
+    using ih_storage_t = std::conditional_t<sycl_device_accessor<Base>, sycl::interop_handle const*, std::monostate>;
 
-    Base                               base_;
-    [[no_unique_address]] ih_storage_t ih_;
+    Base                               _base;
+    [[no_unique_address]] ih_storage_t _ih;
 
 public:
     /// Device accessor constructor. @p ih must outlive this view.
     explicit sycl_view(Base base, sycl::interop_handle const& ih)
         requires sycl_device_accessor<Base>
-        : base_(std::move(base)),
-          ih_(&ih) {}
+        : _base(std::move(base)),
+          _ih(&ih) {}
 
     /// Host accessor constructor.
     explicit sycl_view(Base base)
         requires sycl_host_accessor<Base>
-        : base_(std::move(base)),
-          ih_{} {}
+        : _base(std::move(base)),
+          _ih{} {}
 
     /// @{
     Base& base() & noexcept {
-        return base_;
+        return _base;
     }
     Base const& base() const& noexcept {
-        return base_;
+        return _base;
     }
     /// @}
 
@@ -147,9 +144,9 @@ public:
         requires detail::readable_sycl_accessor<Base>
     {
         if constexpr (sycl_host_accessor<Base>)
-            return static_cast<void const*>(base_.get_pointer());
+            return static_cast<void const*>(_base.get_pointer());
         else
-            return static_cast<void const*>(detail::get_device_pointer(base_, *ih_));
+            return static_cast<void const*>(detail::get_device_pointer(_base, *_ih));
     }
 
     /// Returns void* for MPI receive operations.
@@ -157,9 +154,9 @@ public:
         requires detail::writable_sycl_accessor<Base>
     {
         if constexpr (sycl_host_accessor<Base>)
-            return static_cast<void*>(base_.get_pointer());
+            return static_cast<void*>(_base.get_pointer());
         else
-            return detail::get_device_pointer(base_, *ih_);
+            return detail::get_device_pointer(_base, *_ih);
     }
 };
 

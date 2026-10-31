@@ -11,6 +11,9 @@
 #include "mpi/handle.hpp"
 
 namespace mpi::experimental {
+/// Gathers `sbuf` from all ranks into `rbuf` on `root` (`MPI_Gather`).
+///
+/// On root, the per-rank receive count is `count(rbuf) / comm_size`; `rbuf` is ignored on the other ranks.
 template <send_buffer SBuf, recv_buffer RBuf, rank Root, convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
 void gather(SBuf&& sbuf, RBuf&& rbuf, Root root, Comm const& comm) {
     int comm_size = 0;

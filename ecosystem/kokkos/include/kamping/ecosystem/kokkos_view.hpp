@@ -56,12 +56,12 @@ class kokkos_view {
         typename view_type::memory_space>;
 #endif
 
-    mutable view_type     base_;
-    mutable packed_view_t packed_storage_;
+    mutable view_type     _base;
+    mutable packed_view_t _packed_storage;
 
-    mutable bool packed_        = false;
-    mutable bool needs_unpack_  = false;
-    bool         is_contiguous_ = false;
+    mutable bool _packed        = false;
+    mutable bool _needs_unpack  = false;
+    bool         _is_contiguous = false;
 
     // Create a contiguous kokkos view with type packed_view_t
     static packed_view_t make_packed(view_type const& v) {
@@ -83,38 +83,38 @@ class kokkos_view {
     void pack() const
         requires requires(view_type from, packed_view_t to) { Kokkos::deep_copy(to, from); }
     {
-        packed_storage_ = make_packed(base_);
-        Kokkos::deep_copy(packed_storage_, base_);
-        packed_       = true;
+        _packed_storage = make_packed(_base);
+        Kokkos::deep_copy(_packed_storage, _base);
+        _packed = true;
     }
 
     // Copy data from the packed_view_t back to the base view
     void unpack() const
         requires requires(view_type to, packed_view_t from) { Kokkos::deep_copy(to, from); }
     {
-        Kokkos::deep_copy(base_, packed_storage_);
-        needs_unpack_ = false;
+        Kokkos::deep_copy(_base, _packed_storage);
+        _needs_unpack = false;
     }
 
 public:
     using value_type = scalar_type;
 
-    explicit kokkos_view(view_type const& view) : base_(view), is_contiguous_(view.span_is_contiguous()) {}
+    explicit kokkos_view(view_type const& view) : _base(view), _is_contiguous(view.span_is_contiguous()) {}
 
-    explicit kokkos_view(view_type&& view) : base_(std::move(view)), is_contiguous_(base_.span_is_contiguous()) {}
+    explicit kokkos_view(view_type&& view) : _base(std::move(view)), _is_contiguous(_base.span_is_contiguous()) {}
 
     /// Triggers deep copy back to the base view if needed without returning a reference.
     /// Equivalent to `(void)**this` but expresses intent at call sites that only care
     /// about the side effect (e.g. immediately followed by `operator->`).
     void unwrap() const {
-        if (!is_contiguous_ && needs_unpack_)
+        if (!_is_contiguous && _needs_unpack)
             unpack();
     }
 
     /// Dereference to the wrapped object, triggering deep copy back to the base view if needed.
     view_type const& operator*() const {
         unwrap();
-        return base_;
+        return _base;
     }
 
     /// \overload
@@ -142,16 +142,16 @@ public:
             view_type::rank == 1 && requires(view_type& v, typename view_type::size_type m) { Kokkos::resize(v, m); }
         )
     {
-        Kokkos::resize(base_, static_cast<typename view_type::size_type>(n));
-        packed_       = false;
-        needs_unpack_ = false;
+        Kokkos::resize(_base, static_cast<typename view_type::size_type>(n));
+        _packed       = false;
+        _needs_unpack = false;
     }
 
     // ---- MPI protocol methods --------------------------------------------
 
     /// Returns the number of `MPI_BYTE` elements to send or receive.
     std::ptrdiff_t mpi_count() const {
-        return static_cast<std::ptrdiff_t>(base_.size());
+        return static_cast<std::ptrdiff_t>(_base.size());
     }
 
     /// Returns the MPI_Datatype corresponding to the view's scalar type.
@@ -165,28 +165,28 @@ public:
     /// Send-side pointer. Deep copy to intermediate kokkos view lazily on first call;
     /// Returns `void const*` so that a const view satisfies `send_buffer` but not `recv_buffer`.
     void const* mpi_ptr() const {
-        if (is_contiguous_) {
+        if (_is_contiguous) {
             execution_space{}.fence();
-            return base_.data();
+            return _base.data();
         }
-        if (!packed_) {
+        if (!_packed) {
             pack();
         }
-        return packed_storage_.data();
+        return _packed_storage.data();
     }
 
     /// Recv-side pointer. Returns `void*` so MPI can write directly into it.
     /// A non-const view satisfies both `send_buffer` and `recv_buffer`.
     void* mpi_ptr() {
-        if (is_contiguous_) {
+        if (_is_contiguous) {
             execution_space{}.fence();
-            return base_.data();
+            return _base.data();
         }
-        if (!packed_) {
-          pack();
+        if (!_packed) {
+            pack();
         }
-      	needs_unpack_ = true;
-        return packed_storage_.data();
+        _needs_unpack = true;
+        return _packed_storage.data();
     }
 };
 

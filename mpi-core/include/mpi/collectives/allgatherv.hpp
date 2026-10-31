@@ -12,10 +12,8 @@
 #include "mpi/handle.hpp"
 
 namespace mpi::experimental {
-template <
-    send_buffer                         SBuf,
-    recv_buffer_v                       RBuf,
-    convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+/// Gathers `sbuf` from all ranks into the variadic buffer `rbuf` on every rank (`MPI_Allgatherv`).
+template <send_buffer SBuf, recv_buffer_v RBuf, convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
 void allgatherv(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = MPI_COMM_WORLD) {
     int err = MPI_Allgatherv(
         ptr(sbuf),

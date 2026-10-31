@@ -11,22 +11,23 @@
 
 #include "kamping/ecosystem/kokkos_view.hpp"
 #include "kamping/v2/collectives/alltoallv.hpp"
+#include "kamping/v2/comm.hpp"
 #include "kamping/v2/environment.hpp"
 #include "kamping/v2/views/auto_counts_view.hpp"
 #include "kamping/v2/views/auto_displs_view.hpp"
 #include "kamping/v2/views/with_counts_view.hpp"
-#include "mpi/comm.hpp"
 
 using matrix_t = Kokkos::View<int**, Kokkos::LayoutRight>;
 
 template <typename MatrixT>
 void print_matrix(int rank, int size, MatrixT const& matrix, int cols_to_print) {
-    auto h = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{}, matrix);
+    auto        h   = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{}, matrix);
     std::string out = "rank " + std::to_string(rank) + "\n";
     for (int row = 0; row < size; ++row) {
         out += "  row " + std::to_string(row) + ": [";
         for (int col = 0; col < cols_to_print; ++col) {
-            if (col > 0) out += ", ";
+            if (col > 0)
+                out += ", ";
             out += std::to_string(h(row, col));
         }
         out += "]\n";
@@ -36,8 +37,8 @@ void print_matrix(int rank, int size, MatrixT const& matrix, int cols_to_print) 
 }
 
 int main(int argc, char* argv[]) {
-    kamping::v2::environment           env(argc, argv);
-    mpi::experimental::comm_view const world{MPI_COMM_WORLD};
+    kamping::v2::environment     env(argc, argv);
+    kamping::v2::comm_view const world{MPI_COMM_WORLD};
     Kokkos::initialize(argc, argv);
 
     {

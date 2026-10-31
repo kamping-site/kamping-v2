@@ -19,11 +19,8 @@ namespace mpi::experimental {
 
 class comm;
 
-// ── CRTP mixin ──────────────────────────────────────────────────────────────
-// Provides read-only accessors and collective operations for any communicator
-// wrapper: `.rank()`, `.size()`, `.group()`, `.dup()`, `.split()`.
-// Derived must implement `mpi_handle() const → MPI_Comm`.
-
+/// CRTP mixin providing read-only accessors and collective operations for any communicator wrapper: `.rank()`,
+/// `.size()`, `.group()`, `.dup()`, `.split()`. `Derived` must implement `MPI_Comm mpi_handle() const`.
 template <typename Derived>
 class comm_accessors {
     [[nodiscard]] MPI_Comm underlying() const noexcept {

@@ -10,6 +10,9 @@
 
 namespace mpi::experimental {
 
+/// Blocks until a message matching `source` and `tag` is available, without receiving it (`MPI_Probe`).
+///
+/// @param status Optional: filled with the status of the message. Defaults to `MPI_STATUS_IGNORE`.
 template <
     rank                                      Source = int,
     tag                                       Tag    = int,
@@ -21,12 +24,7 @@ void probe(
     Comm const& comm   = MPI_COMM_WORLD,
     Status&&    status = MPI_STATUS_IGNORE
 ) {
-    int err = MPI_Probe(
-        to_rank(source),
-        to_tag(tag),
-        handle(comm),
-        handle_ptr(status)
-    );
+    int err = MPI_Probe(to_rank(source), to_tag(tag), handle(comm), handle_ptr(status));
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);
     }
