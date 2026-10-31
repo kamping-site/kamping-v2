@@ -336,6 +336,173 @@ TEST_F(SparseAlltoallDefault, WithoutAlgorithmTag) {
     EXPECT_EQ(received[r.prev][0], (std::vector<int>{r.prev}));
 }
 
+// ── Layer 2: receive into one buffer ─────────────────────────────────────────
+
+namespace {
+/// Rank s sends `messages_per_dest` messages to every rank d, each of length d + 1 filled with s.
+sends_t<int> all_to_all_sends(int messages_per_dest = 1) {
+    auto const   r = world_ranks();
+    sends_t<int> sends;
+    for (int dest = 0; dest < r.size; ++dest) {
+        for (int m = 0; m < messages_per_dest; ++m) {
+            sends.emplace_back(dest, std::vector<int>(static_cast<std::size_t>(dest + 1), r.rank));
+        }
+    }
+    return sends;
+}
+
+/// Checks what `all_to_all_sends(messages_per_dest)` delivers to this rank: `out` starts with segments of length
+/// rank + 1, each filled with its source, and every source appears in exactly `messages_per_dest` of them.
+void expect_all_to_all_received(std::vector<int> const& out, std::size_t received, int messages_per_dest = 1) {
+    auto const        r          = world_ranks();
+    std::size_t const per_msg    = static_cast<std::size_t>(r.rank + 1);
+    std::size_t const n_messages = static_cast<std::size_t>(r.size * messages_per_dest);
+    ASSERT_EQ(received, n_messages * per_msg);
+    ASSERT_GE(out.size(), received);
+    std::map<int, int> per_source;
+    for (std::size_t offset = 0; offset < received; offset += per_msg) {
+        int const source = out[offset];
+        for (std::size_t i = 0; i < per_msg; ++i) {
+            EXPECT_EQ(out[offset + i], source) << "segment at " << offset;
+        }
+        ++per_source[source];
+    }
+    ASSERT_EQ(per_source.size(), static_cast<std::size_t>(r.size));
+    for (auto const& [source, n]: per_source) {
+        EXPECT_EQ(n, messages_per_dest) << "source " << source;
+    }
+}
+} // namespace
+
+template <typename Algorithm>
+class SparseAlltoallIntoBuffer : public SynchronizedTest {};
+TYPED_TEST_SUITE(SparseAlltoallIntoBuffer, algorithms);
+
+TYPED_TEST(SparseAlltoallIntoBuffer, PresizedBuffer) {
+    auto const       r = world_ranks();
+    std::vector<int> out(static_cast<std::size_t>(r.size * (r.rank + 1)), -1);
+    auto const       received = dstl::sparse_alltoall(TypeParam{}, all_to_all_sends(), out, 0, MPI_COMM_WORLD);
+    expect_all_to_all_received(out, received);
+}
+
+TYPED_TEST(SparseAlltoallIntoBuffer, PresizedBufferWithManyMessages) {
+    // Many receives in flight at once.
+    auto const       r = world_ranks();
+    std::vector<int> out(static_cast<std::size_t>(8 * r.size * (r.rank + 1)), -1);
+    auto const       received = dstl::sparse_alltoall(TypeParam{}, all_to_all_sends(8), out, 0, MPI_COMM_WORLD);
+    expect_all_to_all_received(out, received, 8);
+}
+
+TYPED_TEST(SparseAlltoallIntoBuffer, PresizedBufferLargerThanNeeded) {
+    // Only the received elements are written; the rest of the buffer stays untouched.
+    auto const        r      = world_ranks();
+    std::size_t const needed = static_cast<std::size_t>(r.size * (r.rank + 1));
+    std::vector<int>  out(needed + 3, -1);
+    auto const        received = dstl::sparse_alltoall(TypeParam{}, all_to_all_sends(), out, 0, MPI_COMM_WORLD);
+    EXPECT_EQ(received, needed);
+    EXPECT_EQ(out.size(), needed + 3);
+    EXPECT_EQ(out[needed], -1);
+    EXPECT_EQ(out.back(), -1);
+}
+
+TYPED_TEST(SparseAlltoallIntoBuffer, ResizeBuffer) {
+    std::vector<int> out{7, 7, 7}; // previous content is replaced
+    auto const       received =
+        dstl::sparse_alltoall(TypeParam{}, all_to_all_sends(), out | kamping::v2::views::resize, 0, MPI_COMM_WORLD);
+    EXPECT_EQ(out.size(), received);
+    expect_all_to_all_received(out, received);
+}
+
+TYPED_TEST(SparseAlltoallIntoBuffer, ResizeBufferWithManyMessages) {
+    // Many messages per source, so the buffer grows many times while earlier messages must be kept.
+    std::vector<int> out;
+    auto const       received =
+        dstl::sparse_alltoall(TypeParam{}, all_to_all_sends(8), out | kamping::v2::views::resize, 0, MPI_COMM_WORLD);
+    EXPECT_EQ(out.size(), received);
+    expect_all_to_all_received(out, received, 8);
+}
+
+TYPED_TEST(SparseAlltoallIntoBuffer, NoMessagesEmptiesAResizeBuffer) {
+    std::vector<int> out{1, 2, 3};
+    auto const       received =
+        dstl::sparse_alltoall(TypeParam{}, sends_t<int>{}, out | kamping::v2::views::resize, 0, MPI_COMM_WORLD);
+    EXPECT_EQ(received, 0u);
+    EXPECT_TRUE(out.empty());
+}
+
+TYPED_TEST(SparseAlltoallIntoBuffer, FlatInputViaChunked) {
+    // A flat buffer with per-rank counts, as for MPI_Alltoallv: rank s sends d + 1 copies of s to rank d.
+    auto const       r = world_ranks();
+    std::vector<int> counts;
+    std::vector<int> data;
+    for (int dest = 0; dest < r.size; ++dest) {
+        counts.push_back(dest + 1);
+        data.insert(data.end(), static_cast<std::size_t>(dest + 1), r.rank);
+    }
+    std::vector<int> out;
+    auto const       received = dstl::sparse_alltoall(
+        TypeParam{},
+        data | kamping::v2::views::with_counts(counts) | kamping::v2::views::auto_displs()
+            | kamping::v2::views::chunked,
+        out | kamping::v2::views::resize,
+        0,
+        MPI_COMM_WORLD
+    );
+    expect_all_to_all_received(out, received);
+}
+
+TYPED_TEST(SparseAlltoallIntoBuffer, LargeMessages) {
+    auto const        r = world_ranks();
+    std::size_t const n = 1 << 18;
+    std::vector<int>  out;
+    auto const        received = dstl::sparse_alltoall(
+        TypeParam{},
+        sends_t<int>{{r.next, std::vector<int>(n, r.rank)}},
+        out | kamping::v2::views::resize,
+        0,
+        MPI_COMM_WORLD
+    );
+    EXPECT_EQ(received, n);
+    EXPECT_EQ(out, std::vector<int>(n, r.prev));
+}
+
+TEST_F(SparseAlltoallRsx, CachedWindowIntoBuffer) {
+    dstl::rsx_window_cache windows;
+    for (int iteration = 0; iteration < 3; ++iteration) {
+        std::vector<int> out;
+        auto const       received = dstl::sparse_alltoall(
+            dstl::sparse_alltoall_algorithm::rsx,
+            all_to_all_sends(),
+            out | kamping::v2::views::resize,
+            iteration % 2,
+            MPI_COMM_WORLD,
+            windows
+        );
+        expect_all_to_all_received(out, received);
+    }
+    EXPECT_EQ(windows.size(), 1u);
+}
+
+TEST_F(SparseAlltoallDefault, IntoBufferWithoutAlgorithmTag) {
+    auto const       r = world_ranks();
+    std::vector<int> out;
+    auto const       received =
+        dstl::sparse_alltoall(sends_t<int>{{r.next, {r.rank}}}, out | kamping::v2::views::resize, 0, MPI_COMM_WORLD);
+    EXPECT_EQ(received, 1u);
+    EXPECT_EQ(out, (std::vector<int>{r.prev}));
+}
+
+TEST(SparseAlltoallConcepts, RecvBuffer) {
+    static_assert(dstl::sparse_alltoall_recv_buffer<std::vector<int>&>);
+    static_assert(
+        dstl::sparse_alltoall_recv_buffer<decltype(std::declval<std::vector<int>&>() | kamping::v2::views::resize)>
+    );
+    // A Layer 1 callback is never taken for a recv buffer.
+    auto callback = [](kamping::v2::probe_result) {
+    };
+    static_assert(!dstl::sparse_alltoall_recv_buffer<decltype(callback)>);
+}
+
 TEST(SparseAlltoallConcepts, AlgorithmTags) {
     static_assert(dstl::is_sparse_alltoall_algorithm<dstl::sparse_alltoall_algorithm::nbx_t>);
     static_assert(dstl::is_sparse_alltoall_algorithm<dstl::sparse_alltoall_algorithm::pcx_t>);

@@ -21,6 +21,7 @@
 #include "kamping/v2/collectives/ibarrier.hpp"
 #include "kamping/v2/comm.hpp"
 #include "kamping/v2/completion.hpp"
+#include "kamping/v2/infer.hpp"
 #include "kamping/v2/kassert.hpp"
 #include "kamping/v2/p2p/isend.hpp"
 #include "kamping/v2/p2p/probe.hpp"
@@ -33,6 +34,9 @@
 #include "mpi/error.hpp"
 #include "mpi/handle.hpp"
 #include "mpi/info.hpp"
+#include "mpi/mpi_span.hpp"
+#include "mpi/p2p/imrecv.hpp"
+#include "mpi/p2p/mrecv.hpp"
 #include "mpi/win.hpp"
 
 namespace dstl {
@@ -358,6 +362,99 @@ void sparse_alltoall(SBuf&& sbuf, OnMessage&& on_message, Tag tag, Comm const& c
         std::forward<OnMessage>(on_message),
         std::move(tag),
         comm
+    );
+}
+
+// ── Layer 2: receive into one buffer ─────────────────────────────────────────
+
+/// @brief A recv buffer for the recv-buffer overloads of @ref sparse_alltoall: any `recv_buffer`, presized or deferred
+/// (e.g. `views::resize`), that cannot be mistaken for a Layer 1 callback.
+template <typename RBuf>
+concept sparse_alltoall_recv_buffer =
+    mpi::experimental::recv_buffer<RBuf> && !std::invocable<RBuf, kamping::v2::probe_result>;
+
+/// @brief Sparse personalized all-to-all receiving all messages into `rbuf`, one after the other in arrival order.
+///
+/// A Layer 1 call (any protocol) whose callback receives each message at the next free position of `rbuf`, in the
+/// datatype of `rbuf`. `args` are the arguments following the callback in the Layer 1 overloads: the tag, optionally
+/// the communicator and, for RSX, optionally the cached counter windows. A flat variadic buffer becomes an input via
+/// `views::chunked`:
+/// @code
+/// auto received = dstl::sparse_alltoall(
+///     nbx, data | views::with_counts(counts) | views::auto_displs() | views::chunked, out | views::resize, tag, comm);
+/// @endcode
+///
+/// - **Presized `rbuf`:** must have room for all received elements (asserted). Each message is received with `imrecv`
+///   as soon as it is matched, so receives overlap; all are waited for before returning. Elements after the received
+///   ones are left untouched.
+/// - **`views::resize`:** each message is received with a blocking `mrecv` after growing `rbuf` to fit it (growing
+///   keeps the elements already received, see `resize_for_receive`), so no receive is in flight when the buffer
+///   moves. Finally `rbuf` is sized to exactly the received elements.
+///
+/// The order is the arrival order; messages from the same source keep their send order. To know which data came from
+/// where, use the callback overloads.
+///
+/// @return The number of elements received.
+/// @throws mpi_error if an MPI call fails.
+template <
+    is_sparse_alltoall_algorithm Algorithm,
+    sparse_alltoall_send_buffer  SBuf,
+    sparse_alltoall_recv_buffer  RBuf,
+    typename... Args>
+std::size_t sparse_alltoall(Algorithm algorithm, SBuf&& sbuf, RBuf&& rbuf, Args&&... args) {
+    constexpr bool     deferred = kamping::v2::deferred_recv_buf<RBuf>;
+    MPI_Datatype const type     = mpi::experimental::type(rbuf);
+    MPI_Aint           lb       = 0;
+    MPI_Aint           extent   = 0;
+    int                err      = MPI_Type_get_extent(type, &lb, &extent);
+    if (err != MPI_SUCCESS) {
+        throw mpi::experimental::mpi_error(err);
+    }
+
+    std::size_t                 offset = 0;
+    kamping::v2::request_vector pending; // presized only
+    auto                        receive = [&](kamping::v2::probe_result probe) {
+        auto const n = static_cast<std::size_t>(kamping::v2::detail::checked_recv_count(probe.count(type)));
+        if constexpr (deferred) {
+            rbuf.set_recv_count(static_cast<std::ptrdiff_t>(offset + n));
+        } else {
+            KAMPING_V2_ASSERT(
+                offset + n <= static_cast<std::size_t>(mpi::experimental::count(rbuf)),
+                "sparse_alltoall: the recv buffer is too small for the received messages; pass views::resize to grow it"
+            );
+        }
+        auto* const                 base = static_cast<std::byte*>(static_cast<void*>(mpi::experimental::ptr(rbuf)));
+        mpi::experimental::mpi_span slot(
+            base + static_cast<std::ptrdiff_t>(offset) * extent,
+            static_cast<std::ptrdiff_t>(n),
+            type
+        );
+        if constexpr (deferred) {
+            mpi::experimental::mrecv(slot, probe);
+        } else {
+            mpi::experimental::imrecv(slot, probe, pending.emplace_back());
+        }
+        offset += n;
+    };
+    sparse_alltoall(algorithm, std::forward<SBuf>(sbuf), receive, std::forward<Args>(args)...);
+
+    if constexpr (deferred) {
+        rbuf.set_recv_count(static_cast<std::ptrdiff_t>(offset));
+        kamping::v2::materialize(rbuf);
+    } else {
+        kamping::v2::waitall(pending);
+    }
+    return offset;
+}
+
+/// @brief The recv-buffer overload with the default protocol (NBX).
+template <sparse_alltoall_send_buffer SBuf, sparse_alltoall_recv_buffer RBuf, typename... Args>
+std::size_t sparse_alltoall(SBuf&& sbuf, RBuf&& rbuf, Args&&... args) {
+    return sparse_alltoall(
+        sparse_alltoall_algorithm::nbx,
+        std::forward<SBuf>(sbuf),
+        std::forward<RBuf>(rbuf),
+        std::forward<Args>(args)...
     );
 }
 
