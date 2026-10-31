@@ -1,80 +1,21 @@
 cmake_minimum_required(VERSION 3.25)
-project(kamping-v2 LANGUAGES CXX)
+project(kamping-v2-bindings LANGUAGES CXX)
 
-include(FetchContent)
+include(${CMAKE_CURRENT_LIST_DIR}/../cmake/kamping-v2-setup.cmake)
+kamping_v2_require_component(mpi-core mpi::core)
 
-# When kamping-v2 is used as the FetchContent SOURCE_SUBDIR entry point (i.e. the monorepo
-# root CMakeLists.txt was not processed), bootstrap all required dependencies here.
-# In the monorepo build these are already provided by the root CMakeLists.txt.
-if (NOT TARGET mpi::core)
-    set(MPI_DETERMINE_LIBRARY_VERSION TRUE)
-    find_package(MPI REQUIRED)
-
-    # Configure the kassert variables inside a block() so they stay scoped to this kassert instance
-    # and do not leak into the shared kamping-types component, which configures its own kassert
-    # instance. The created target is global and remains available outside the block.
-    block()
-        set(KASSERT_CMAKE_NAMESPACE kamping_v2)
-        set(KASSERT_CXX_NAMESPACE kamping::v2::kassert)
-        set(KASSERT_INCLUDE_SUBDIR kamping/v2)
-        set(KASSERT_PREFIX KAMPING_V2_ASSERT)
-        FetchContent_Declare(
-            kamping_v2_kassert
-            GIT_REPOSITORY https://github.com/kamping-site/kassert
-            GIT_TAG v1.0.0
-        )
-        FetchContent_MakeAvailable(kamping_v2_kassert)
-    endblock()
-
-    # Declare pfr so kamping-types can discover it (it calls FetchContent_MakeAvailable(pfr)
-    # internally when Boost::pfr is not already a target).
-    FetchContent_Declare(
-        pfr
-        GIT_REPOSITORY https://github.com/boostorg/pfr
-        GIT_TAG 2.2.0
-        SYSTEM FIND_PACKAGE_ARGS 2.2.0
-    )
-
-    # kamping-types lives in the kamping-site/kamping (v1) repo.
-    FetchContent_Declare(
-        kamping_types
-        GIT_REPOSITORY https://github.com/kamping-site/kamping
-        GIT_TAG main
-        SOURCE_SUBDIR kamping-types
-    )
-    FetchContent_MakeAvailable(kamping_types)
-
-    set(_mpi_core_local "${CMAKE_CURRENT_SOURCE_DIR}/../mpi-core")
-    if (NOT EXISTS "${_mpi_core_local}/CMakeLists.txt")
-        message(
-            FATAL_ERROR
-            "kamping-v2: mpi::core target not found and the sibling directory "
-            "'${_mpi_core_local}' does not exist. Provide mpi::core before including "
-            "this component, or build from the monorepo root."
-        )
-    endif ()
-    FetchContent_Declare(mpi_core SOURCE_DIR "${_mpi_core_local}")
-    unset(_mpi_core_local)
-    FetchContent_MakeAvailable(mpi_core)
-endif ()
-
-add_library(kamping_v2 INTERFACE)
-target_include_directories(kamping_v2 INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_compile_features(kamping_v2 INTERFACE cxx_std_20)
+kamping_v2_add_header_only_library(kamping_v2 kamping::v2 ${CMAKE_CURRENT_SOURCE_DIR}/include)
+set_target_properties(kamping_v2 PROPERTIES EXPORT_NAME v2)
 target_link_libraries(kamping_v2 INTERFACE mpi::core)
-add_library(kamping::v2 ALIAS kamping_v2)
 
-# Interface target for warning flags. The monorepo root or any downstream consumer can append
-# additional flags (e.g. -Werror) to this target after processing this file.
-add_library(kamping_v2_warnings INTERFACE)
-target_compile_options(
-    kamping_v2_warnings INTERFACE
-    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-Wall -Wextra -Wpedantic -Wshadow -Wconversion -Wsign-conversion>
-    $<$<CXX_COMPILER_ID:MSVC>:/W4>
+kamping_v2_install_component(
+    v2
+    TARGETS kamping_v2
+    NAMESPACE kamping::
+    REQUIRES core
 )
-add_library(kamping::v2::warnings ALIAS kamping_v2_warnings)
 
-if (PROJECT_IS_TOP_LEVEL OR KAMPING_BUILD_EXAMPLES_AND_TESTS)
+if (PROJECT_IS_TOP_LEVEL OR KAMPING_V2_BUILD_EXAMPLES_AND_TESTS)
     add_subdirectory(tests)
     add_subdirectory(examples)
 endif ()

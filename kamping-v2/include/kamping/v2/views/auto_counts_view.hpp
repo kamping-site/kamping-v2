@@ -32,53 +32,53 @@ namespace kamping::v2 {
 template <typename Base, mpi::experimental::count_range Counts, bool resize = false>
     requires(!resize || has_resize<Counts> || has_mpi_resize_for_receive<Counts>)
 class auto_counts_view : public view_interface<auto_counts_view<Base, Counts, resize>> {
-    Base   base_;
-    Counts counts_;
+    Base   _base;
+    Counts _counts;
 
 public:
     constexpr Base const& base() const& noexcept {
-        return base_;
+        return _base;
     }
     constexpr Base& base() & noexcept {
-        return base_;
+        return _base;
     }
     constexpr Base&& base() && noexcept {
-        return std::move(base_);
+        return std::move(_base);
     }
 
     /// Construct from a data buffer and counts buffer (no resize; counts must be pre-sized).
     template <typename R, typename C>
     auto_counts_view(R&& base, C&& counts)
-        : base_(kamping::v2::all(std::forward<R>(base))),
-          counts_(kamping::v2::all(std::forward<C>(counts))) {}
+        : _base(kamping::v2::all(std::forward<R>(base))),
+          _counts(kamping::v2::all(std::forward<C>(counts))) {}
 
     /// Construct from a data buffer and counts buffer with resize enabled (tag dispatch).
     template <typename R, typename C>
     auto_counts_view(kamping::v2::resize_t, R&& base, C&& counts)
-        : base_(kamping::v2::all(std::forward<R>(base))),
-          counts_(kamping::v2::all(std::forward<C>(counts))) {}
+        : _base(kamping::v2::all(std::forward<R>(base))),
+          _counts(kamping::v2::all(std::forward<C>(counts))) {}
 
     /// Pre-allocates or resizes the counts buffer for comm_size processes.
     /// Only resizes when resize=true; otherwise this is a no-op (buffer must already
     /// have the correct size).
     void set_comm_size(int n) {
         if constexpr (resize) {
-            kamping::v2::resize_for_receive(counts_, static_cast<std::ptrdiff_t>(n));
+            kamping::v2::resize_for_receive(_counts, static_cast<std::ptrdiff_t>(n));
         }
     }
 
-    /// Signal that MPI has finished writing into mpi_counts(). Currently a no-op,
-    /// but present as an explicit protocol step for clarity and future extensibility.
+    /// Signals that MPI has finished writing into mpi_counts(). Nothing to do here; views stacked on top (e.g.
+    /// `auto_displs_view`) use it to invalidate state derived from the counts.
     void commit_counts() {}
 
     /// Mutable access — used by infer() to write per-rank counts directly.
     std::span<int> mpi_counts() {
-        return {counts_};
+        return {_counts};
     }
 
     /// Read-only access — used by MPI wrappers after counts are committed.
     std::span<int const> mpi_counts() const {
-        return {counts_};
+        return {_counts};
     }
 };
 
@@ -97,41 +97,39 @@ inline constexpr bool enable_borrowed_buffer<auto_counts_view<Base, Counts, resi
 
 namespace kamping::v2::views {
 
-/// 0-arg: owned Container (default std::vector<int>) auto-resized by infer() via set_comm_size().
-template <typename Container = std::vector<int>>
-constexpr auto auto_counts() {
-    return kamping::v2::adaptor<1, decltype([](auto&& r, auto&& _counts) {
-                                    return kamping::v2::auto_counts_view(
-                                        kamping::v2::resize,
-                                        std::forward<decltype(r)>(r),
-                                        std::forward<decltype(_counts)>(_counts)
-                                    );
-                                })>{}(Container{});
-}
+/// Attaches deferred per-rank counts, which the operation exchanges (see `infer()`):
+/// - `buf | auto_counts` or `buf | auto_counts()`: the counts are stored in an owned `std::vector<int>`, resized to
+///   the communicator size;
+/// - `buf | auto_counts(counts)`: in the caller-provided `counts`, which must already have one entry per rank;
+/// - `buf | auto_counts(resize, counts)`: in the caller-provided `counts`, resized to the communicator size.
+inline constexpr struct auto_counts_fn : kamping::v2::adaptor_factory<auto_counts_fn> {
+    template <typename C>
+        requires std::ranges::range<std::remove_cvref_t<C>>
+    constexpr auto operator()(C&& counts) const {
+        return kamping::v2::adaptor<1, decltype([](auto&& r, auto&& c) {
+                                        return kamping::v2::auto_counts_view(
+                                            std::forward<decltype(r)>(r),
+                                            std::forward<decltype(c)>(c)
+                                        );
+                                    })>{}(std::forward<C>(counts));
+    }
 
-/// 1-arg: user-provided counts buffer, no resize (buffer must already have correct size).
-template <typename C>
-    requires std::ranges::range<std::remove_cvref_t<C>>
-constexpr auto auto_counts(C&& counts) {
-    return kamping::v2::adaptor<1, decltype([](auto&& r, auto&& _counts) {
-                                    return kamping::v2::auto_counts_view(
-                                        std::forward<decltype(r)>(r),
-                                        std::forward<decltype(_counts)>(_counts)
-                                    );
-                                })>{}(std::forward<C>(counts));
-}
+    template <typename C>
+        requires std::ranges::range<std::remove_cvref_t<C>>
+    constexpr auto operator()(kamping::v2::resize_t, C&& counts) const {
+        return kamping::v2::adaptor<1, decltype([](auto&& r, auto&& c) {
+                                        return kamping::v2::auto_counts_view(
+                                            kamping::v2::resize,
+                                            std::forward<decltype(r)>(r),
+                                            std::forward<decltype(c)>(c)
+                                        );
+                                    })>{}(std::forward<C>(counts));
+    }
 
-/// 2-arg: resize tag + user-provided counts buffer; infer() will resize via set_comm_size().
-template <typename C>
-    requires std::ranges::range<std::remove_cvref_t<C>>
-constexpr auto auto_counts(kamping::v2::resize_t, C&& counts) {
-    return kamping::v2::adaptor<1, decltype([](auto&& r, auto&& _counts) {
-                                    return kamping::v2::auto_counts_view(
-                                        kamping::v2::resize,
-                                        std::forward<decltype(r)>(r),
-                                        std::forward<decltype(_counts)>(_counts)
-                                    );
-                                })>{}(std::forward<C>(counts));
-}
+    // Defined last: it calls the overload above, whose return type must be deduced first.
+    constexpr auto operator()() const {
+        return (*this)(kamping::v2::resize, std::vector<int>{});
+    }
+} auto_counts{};
 
 } // namespace kamping::v2::views

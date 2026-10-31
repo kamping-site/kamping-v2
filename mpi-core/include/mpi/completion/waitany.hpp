@@ -26,10 +26,14 @@ namespace mpi::experimental {
 ///         (`MPI_UNDEFINED`).
 template <request_range Requests, convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>
 std::optional<std::size_t> waitany(Requests&& requests, Status&& status = MPI_STATUS_IGNORE) {
-    auto&& reqs  = handle_range(requests);
+    auto&& reqs  = mpi::experimental::handle_range(requests);
     int    index = MPI_UNDEFINED;
-    int    err =
-        MPI_Waitany(static_cast<int>(std::ranges::size(reqs)), std::ranges::data(reqs), &index, handle_ptr(status));
+    int    err   = MPI_Waitany(
+        static_cast<int>(std::ranges::size(reqs)),
+        std::ranges::data(reqs),
+        &index,
+        mpi::experimental::handle_ptr(status)
+    );
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);
     }
@@ -100,7 +104,7 @@ private:
 /// @return A `testany_result`: pending, the completed index, or no active request.
 template <request_range Requests, convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>
 testany_result testany(Requests&& requests, Status&& status = MPI_STATUS_IGNORE) {
-    auto&& reqs  = handle_range(requests);
+    auto&& reqs  = mpi::experimental::handle_range(requests);
     int    index = MPI_UNDEFINED;
     int    flag  = 0;
     int    err   = MPI_Testany(
@@ -108,7 +112,7 @@ testany_result testany(Requests&& requests, Status&& status = MPI_STATUS_IGNORE)
         std::ranges::data(reqs),
         &index,
         &flag,
-        handle_ptr(status)
+        mpi::experimental::handle_ptr(status)
     );
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);

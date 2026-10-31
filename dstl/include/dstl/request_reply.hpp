@@ -19,10 +19,10 @@
 #include "dstl/detail/recv_buffer_utils.hpp"
 #include "dstl/exchange_layout.hpp"
 #include "dstl/tags.hpp"
+#include "kamping/v2/buffer.hpp"
 #include "kamping/v2/collectives/alltoallv.hpp"
+#include "kamping/v2/handle.hpp"
 #include "kamping/v2/views.hpp"
-#include "mpi/buffer.hpp"
-#include "mpi/handle.hpp"
 
 /// @file
 /// dstl::request_reply — a round-trip collective over a plain MPI_Comm in the style of a std::ranges
@@ -55,8 +55,8 @@ template <typename Requests, typename RBuf, typename MakeReply, typename Order>
 concept request_reply_args =
     std::ranges::sized_range<Requests> && std::ranges::random_access_range<Requests>
     && std::ranges::contiguous_range<RBuf>
-    && ((std::is_same_v<Order, layout::ordered_by_source> && mpi::experimental::recv_buffer_v<RBuf>)
-        || (!std::is_same_v<Order, layout::ordered_by_source> && mpi::experimental::recv_buffer<RBuf>))
+    && ((std::is_same_v<Order, layout::ordered_by_source> && kamping::v2::recv_buffer_v<RBuf>)
+        || (!std::is_same_v<Order, layout::ordered_by_source> && kamping::v2::recv_buffer<RBuf>))
     && std::is_trivially_copyable_v<kamping::v2::payload_element_t<Requests>>
     && reply_fn<MakeReply, kamping::v2::payload_element_t<Requests>>;
 
@@ -197,9 +197,9 @@ template <
     kamping::v2::value_destination_pair_buffer Requests,
     typename RBuf,
     typename MakeReply,
-    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm  = MPI_Comm,
-    is_execution_policy                                    Exec  = execution_policy::seq,
-    is_output_layout                                       Order = layout::unordered>
+    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm  = MPI_Comm,
+    is_execution_policy                              Exec  = execution_policy::seq,
+    is_output_layout                                 Order = layout::unordered>
     requires detail::request_reply_args<Requests, RBuf, MakeReply, Order> && kamping::v2::has_mpi_value_type<Requests>
 auto request_reply(
     Requests&&             requests,
@@ -219,7 +219,7 @@ auto request_reply(
         "request_reply: par_comm is not supported by the flat path; use execution_policy::seq or ::par."
     );
     constexpr bool parallel = !std::is_same_v<Exec, execution_policy::seq>;
-    MPI_Comm const c        = mpi::experimental::handle(comm);
+    MPI_Comm const c        = kamping::v2::handle(comm);
     int            p        = 0;
     MPI_Comm_size(c, &p);
 
@@ -237,7 +237,7 @@ auto request_reply(
         detail::chunking{parallel, n},
         p,
         n,
-        [&](std::ptrdiff_t i) { return mpi::experimental::to_rank(std::get<1>(first[i])); },
+        [&](std::ptrdiff_t i) { return kamping::v2::to_rank(std::get<1>(first[i])); },
         [&](std::ptrdiff_t i) -> Value { return std::get<0>(first[i]); }
     );
 
@@ -262,7 +262,7 @@ auto request_reply(
     // forward send_displs). The reply MPI datatype is taken from the output buffer (the recv buffer carries
     // its own type) and attached to the reply send data.
     exchange_layout const rev        = reverse_layout(layout);
-    MPI_Datatype const    reply_dt   = mpi::experimental::type(result);
+    MPI_Datatype const    reply_dt   = kamping::v2::type(result);
     auto                  reply_send = replies | views::with_type(reply_dt) | views::with_counts(rev.send_counts)
                                        | views::with_displs(rev.send_displs);
     if constexpr (ordered) {

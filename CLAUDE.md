@@ -19,20 +19,27 @@ cmake --preset release
 cmake --build --preset release --parallel
 
 # Traditional
-cmake -B build -DCMAKE_BUILD_TYPE=Debug -DKAMPING_BUILD_EXAMPLES_AND_TESTS=ON
+cmake -B build -DCMAKE_BUILD_TYPE=Debug -DKAMPING_V2_BUILD_EXAMPLES_AND_TESTS=ON
 cmake --build build --parallel
 ```
 
-Key CMake options:
-- `KAMPING_BUILD_EXAMPLES_AND_TESTS` — must be ON to build tests (default OFF in library mode)
-- `KAMPING_WARNINGS_ARE_ERRORS` — treat compiler warnings as errors (default OFF)
-- `KAMPING_ENABLE_SERIALIZATION` — Cereal ecosystem adapter (default OFF)
-- `KAMPING_ENABLE_KOKKOS` — Kokkos ecosystem adapter (default OFF)
-- `KAMPING_ENABLE_REFLECTION` — Boost.PFR struct reflection in kamping-types (default ON)
+Key CMake options (all defined in `cmake/kamping-v2-setup.cmake`):
+- `KAMPING_V2_BUILD_EXAMPLES_AND_TESTS` — must be ON to build tests (default OFF in library mode)
+- `KAMPING_V2_WARNINGS_ARE_ERRORS` — treat compiler warnings as errors (default OFF)
+- `KAMPING_V2_INSTALL` — generate install rules (default ON when top-level)
+- `KAMPING_V2_ENABLE_CEREAL` / `_KOKKOS` / `_KOKKOS_COMM` / `_THRUST` / `_SYCL` — ecosystem adapters (default OFF)
+- `KAMPING_V2_ENABLE_REFLECTION` — Boost.PFR struct reflection in kamping-types (default ON)
+
+### CMake structure
+
+- `cmake/kamping-v2-setup.cmake` is included by every entry point (the root and `mpi-core/`, `kamping-v2/`, `dstl/`, `ecosystem/*/`, which can each be configured on their own). It holds the options, the dependencies (MPI, kassert, Boost.PFR, kamping-types), the `kamping_v2_warnings` target for tests and examples, and the helpers below.
+- Libraries are header-only INTERFACE targets created with `kamping_v2_add_header_only_library()`, whose headers form a `FILE_SET HEADERS`. A component that depends on a sibling pulls it in with `kamping_v2_require_component()`.
+- `kamping_v2_install_component()` installs a component into the `kamping-v2` CMake package (`find_package(kamping-v2 COMPONENTS core v2 dstl cereal ...)`); each component has its own export set and dependencies file. kamping-types (and Boost.PFR, if fetched) are bundled as the internal `types` component, since they have no install rules of their own.
+- `tests/install/` installs the build tree into a scratch prefix and builds a consumer project against it (`test_install.*`).
 
 ## Testing
 
-All tests live under `kamping-v2/tests/`.
+Tests live next to the component they test: `mpi-core/tests/` (targets `test_core_<name>`), `kamping-v2/tests/` (targets `test_v2_<name>`), `dstl/tests/` (targets `test_dstl_<name>`) and `ecosystem/*/tests/`. A test target `test_<layer>_<name>` is built from `<name>_test.cpp`; in mpi-core and kamping-v2, register new tests with the `mpi_core_add_*_test` / `kamping_v2_add_*_test` helpers in the component's `tests/CMakeLists.txt`.
 
 ```bash
 # Run all tests
@@ -42,7 +49,7 @@ ctest --preset debug          # or --preset release
 ctest --preset debug -R test_<testname>
 # Or build and run directly
 cmake --build build/debug --target test_<testname>
-./build/debug/kamping-v2/tests/test_<testname>
+./build/debug/kamping-v2/tests/test_v2_<name>
 ```
 
 MPI tests run with multiple core counts (1, 2, 4, 8).
@@ -74,30 +81,30 @@ v2 is organized into four explicit layers. Each layer depends only on the layers
 │  Language bindings  (kamping-v2)                         │
 │  C++ ergonomics: ownership, infer, deferred buffers,     │
 │  auto-counts/displs, resize-on-receive                   │
-│  kamping/v2/  (excluding contrib/)                       │
+│  kamping-v2/include/kamping/v2/                          │
 ├─────────────────────────────────────────────────────────┤
 │  Language bridge                                         │
 │  Minimal C++ implementation of the buffer contract:      │
 │  count/ptr/type/counts/displs dispatch,                  │
 │  core view adaptors (with_counts, with_displs, …),       │
 │  mpi::experimental:: MPI wrappers, native_handle bridge  │
-│  include/mpi/, kamping/v2/ranges/, kamping/v2/views/     │
+│  mpi-core/include/mpi/, kamping/v2/views/                │
 ├─────────────────────────────────────────────────────────┤
 │  Contract  (language-agnostic)                           │
 │  Abstract description of send/recv buffer,               │
 │  variadic buffer (with counts+displs), native MPI object │
-│  — expressed as C++ concepts in ranges/concepts.hpp      │
+│  — expressed as C++ concepts in mpi/buffer.hpp           │
 └─────────────────────────────────────────────────────────┘
 ```
 
-**Contract layer** — language-agnostic definitions of what a send buffer, recv buffer, variadic buffer (with counts and displacements), and a native MPI handle *are*. Expressed in C++ as the concepts in `kamping/v2/ranges/concepts.hpp` (`send_buffer`, `recv_buffer`, `data_buffer_v`, …). No implementation here — only constraints.
+**Contract layer** — language-agnostic definitions of what a send buffer, recv buffer, variadic buffer (with counts and displacements), and a native MPI handle *are*. Expressed in C++ as the concepts in `mpi-core/include/mpi/buffer.hpp` (`send_buffer`, `recv_buffer`, `data_buffer_v`, …). No implementation here — only constraints.
 
 **Language bridge** — the minimal C++ wiring that makes the contract work:
 - Accessor dispatch functions (`mpi::experimental::count/ptr/type/counts/displs`) with three-tier priority: `buffer_traits<T>` specialization → member functions (`mpi_count()`, `mpi_ptr()`, etc.) → `std::ranges` / builtin-type fallbacks.
 - `mpi::experimental::buffer_traits<T>` and `handle_traits<T>` — non-intrusive customization points for third-party types.
 - Ownership infrastructure: `ref_view<T>` (non-owning, wraps lvalue), `owning_view<T>` (owning, wraps rvalue), and `all(r)` / `all_t<R>` which select between them.
-- View adaptor machinery: `view_interface_base`, `adaptor_closure`, `adaptor`, `composed_closure` — the pipe `|` operator infrastructure.
-- Core view adaptors: `with_type`, `with_size`, `with_counts`, `with_displs`.
+- View adaptor machinery: `view_interface_base`, `adaptor_closure`, `adaptor`, `composed_closure`, `adaptor_factory` (adaptors like `auto_counts` that can be used with or without `()`) — the pipe `|` operator infrastructure.
+- Core view adaptors: `with_type`, `with_count`, `with_counts`, `with_displs`.
 - `mpi::experimental::` MPI wrappers — one MPI call each, no inference, no resizing, throw `mpi_error` on failure. Concrete buffer types `mpi_span` and `mpi_span_v`.
 - `mpi::experimental::handle` / `handle_ptr` / `to_rank` / `to_tag` — extract raw MPI handles from any wrapper.
 
@@ -109,7 +116,7 @@ v2 is organized into four explicit layers. Each layer depends only on the layers
 - Sentinel buffers (`inplace`, `null_buf`, `bottom`) — zero-overhead special buffer values for collective shortcuts.
 - `kamping::v2::` wrappers (send, recv, bcast, …) that call `infer()` then delegate to `mpi::experimental::`.
 
-**Ecosystem bridges** — bindings to external C++ libraries, living in `ecosystem/`. Currently: Kokkos adapter, GPU (Thrust/SYCL) adapters, and Cereal serialization via `views::serialize` / `views::deserialize<T>()`.
+**Ecosystem bridges** — bindings to external C++ libraries, living in `ecosystem/<name>/`. They extend the v2 layer: code in `kamping::v2` / `kamping::v2::views`, headers `kamping/v2/ecosystem/<name>.hpp`, CMake targets `kamping::v2::<name>`, package components `<name>`. Currently: Kokkos adapter, GPU (Thrust/SYCL) adapters, and Cereal serialization via `views::serialize` / `views::deserialize<T>()`.
 
 ### Core Idea: Buffer Protocol + View Pipeline
 
@@ -117,8 +124,8 @@ Callers pipe standard C++ objects through a chain of `std::ranges`-style view ad
 
 ```cpp
 kamping::v2::send(v, 1, comm);
-kamping::v2::recv(v | kamping::views::resize, comm);           // resizable recv
-kamping::v2::send(map | kamping::views::serialize, 1, comm);   // Cereal serialization
+kamping::v2::recv(v | kamping::v2::views::resize, comm);           // resizable recv
+kamping::v2::send(map | kamping::v2::views::serialize, 1, comm);   // Cereal serialization
 ```
 
 ### Namespaces
@@ -126,10 +133,10 @@ kamping::v2::send(map | kamping::views::serialize, 1, comm);   // Cereal seriali
 | Namespace | Role |
 |-----------|------|
 | `mpi::experimental::` | Core layer: buffer concepts, accessors (`count`, `ptr`, `type`, `counts`, `displs`), MPI wrappers, native-handle adaption, concrete buffer types (`mpi_span`, `mpi_span_v`, `comm_view`) |
-| `kamping::v2::` | High-level wrappers: call `infer()` then delegate to `mpi::experimental::` |
-| `kamping::views::` | Range adaptor factory functions (pipe operators) |
+| `kamping::v2::` | High-level wrappers: call `infer()` then delegate to `mpi::experimental::`. Also re-exports the core names users need (buffer contract in `kamping/v2/buffer.hpp`, handle bridge in `kamping/v2/handle.hpp`, `mpi_error`, `info`, …), so code on the v2 layer does not have to name `mpi::experimental::` except to specialize its traits. `kamping/v2.hpp` includes everything. |
+| `kamping::v2::views::` | Range adaptor factory functions (pipe operators) |
 
-### Buffer Concepts (`include/mpi/buffer.hpp`)
+### Buffer Concepts (`mpi-core/include/mpi/buffer.hpp`)
 
 | Concept | Requirements |
 |---------|-------------|
@@ -140,7 +147,7 @@ kamping::v2::send(map | kamping::views::serialize, 1, comm);   // Cereal seriali
 | `deferred_recv_buf` | recv_buffer with `set_recv_count(n)` for late-bound sizes |
 | `deferred_recv_buf_v` | variadic version with `set_comm_size`, `mpi_counts()`, `commit_counts()` |
 
-### Accessor Dispatch (`include/mpi/buffer.hpp`)
+### Accessor Dispatch (`mpi-core/include/mpi/buffer.hpp`)
 
 Each of `count()`, `ptr()`, `type()`, `counts()`, `displs()` is a free function in `mpi::experimental::` with prioritized overload resolution:
 
@@ -150,7 +157,7 @@ Each of `count()`, `ptr()`, `type()`, `counts()`, `displs()` is a free function 
 
 Specialize `mpi::experimental::buffer_traits<T>` to adapt any third-party type without modifying it.
 
-### View Adaptors (`include/kamping/v2/views/`)
+### View Adaptors (`kamping-v2/include/kamping/v2/views/`)
 
 All views are composable with `|`. They are lazy; metadata is not computed until the MPI operation queries it.
 
@@ -158,18 +165,18 @@ All views are composable with `|`. They are lazy; metadata is not computed until
 |---|---|
 | `views::resize` | Marks a container as resizable; MPI recv will call `resize(n)` before writing |
 | `views::with_type(dt)` | Overrides the MPI datatype |
-| `views::with_size(n)` | Overrides element count |
+| `views::with_count(n)` | Overrides element count |
 | `views::with_counts(range)` | Attaches per-rank send/recv counts (variadic operations) |
 | `views::with_displs(range)` | Attaches per-rank displacements; pass `kamping::v2::monotonic` tag to enable O(1) resize |
-| `views::auto_displs([tag,] [container])` | Computes displacements via exclusive_scan of counts; always `has_monotonic_displs` |
+| `views::auto_displs`, `views::auto_displs([resize,] displs)` | Computes displacements via exclusive_scan of counts; always `has_monotonic_displs` |
 | `views::resize_v` | Variadic recv buffer: resizes the underlying container from counts+displs before receive |
 | `views::ref_single(val)` | Wraps a single scalar as a one-element contiguous buffer |
-| `views::auto_counts([buf])` | Deferred variadic counts buffer; `set_comm_size` / `commit_counts` protocol |
-| `views::serialize` / `views::deserialize<T>()` | Cereal serialization (contrib) |
+| `views::auto_counts`, `views::auto_counts([resize,] counts)` | Deferred variadic counts buffer; `set_comm_size` / `commit_counts` protocol |
+| `views::serialize` / `views::deserialize<T>()` | Cereal serialization (ecosystem/cereal) |
 
 Ownership semantics follow `std::ranges::all`: an lvalue produces a `ref_view` (borrows); an rvalue produces an `owning_view` (owns). This propagates through the view chain.
 
-### `infer()` Protocol (`include/kamping/v2/infer.hpp`)
+### `infer()` Protocol (`kamping-v2/include/kamping/v2/infer.hpp`)
 
 Before issuing an MPI call, `kamping::v2::` wrappers call `infer(comm_op::XXX{}, buf..., comm)`. The default overloads:
 - For `deferred_recv_buf` targets: probe the network (`MPI_Mprobe`) and call `set_recv_count(n)` so the buffer resizes before the actual receive.
@@ -177,7 +184,7 @@ Before issuing an MPI call, `kamping::v2::` wrappers call `infer(comm_op::XXX{},
 
 Users can add new ADL overloads of `infer()` for custom buffer types or to exchange additional metadata.
 
-### Non-Blocking Operations (`include/kamping/v2/iresult.hpp`)
+### Non-Blocking Operations (`kamping-v2/include/kamping/v2/iresult.hpp`)
 
 Non-blocking operations return `iresult<Buf>` (single buffer) or `iresult<SBuf, RBuf>` (sendrecv).
 
@@ -208,6 +215,8 @@ The same pattern applies to ranks (`to_rank`) and tags (`to_tag`), supporting bo
 - Doxygen required for all public API
 - No `using namespace` in headers
 - `auto` preferred for type deduction
+- Call the buffer and handle accessors qualified (`mpi::experimental::count(x)`, `mpi::experimental::handle(c)`), never unqualified, so ADL cannot pick up a user's function of the same name
+- Arguments: core wrappers mirror MPI without default arguments (except a trailing `status`/`info`). v2 wrappers take the communicator last and required (followed only by an optional `status`), and leave out optional arguments by arity, never by default arguments before `comm`; a caller-supplied request goes first. See "Arguments and defaults" in DESIGN.md
 
 ---
 

@@ -1,70 +1,31 @@
 cmake_minimum_required(VERSION 3.25)
 project(mpi-core LANGUAGES CXX)
 
-include(FetchContent)
+include(${CMAKE_CURRENT_LIST_DIR}/../cmake/kamping-v2-setup.cmake)
 
-# Bootstrap dependencies when mpi-core is used as a standalone FetchContent entry point.
-# In the monorepo build these targets are already provided by the root CMakeLists.txt.
-if (NOT TARGET MPI::MPI_CXX)
-    set(MPI_DETERMINE_LIBRARY_VERSION TRUE)
-    find_package(MPI REQUIRED)
-endif ()
-
-if (NOT TARGET kamping_v2::kassert)
-    # Configure the kassert variables inside a block() so they stay scoped to this kassert instance
-    # and do not leak into the shared kamping-types component, which configures its own kassert
-    # instance. The created target is global and remains available outside the block.
-    block()
-        set(KASSERT_CMAKE_NAMESPACE kamping_v2)
-        set(KASSERT_CXX_NAMESPACE kamping::v2::kassert)
-        set(KASSERT_INCLUDE_SUBDIR kamping/v2)
-        set(KASSERT_PREFIX KAMPING_V2_ASSERT)
-        FetchContent_Declare(
-            kamping_v2_kassert
-            GIT_REPOSITORY https://github.com/kamping-site/kassert
-            GIT_TAG v1.0.0
-        )
-        FetchContent_MakeAvailable(kamping_v2_kassert)
-    endblock()
-endif ()
-
-if (NOT TARGET kamping::types)
-    FetchContent_Declare(
-        pfr
-        GIT_REPOSITORY https://github.com/boostorg/pfr
-        GIT_TAG 2.2.0
-        SYSTEM FIND_PACKAGE_ARGS 2.2.0
-    )
-    FetchContent_Declare(
-        kamping_types
-        GIT_REPOSITORY https://github.com/kamping-site/kamping
-        GIT_TAG main
-        SOURCE_SUBDIR kamping-types
-    )
-    FetchContent_MakeAvailable(kamping_types)
-endif ()
-
-add_library(mpi_core INTERFACE)
-target_include_directories(mpi_core INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
-target_compile_features(mpi_core INTERFACE cxx_std_20)
+kamping_v2_add_header_only_library(mpi_core mpi::core ${CMAKE_CURRENT_SOURCE_DIR}/include)
+set_target_properties(mpi_core PROPERTIES EXPORT_NAME core)
 target_link_libraries(mpi_core INTERFACE MPI::MPI_CXX kamping_v2::kassert kamping::types)
 
-# Set a sensible default assertion level so kassert does not warn about a missing definition
-# when mpi-core is used without kamping-v1 (which sets its own level on the kamping target).
-# Debug → normal assertions (level 30, the level of a plain KAMPING_V2_ASSERT(...)); otherwise → exceptions only
-# (level 10). The Debug level must be at least 30, or every KAMPING_V2_ASSERT without an explicit level is
-# compiled out.
+# Default assertion levels, so kassert does not warn about a missing definition. Debug: normal assertions (level 30, the
+# level of a plain KAMPING_V2_ASSERT(...)); otherwise: exceptions only (level 10).
 target_compile_definitions(
-    mpi_core INTERFACE
-    $<IF:$<CONFIG:Debug>,KAMPING_V2_ASSERT_ASSERTION_LEVEL=30,KAMPING_V2_ASSERT_ASSERTION_LEVEL=10>
+    mpi_core INTERFACE $<IF:$<CONFIG:Debug>,KAMPING_V2_ASSERT_ASSERTION_LEVEL=30,KAMPING_V2_ASSERT_ASSERTION_LEVEL=10>
+)
+# kamping-types uses its own kassert instance (macro prefix KAMPING_ASSERT); set its level too.
+target_compile_definitions(
+    mpi_core INTERFACE $<IF:$<CONFIG:Debug>,KAMPING_ASSERT_ASSERTION_LEVEL=20,KAMPING_ASSERT_ASSERTION_LEVEL=10>
 )
 
-# kamping::types transitively includes the kamping-v1 kassert (macro prefix KAMPING_ASSERT) via
-# headers such as kamping/types/scoped_datatype.hpp. Set its level too, so including those headers
-# does not warn "Assertion level was not set explicitly". Mirrors the kamping_v2 default above.
-target_compile_definitions(
-    mpi_core INTERFACE
-    $<IF:$<CONFIG:Debug>,KAMPING_ASSERT_ASSERTION_LEVEL=20,KAMPING_ASSERT_ASSERTION_LEVEL=10>
+kamping_v2_install_component(
+    core
+    TARGETS mpi_core
+    NAMESPACE mpi::
+    REQUIRES types
+    DEPENDENCIES "find_dependency(MPI COMPONENTS CXX)"
+                 "find_dependency(kamping_v2 CONFIG PATHS \"\${CMAKE_CURRENT_LIST_DIR}/../kamping/v2\" NO_DEFAULT_PATH)"
 )
 
-add_library(mpi::core ALIAS mpi_core)
+if (PROJECT_IS_TOP_LEVEL OR KAMPING_V2_BUILD_EXAMPLES_AND_TESTS)
+    add_subdirectory(tests)
+endif ()

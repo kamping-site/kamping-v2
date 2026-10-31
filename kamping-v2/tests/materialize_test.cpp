@@ -6,6 +6,7 @@
 
 #include <gtest/gtest.h>
 
+#include "kamping/v2/buffer.hpp"
 #include "kamping/v2/views/auto_counts_view.hpp"
 #include "kamping/v2/views/auto_displs_view.hpp"
 #include "kamping/v2/views/concepts.hpp"
@@ -53,7 +54,7 @@ TEST(MaterializeTest, ResizeViewIsIdempotent) {
     kamping::v2::materialize(buf);
     kamping::v2::materialize(buf); // second call must not double-resize or crash
     EXPECT_EQ(data.size(), 4u);
-    EXPECT_EQ(mpi::experimental::ptr(buf), data.data());
+    EXPECT_EQ(kamping::v2::ptr(buf), data.data());
 }
 
 // ── resize_v_view (variadic deferred recv) ────────────────────────────────────
@@ -71,7 +72,7 @@ TEST(MaterializeTest, ResizeVViewRealizesSizeAndDisplsBeforePtrAccess) {
 
     rbuf.set_comm_size(3);
     {
-        auto* p = std::ranges::data(mpi::experimental::counts(rbuf));
+        auto* p = std::ranges::data(kamping::v2::counts(rbuf));
         p[0]    = 2;
         p[1]    = 3;
         p[2]    = 1;
@@ -83,7 +84,7 @@ TEST(MaterializeTest, ResizeVViewRealizesSizeAndDisplsBeforePtrAccess) {
     // Backing storage sized to the total, and the displacements are readable —
     // exactly what a custom collective needs before laying out the exchange.
     EXPECT_EQ(data.size(), 6u);
-    auto displs = mpi::experimental::displs(rbuf);
+    auto displs = kamping::v2::displs(rbuf);
     EXPECT_EQ((std::vector<int>(std::ranges::begin(displs), std::ranges::end(displs))), (std::vector<int>{0, 2, 5}));
 }
 
@@ -100,7 +101,7 @@ TEST(MaterializeTest, WrappedVariadicDeferredBufferStaysMaterializable) {
 
     wrapped.set_comm_size(2);
     {
-        auto* p = std::ranges::data(mpi::experimental::counts(wrapped));
+        auto* p = std::ranges::data(kamping::v2::counts(wrapped));
         p[0]    = 3;
         p[1]    = 2;
     }
@@ -130,7 +131,7 @@ TEST(MaterializeTest, ResizeVViewIsIdempotent) {
 
     rbuf.set_comm_size(2);
     {
-        auto* p = std::ranges::data(mpi::experimental::counts(rbuf));
+        auto* p = std::ranges::data(kamping::v2::counts(rbuf));
         p[0]    = 4;
         p[1]    = 1;
     }

@@ -20,6 +20,7 @@
 
 #include "dstl/thread_multiple_comm.hpp"
 #include "kamping/kassert/kassert.hpp"
+#include "kamping/v2/buffer.hpp"
 #include "kamping/v2/result.hpp"
 #include "kamping/v2/views.hpp"
 #include "mpi/buffer.hpp"
@@ -70,7 +71,7 @@ inline void for_each_thread([[maybe_unused]] int nthreads, F&& body) {
 ///
 /// Unlike the grid wrapper there is no recv-ordering tag: the per-thread recv displacements already
 /// reassemble each source's block in rank order, so the result is always flat-identical.
-template <mpi::experimental::send_buffer_v SBuf, mpi::experimental::recv_buffer_v RBuf>
+template <kamping::v2::send_buffer_v SBuf, kamping::v2::recv_buffer_v RBuf>
 auto alltoallv(SBuf&& sbuf, RBuf&& rbuf, thread_multiple_comm const& fc) -> kamping::v2::result<SBuf, RBuf> {
     namespace views = kamping::v2::views;
 
@@ -83,8 +84,8 @@ auto alltoallv(SBuf&& sbuf, RBuf&& rbuf, thread_multiple_comm const& fc) -> kamp
         sbuf.set_comm_size(static_cast<int>(p));
     }
 
-    auto const        send_counts     = mpi::experimental::counts(sbuf);
-    auto const        send_displs     = mpi::experimental::displs(sbuf);
+    auto const send_counts = kamping::v2::counts(sbuf);
+    auto const send_displs = kamping::v2::displs(sbuf);
 
     // Split each destination's send block contiguously across the T threads. Thread t receives the
     // remainder-adjusted slice [t*base + min(t, rem), …); concatenating the slices in thread order
@@ -116,7 +117,7 @@ auto alltoallv(SBuf&& sbuf, RBuf&& rbuf, thread_multiple_comm const& fc) -> kamp
         rbuf.set_comm_size(static_cast<int>(p));
         for (std::size_t t = 0; t < nthreads; ++t) {
             for (std::size_t s = 0; s < p; ++s) {
-                mpi::experimental::counts(rbuf)[s] += thread_recv_counts[t][s];
+                kamping::v2::counts(rbuf)[s] += thread_recv_counts[t][s];
             }
         }
         rbuf.commit_counts();
@@ -130,7 +131,7 @@ auto alltoallv(SBuf&& sbuf, RBuf&& rbuf, thread_multiple_comm const& fc) -> kamp
     // out in thread order, so the source's block ends up contiguous and in its original element order.
     std::vector<std::vector<int>> thread_recv_displs(nthreads, std::vector<int>(p, 0));
     for (std::size_t s = 0; s < p; ++s) {
-        int cursor = mpi::experimental::displs(rbuf)[s];
+        int cursor = kamping::v2::displs(rbuf)[s];
         for (std::size_t t = 0; t < nthreads; ++t) {
             thread_recv_displs[t][s] = cursor;
             cursor += thread_recv_counts[t][s];

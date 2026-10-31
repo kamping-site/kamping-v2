@@ -9,12 +9,12 @@
 
 #include "dstl/thread_multiple_comm.hpp"
 #include "kamping/v2/collectives/allreduce.hpp"
+#include "kamping/v2/comm.hpp"
+#include "kamping/v2/environment.hpp"
 #include "kamping/v2/sentinels.hpp"
 #include "kamping/v2/views/ref_single_view.hpp"
-#include "mpi/comm.hpp"
-#include "mpi/environment.hpp"
 
-using mpi::experimental::comm_view;
+using kamping::v2::comm_view;
 
 namespace {
 
@@ -33,7 +33,12 @@ int world_rank() {
 // over all ranks (see thread_multiple_comm.hpp — the count must be agreed so the collective dups/exchanges match).
 std::size_t expected_thread_comm_count() {
     int t = dstl::flat_max_threads();
-    kamping::v2::allreduce(kamping::v2::inplace, kamping::v2::views::ref_single(t), kamping::ops::max<>{}, comm_view{MPI_COMM_WORLD});
+    kamping::v2::allreduce(
+        kamping::v2::inplace,
+        kamping::v2::views::ref_single(t),
+        kamping::ops::max<>{},
+        comm_view{MPI_COMM_WORLD}
+    );
     return static_cast<std::size_t>(t);
 }
 
@@ -42,7 +47,7 @@ std::size_t expected_thread_comm_count() {
 // thread_multiple_comm exposes the global rank/size and allocates exactly flat_max_threads() duplicated
 // communicators, each the same size as the global communicator.
 TEST(ThreadMultipleCommTest, AllocatesThreadComms) {
-    if (mpi::experimental::environment::thread_level() < mpi::experimental::ThreadLevel::multiple) {
+    if (kamping::v2::environment::thread_level() < kamping::v2::ThreadLevel::multiple) {
         GTEST_SKIP() << "runtime does not provide MPI_THREAD_MULTIPLE";
     }
     dstl::thread_multiple_comm fc{comm_view{MPI_COMM_WORLD}};
@@ -58,7 +63,7 @@ TEST(ThreadMultipleCommTest, AllocatesThreadComms) {
 
 // Repeated construct/destroy must not leak communicators (the move-only mpi::comm frees its dups).
 TEST(ThreadMultipleCommTest, ThreadMultipleFreesThreadComms) {
-    if (mpi::experimental::environment::thread_level() < mpi::experimental::ThreadLevel::multiple) {
+    if (kamping::v2::environment::thread_level() < kamping::v2::ThreadLevel::multiple) {
         GTEST_SKIP() << "runtime does not provide MPI_THREAD_MULTIPLE";
     }
     auto const expected = expected_thread_comm_count();

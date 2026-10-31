@@ -13,46 +13,36 @@
 #include "mpi/handle.hpp"
 
 /// @file
-/// Shared payload resolver + the value-type channel.
+/// Structured send buffers, their payload element type, and the value-type channel.
 ///
-/// Structured send buffers — a range of `(value, rank)` pairs (value_destination_pair), a
-/// range of `(rank, inner_range)` pairs (sparse_nested_send_buffer), or a plain range-of-ranges
-/// (nested_send_buffer) — carry a payload element that is distinct from the range's own
+/// Structured send buffers — a range of `(value, rank)` pairs (value_destination_pair_buffer), a
+/// range of `(rank, message)` pairs (sparse_nested_send_buffer), or a range of messages indexed
+/// by rank (nested_send_buffer) — carry a payload element that is distinct from the range's own
 /// value_type. `payload_element_t<R>` resolves that payload type for any of these shapes, and
-/// falls back to the plain range/value_type element for ordinary flat buffers, subsuming the
-/// old (weaker) `mpi_element_type_t` in type_pool.hpp.
+/// falls back to the plain element type for ordinary flat buffers.
 ///
-/// `kamping::v2::value_type(buf)` is new vocabulary orthogonal to `mpi::experimental::type(buf)`
-/// ("the MPI type of *this buffer's elements*"): it names the MPI type of the *payload / value
-/// slot* of a structured buffer. It deliberately does NOT join the mpi::experimental:: buffer
-/// protocol (include/mpi/buffer.hpp) — it is only meaningful to v2 machinery (flatten_v_view,
-/// dstl::request_reply, …), so it lives here in the v2 layer with its own non-intrusive
-/// customization point (value_type_traits), separate from mpi::experimental::buffer_traits.
+/// `kamping::v2::value_type(buf)` is orthogonal to `mpi::experimental::type(buf)` ("the MPI type
+/// of this buffer's elements"): it names the MPI type of the payload of a structured buffer. It
+/// is not part of the core buffer contract (mpi/buffer.hpp), since only consumers of structured
+/// buffers (flatten_v_view, the dstl algorithms) need it, and has its own customization point
+/// (value_type_traits).
 
 namespace kamping::v2 {
 
 // ──────────────────────────────────────────────────────────────────────────────
-// mpi_element_type_t — the buffer's OWN element type, unconditionally. No structural
-// nested/sparse/value_destination_pair detection. The original (pre-payload_element_t)
-// resolver, restored under its original name after living briefly (and incorrectly) merged
-// into payload_element_t.
+// mpi_element_type_t — the buffer's own element type
 // ──────────────────────────────────────────────────────────────────────────────
 
-/// Resolves a buffer's own element type, always treating it as already flat — unlike
-/// `payload_element_t`, this never reinterprets `R` as a still-structured
-/// (nested/sparse/value_destination_pair) source. Priority: `std::ranges::range_value_t<R>`
-/// for standard ranges, else a public `R::value_type` member (kokkos_view, sycl_view, …).
+/// Resolves a buffer's own element type, always treating it as flat — unlike
+/// `payload_element_t`, this never interprets `R` as a structured buffer.
+/// Priority: `std::ranges::range_value_t<R>` for standard ranges, else a public `R::value_type`
+/// member (kokkos_view, sycl_view, …).
 ///
-/// `payload_element_t` and `mpi_element_type_t` agree for a genuinely flat buffer, but diverge
-/// whenever `R`'s element type structurally *resembles* a flattenable shape by coincidence —
-/// e.g. a plain `std::vector<std::pair<VId, VId>>` (an ordinary flat key/value buffer) whose
-/// second field happens to satisfy the `rank` concept just by being an integer, which
-/// `payload_element_t` would misclassify as a value_destination_pair_buffer and resolve to
-/// just the pair's first field. `with_pool`/`with_auto_pool` (the plain buffer-type channel,
-/// `mpi::experimental::type()`) always mean "this buffer's own element type" and must use
-/// `mpi_element_type_t`; `with_value_pool`/`with_auto_value_pool` (the payload/value-type
-/// channel feeding flatten_v_view and dstl::request_reply) mean "the payload of a possibly
-/// still-structured source" and must keep using `payload_element_t`.
+/// The two differ when a flat buffer only looks structured by coincidence: for
+/// `std::vector<std::pair<int, int>>`, the second field satisfies `rank`, so `payload_element_t`
+/// takes it for a value_destination_pair_buffer and resolves to `int`. Hence the buffer-type
+/// channel (`with_pool`, `with_auto_pool`) uses `mpi_element_type_t`, and only the value-type
+/// channel (`with_value_pool`, `with_auto_value_pool`) uses `payload_element_t`.
 template <typename R>
 struct mpi_element_type {};
 
@@ -67,6 +57,7 @@ struct mpi_element_type<R> {
     using type = typename R::value_type;
 };
 
+/// The buffer's own element type; see @ref mpi_element_type.
 template <typename R>
 using mpi_element_type_t = typename mpi_element_type<R>::type;
 
@@ -109,14 +100,10 @@ using message_element_t = mpi_element_type_t<std::remove_cvref_t<M>>;
 // Flattenable buffer shapes and their payload element type.
 // ──────────────────────────────────────────────────────────────────────────────
 
-/// Opt-out marker: true for a buffer type that is ALREADY flat/resolved and must never again be
-/// reinterpreted as a still-structured (nested/sparse/value_destination_pair) source, regardless
-/// of what its own element type happens to look like structurally. Needed because these concepts
-/// pattern-match purely on shape: a flattened buffer of e.g. std::pair<VId, VId> coincidentally
-/// satisfies value_destination_pair (its second field is an integer, which is all `rank` checks
-/// for) even though there is no routing information left in it at all -- flatten_v_view already
-/// consumed and resolved it. Specialize to true for such a type at its own definition site
-/// (flatten_v_view does this in flatten_v_view.hpp); mirrors the enable_borrowed_buffer idiom.
+/// Opt-out marker: true for a buffer type that is already flat and must never be interpreted as a
+/// structured buffer, whatever its element type looks like. The structure concepts below match on
+/// shape only, so e.g. a flat buffer of `std::pair<int, int>` would otherwise satisfy
+/// value_destination_pair_buffer. flatten_v_view specializes this to true.
 template <typename T>
 inline constexpr bool already_flat_buffer = false;
 
@@ -125,6 +112,7 @@ template <typename R>
 concept nested_send_buffer = !already_flat_buffer<std::remove_cvref_t<R>> && std::ranges::forward_range<R>
                              && std::ranges::sized_range<R> && message<std::ranges::range_value_t<R>>;
 
+/// A non-range type with exactly two tuple elements, such as `std::pair`.
 template <typename T>
 concept pair_like = !std::ranges::range<T> && requires { std::tuple_size<T>::value; } && std::tuple_size<T>::value == 2;
 
@@ -152,18 +140,20 @@ struct nested_message<R> {
     using type = std::tuple_element_t<1, std::ranges::range_value_t<R>>;
 };
 
+/// The message type of a nested or sparse send buffer; see @ref nested_message.
 template <typename R>
 using nested_message_t = typename nested_message<R>::type;
 
-// The value slot (element 0) must not itself be a message. A message-valued payload means
-// "multiple elements for this rank" and belongs to the buffer path
-// (destination_buffer_pair), not the single-value path. Without this exclusion a
-// (range, rank) pair would match here and the whole range would be copied into a single
-// element slot. Such a pair now matches no flattenable concept and fails to compile.
+/// A `(value, destination)` pair carrying a single element for one rank.
+///
+/// The value must not itself be a message: multiple elements for a rank are expressed as a
+/// `(destination, message)` pair (destination_buffer_pair). A `(range, rank)` pair therefore
+/// matches no structure concept.
 template <typename T>
 concept value_destination_pair =
     pair_like<T> && mpi::experimental::rank<std::tuple_element_t<1, T>> && !message<std::tuple_element_t<0, T>>;
 
+/// A range of `(value, destination)` pairs.
 template <typename R>
 concept value_destination_pair_buffer = !already_flat_buffer<std::remove_cvref_t<R>> && std::ranges::forward_range<R>
                                         && value_destination_pair<std::ranges::range_value_t<R>>;
@@ -181,6 +171,7 @@ concept copyable_send_buffer =
     value_destination_pair_buffer<R>
     || ((nested_send_buffer<R> || sparse_nested_send_buffer<R>) && range_message<nested_message_t<R>>);
 
+/// The payload element type of a structured send buffer, or the element type of a flat buffer.
 template <typename R>
 struct payload_element {};
 
@@ -201,7 +192,7 @@ struct payload_element<R> {
 
 /// Flat fallback: a buffer with no distinct payload (a plain range, or a custom buffer wrapper
 /// exposing a public `value_type` member, e.g. kokkos_view / sycl_view) — its own element type
-/// *is* its payload. Subsumes the old (weaker) `mpi_element_type_t` from type_pool.hpp.
+/// is its payload.
 template <typename R>
     requires(!flattenable_send_buffer<R>) && std::ranges::range<R>
 struct payload_element<R> {
@@ -214,13 +205,13 @@ struct payload_element<R> {
     using type = typename R::value_type;
 };
 
+/// The payload element type of `R`; see @ref payload_element.
 template <typename R>
 using payload_element_t = typename payload_element<R>::type;
 
 // ──────────────────────────────────────────────────────────────────────────────
-// value_type() — the payload/value-type channel. New vocabulary, NOT part of the
-// mpi::experimental:: buffer protocol (see file header). Three-tier dispatch mirroring
-// mpi::experimental::type(), but with its own tier-1 customization point.
+// value_type() — the value-type channel (see file documentation).
+// Priority: value_type_traits > mpi_value_type() > builtin payload type deduction
 // ──────────────────────────────────────────────────────────────────────────────
 
 /// Non-intrusive customization point for the value-type channel, analogous to
@@ -248,18 +239,21 @@ concept payload_element_is_builtin = has_payload_element<T> && kamping::types::i
 
 } // namespace detail
 
+/// @return The MPI datatype of the payload of `t`, obtained via `value_type_traits<T>::value_type(t)`.
 template <typename T>
     requires detail::traits_has_value_type<std::remove_cvref_t<T>>
 constexpr auto value_type(T&& t) {
     return value_type_traits<std::remove_cvref_t<T>>::value_type(t);
 }
 
+/// @return The MPI datatype of the payload of `t`, obtained via `t.mpi_value_type()`.
 template <typename T>
     requires(!detail::traits_has_value_type<std::remove_cvref_t<T>>) && detail::has_value_type_member<T>
 constexpr auto value_type(T&& t) {
     return t.mpi_value_type();
 }
 
+/// @return The predefined MPI datatype of the payload element type of `T`.
 template <typename T>
     requires(!detail::traits_has_value_type<std::remove_cvref_t<T>>) && (!detail::has_value_type_member<T>)
             && detail::payload_element_is_builtin<T>
@@ -267,6 +261,7 @@ constexpr auto value_type(T&& /* t */) {
     return kamping::types::builtin_type<payload_element_t<T>>::data_type();
 }
 
+/// `value_type()` is defined for `T`.
 template <typename T>
 concept has_mpi_value_type = requires(T const& t) {
     { kamping::v2::value_type(t) } -> std::convertible_to<MPI_Datatype>;

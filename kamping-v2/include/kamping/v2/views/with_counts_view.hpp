@@ -12,43 +12,45 @@
 
 namespace kamping::v2 {
 
+/// Attaches per-rank counts (`mpi_counts()`) to the wrapped buffer, for variadic collectives.
 template <typename Base, mpi::experimental::count_range Counts>
 class with_counts_view : public view_interface<with_counts_view<Base, Counts>> {
-    Base   base_;
-    Counts counts_;
+    Base   _base;
+    Counts _counts;
 
 public:
     constexpr Base const& base() const& noexcept {
-        return base_;
+        return _base;
     }
     constexpr Base& base() & noexcept {
-        return base_;
+        return _base;
     }
     constexpr Base&& base() && noexcept {
-        return std::move(base_);
+        return std::move(_base);
     }
 
     template <typename R, typename C>
     with_counts_view(R&& base, C&& counts)
-        : base_(kamping::v2::all(std::forward<R>(base))),
-          counts_(kamping::v2::all(std::forward<C>(counts))) {}
+        : _base(kamping::v2::all(std::forward<R>(base))),
+          _counts(kamping::v2::all(std::forward<C>(counts))) {}
 
     constexpr Counts const& counts() const& {
-        return counts_;
+        return _counts;
     }
     constexpr Counts& counts() & {
-        return counts_;
+        return _counts;
     }
     constexpr Counts&& counts() && {
-        return std::move(counts_);
+        return std::move(_counts);
     }
 
+    /// Moves out the wrapped buffer and the counts.
     constexpr std::pair<Base, Counts> extract() && {
-        return {std::move(base_), std::move(counts_)};
+        return {std::move(_base), std::move(_counts)};
     }
 
     std::span<int const> mpi_counts() const {
-        return {counts_};
+        return {_counts};
     }
 };
 
@@ -63,6 +65,7 @@ inline constexpr bool enable_borrowed_buffer<with_counts_view<Base, Counts>> =
 
 namespace kamping::v2::views {
 
+/// Attaches per-rank counts: `buf | views::with_counts(counts)`. The counts are borrowed if passed as lvalue.
 inline constexpr kamping::v2::adaptor<1, decltype([](auto&& r, auto&& counts) {
                                           return kamping::v2::with_counts_view(
                                               std::forward<decltype(r)>(r),

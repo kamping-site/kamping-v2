@@ -20,7 +20,7 @@ namespace detail {
 /// Shared implementation of waitsome/testsome; `Op` is `MPI_Waitsome` or `MPI_Testsome`.
 template <typename Op, typename Requests, typename Indices, typename Statuses>
 std::optional<std::size_t> some_impl(Op op, Requests& requests, Indices& indices, Statuses& statuses) {
-    auto&&      reqs     = handle_range(requests);
+    auto&&      reqs     = mpi::experimental::handle_range(requests);
     std::size_t n        = std::ranges::size(reqs);
     int         outcount = MPI_UNDEFINED;
     int         err =

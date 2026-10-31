@@ -13,15 +13,15 @@
 #include <mpi.h>
 
 #include "dstl/redistribute.hpp"
+#include "kamping/v2/buffer.hpp"
 #include "kamping/v2/collectives/allgather.hpp"
 #include "kamping/v2/collectives/allreduce.hpp"
 #include "kamping/v2/comm.hpp"
+#include "kamping/v2/handle.hpp"
 #include "kamping/v2/p2p/sendrecv.hpp"
 #include "kamping/v2/sentinels.hpp"
 #include "kamping/v2/views/ref_single_view.hpp"
 #include "kamping/v2/views/with_type_view.hpp"
-#include "mpi/buffer.hpp"
-#include "mpi/handle.hpp"
 
 namespace dstl {
 
@@ -45,25 +45,23 @@ namespace dstl {
 ///   On ranks where all output elements originate from the original global array this is
 ///   [begin, end). On the rightmost affected rank(s) it covers only the elements with a
 ///   valid source; the remainder are value-initialized.
-template <
-    std::ranges::contiguous_range                           R,
-    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
-    requires mpi::experimental::send_recv_buffer<R>
+template <std::ranges::contiguous_range R, kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+    requires kamping::v2::send_recv_buffer<R>
 std::ranges::borrowed_subrange_t<R>
 shift_left(R&& r, std::ranges::range_difference_t<R> n, Comm const& comm = MPI_COMM_WORLD) {
-    using T          = std::ranges::range_value_t<R>;
-    using diff_t     = std::ranges::range_difference_t<R>;
-    auto const first     = std::ranges::begin(r);
-    auto const last      = std::ranges::end(r);
+    using T                 = std::ranges::range_value_t<R>;
+    using diff_t            = std::ranges::range_difference_t<R>;
+    auto const   first      = std::ranges::begin(r);
+    auto const   last       = std::ranges::end(r);
     diff_t const local_size = std::ranges::ssize(r);
 
     if (n <= 0) {
         return {first, last};
     }
 
-    kamping::v2::comm_view cv{mpi::experimental::handle(comm)};
-    int const rank = cv.rank();
-    int const p    = cv.size();
+    kamping::v2::comm_view cv{kamping::v2::handle(comm)};
+    int const              rank = cv.rank();
+    int const              p    = cv.size();
 
     int const n_int = static_cast<int>(n);
 
@@ -71,8 +69,7 @@ shift_left(R&& r, std::ranges::range_difference_t<R> n, Comm const& comm = MPI_C
     // a single-int allreduce (O(1) data, O(log p) latency) determines whether all
     // ranks can take it. This avoids the O(p)-data allgather on the common fast path.
     int use_fast_path = (n_int <= static_cast<int>(local_size)) ? 1 : 0;
-    kamping::v2::allreduce(
-        kamping::v2::inplace, kamping::v2::views::ref_single(use_fast_path), std::logical_and{}, cv);
+    kamping::v2::allreduce(kamping::v2::inplace, kamping::v2::views::ref_single(use_fast_path), std::logical_and{}, cv);
 
     if (use_fast_path) {
         // Fast path: n does not exceed the local size on any rank.
@@ -83,11 +80,11 @@ shift_left(R&& r, std::ranges::range_difference_t<R> n, Comm const& comm = MPI_C
         }
 
         // A single sendrecv with the right neighbor suffices.
-        int const left  = (rank > 0)     ? rank - 1 : MPI_PROC_NULL;
+        int const left  = (rank > 0) ? rank - 1 : MPI_PROC_NULL;
         int const right = (rank < p - 1) ? rank + 1 : MPI_PROC_NULL;
 
         // Capture the MPI type before take() strips it from the view chain.
-        MPI_Datatype const mpi_type = mpi::experimental::type(r);
+        MPI_Datatype const mpi_type = kamping::v2::type(r);
 
         // For n == 1 avoid a heap allocation by using a stack scalar as the staging buffer.
         // The general path uses a heap-allocated vector for arbitrary n.
@@ -97,10 +94,10 @@ shift_left(R&& r, std::ranges::range_difference_t<R> n, Comm const& comm = MPI_C
             kamping::v2::sendrecv(
                 r | std::views::take(1) | kamping::v2::views::with_type(mpi_type),
                 left,
-                kamping::v2::views::ref_single(staging_val) |
-                    kamping::v2::views::with_type(mpi_type),
+                kamping::v2::views::ref_single(staging_val) | kamping::v2::views::with_type(mpi_type),
                 right,
-                comm);
+                comm
+            );
             std::shift_left(first, last, 1);
             *(first + (local_size - 1)) = std::move(staging_val);
         } else {
@@ -110,7 +107,8 @@ shift_left(R&& r, std::ranges::range_difference_t<R> n, Comm const& comm = MPI_C
                 left,
                 staging | kamping::v2::views::with_type(mpi_type),
                 right,
-                comm);
+                comm
+            );
             std::shift_left(first, last, n);
             std::ranges::copy(staging, first + (local_size - n));
         }
@@ -140,12 +138,10 @@ shift_left(R&& r, std::ranges::range_difference_t<R> n, Comm const& comm = MPI_C
         return {first, last};
     }
 
-    MPI_Datatype const mpi_type = mpi::experimental::type(r);
+    MPI_Datatype const mpi_type = kamping::v2::type(r);
 
-    int const drop_count =
-        std::min<int>(static_cast<int>(local_size), std::max(0, n_int - my_offset));
-    int const valid_recv_count = std::max(
-        0, std::min<int>(static_cast<int>(local_size), total - n_int - my_offset));
+    int const drop_count       = std::min<int>(static_cast<int>(local_size), std::max(0, n_int - my_offset));
+    int const valid_recv_count = std::max(0, std::min<int>(static_cast<int>(local_size), total - n_int - my_offset));
 
     // Copy the send portion into a staging buffer before receiving overwrites r.
     // Only the surviving suffix r[drop_count..] needs to be captured; the preceding
@@ -179,25 +175,23 @@ shift_left(R&& r, std::ranges::range_difference_t<R> n, Comm const& comm = MPI_C
 ///   On ranks where all output elements originate from the original global array this is
 ///   [begin, end). On the leftmost affected rank(s) it starts after begin(); the
 ///   preceding elements are value-initialized.
-template <
-    std::ranges::contiguous_range                           R,
-    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
-    requires mpi::experimental::send_recv_buffer<R>
+template <std::ranges::contiguous_range R, kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+    requires kamping::v2::send_recv_buffer<R>
 std::ranges::borrowed_subrange_t<R>
 shift_right(R&& r, std::ranges::range_difference_t<R> n, Comm const& comm = MPI_COMM_WORLD) {
-    using T          = std::ranges::range_value_t<R>;
-    using diff_t     = std::ranges::range_difference_t<R>;
-    auto const first     = std::ranges::begin(r);
-    auto const last      = std::ranges::end(r);
+    using T                 = std::ranges::range_value_t<R>;
+    using diff_t            = std::ranges::range_difference_t<R>;
+    auto const   first      = std::ranges::begin(r);
+    auto const   last       = std::ranges::end(r);
     diff_t const local_size = std::ranges::ssize(r);
 
     if (n <= 0) {
         return {first, last};
     }
 
-    kamping::v2::comm_view cv{mpi::experimental::handle(comm)};
-    int const rank = cv.rank();
-    int const p    = cv.size();
+    kamping::v2::comm_view cv{kamping::v2::handle(comm)};
+    int const              rank = cv.rank();
+    int const              p    = cv.size();
 
     int const n_int = static_cast<int>(n);
 
@@ -205,8 +199,7 @@ shift_right(R&& r, std::ranges::range_difference_t<R> n, Comm const& comm = MPI_
     // a single-int allreduce (O(1) data, O(log p) latency) determines whether all
     // ranks can take it. This avoids the O(p)-data allgather on the common fast path.
     int use_fast_path = (n_int <= static_cast<int>(local_size)) ? 1 : 0;
-    kamping::v2::allreduce(
-        kamping::v2::inplace, kamping::v2::views::ref_single(use_fast_path), std::logical_and{}, cv);
+    kamping::v2::allreduce(kamping::v2::inplace, kamping::v2::views::ref_single(use_fast_path), std::logical_and{}, cv);
 
     if (use_fast_path) {
         // Fast path: n does not exceed the local size on any rank.
@@ -217,11 +210,11 @@ shift_right(R&& r, std::ranges::range_difference_t<R> n, Comm const& comm = MPI_
         }
 
         // A single sendrecv with the left neighbor suffices.
-        int const left  = (rank > 0)     ? rank - 1 : MPI_PROC_NULL;
+        int const left  = (rank > 0) ? rank - 1 : MPI_PROC_NULL;
         int const right = (rank < p - 1) ? rank + 1 : MPI_PROC_NULL;
 
         // Capture the MPI type before drop() strips it from the view chain.
-        MPI_Datatype const mpi_type = mpi::experimental::type(r);
+        MPI_Datatype const mpi_type = kamping::v2::type(r);
 
         // For n == 1 avoid a heap allocation by using a stack scalar as the staging buffer.
         // The general path uses a heap-allocated vector for arbitrary n.
@@ -231,10 +224,10 @@ shift_right(R&& r, std::ranges::range_difference_t<R> n, Comm const& comm = MPI_
             kamping::v2::sendrecv(
                 r | std::views::drop(local_size - 1) | kamping::v2::views::with_type(mpi_type),
                 right,
-                kamping::v2::views::ref_single(staging_val) |
-                    kamping::v2::views::with_type(mpi_type),
+                kamping::v2::views::ref_single(staging_val) | kamping::v2::views::with_type(mpi_type),
                 left,
-                comm);
+                comm
+            );
             std::shift_right(first, last, 1);
             *first = std::move(staging_val);
         } else {
@@ -244,7 +237,8 @@ shift_right(R&& r, std::ranges::range_difference_t<R> n, Comm const& comm = MPI_
                 right,
                 staging | kamping::v2::views::with_type(mpi_type),
                 left,
-                comm);
+                comm
+            );
             std::shift_right(first, last, n);
             std::ranges::copy(staging, first);
         }
@@ -274,12 +268,10 @@ shift_right(R&& r, std::ranges::range_difference_t<R> n, Comm const& comm = MPI_
         return {first, last};
     }
 
-    MPI_Datatype const mpi_type = mpi::experimental::type(r);
+    MPI_Datatype const mpi_type = kamping::v2::type(r);
 
-    int const keep_count = std::max(
-        0, std::min<int>(static_cast<int>(local_size), total - n_int - my_offset));
-    int const valid_recv_start = std::min<int>(
-        static_cast<int>(local_size), std::max(0, n_int - my_offset));
+    int const keep_count       = std::max(0, std::min<int>(static_cast<int>(local_size), total - n_int - my_offset));
+    int const valid_recv_start = std::min<int>(static_cast<int>(local_size), std::max(0, n_int - my_offset));
 
     // Copy the send portion into a staging buffer before receiving overwrites r.
     // Only the surviving prefix r[0..keep_count) needs to be captured; the trailing

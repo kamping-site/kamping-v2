@@ -29,9 +29,9 @@ std::vector<int> iota_vec(int start, int n) {
 struct NonAssignable {
     int value;
     NonAssignable(int v) : value(v) {}
-    NonAssignable(NonAssignable const&)            = default;
-    NonAssignable& operator=(NonAssignable const&) = delete;
-    NonAssignable& operator=(NonAssignable&&)      = delete;
+    NonAssignable(NonAssignable const&)                    = default;
+    NonAssignable& operator=(NonAssignable const&)         = delete;
+    NonAssignable& operator=(NonAssignable&&)              = delete;
     auto           operator<=>(NonAssignable const&) const = default;
 };
 } // namespace

@@ -126,7 +126,7 @@ public:
     [[nodiscard]] iterator begin() const {
         iterator it;
         it._session = _session;
-        it._info    = handle(_info);
+        it._info    = mpi::experimental::handle(_info);
         int err     = MPI_Session_get_num_psets(_session, it._info, &it._total);
         if (err != MPI_SUCCESS) {
             throw mpi_error(err);

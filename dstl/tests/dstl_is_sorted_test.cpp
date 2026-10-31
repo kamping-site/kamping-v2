@@ -90,7 +90,7 @@ TEST(IsSorted, EmptyRanksGloballySorted) {
 // boundary between the (non-adjacent) non-empty ranks is violated.
 TEST(IsSorted, EmptyRanksCrossViolation) {
     kamping::v2::comm_view comm{MPI_COMM_WORLD};
-    int const              p           = comm.size();
+    int const              p            = comm.size();
     int const              num_nonempty = (p + 1) / 2;
     if (num_nonempty < 2) {
         GTEST_SKIP() << "needs at least two non-empty ranks";
@@ -136,7 +136,9 @@ TEST(IsSorted, ProjectionNegate) {
     int const              p    = comm.size();
     int const              rank = comm.rank();
     auto                   data = descending_block(p * n - 1 - rank * n, n);
-    auto                   neg  = [](int x) { return -x; };
+    auto                   neg  = [](int x) {
+        return -x;
+    };
     EXPECT_TRUE(dstl::is_sorted(data, comm, std::ranges::less{}, neg));
 }
 

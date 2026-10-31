@@ -15,7 +15,7 @@ KaMPIng v2 uses a **layered architecture** with a clear separation of concerns:
 └──────────────┬──────────────────────────────────┘
                ↓ delegates to
 ┌──────────────────────────────────────────────────┐
-│  Core Layer (include/mpi/)                      │
+│  Core Layer (mpi-core/include/mpi/)             │
 │  - Buffer protocol (concepts, accessors)        │
 │  - Bare MPI wrappers (one call each)           │
 │  - Handle dispatch (traits-based)               │
@@ -138,34 +138,66 @@ public:
 
 ---
 
+## Arguments and defaults
+
+The two layers handle optional arguments differently:
+
+- **Core (`mpi::experimental`)** mirrors the MPI signature exactly. There are no default arguments, except a trailing
+  output or hint argument that MPI lets you ignore (`status = MPI_STATUS_IGNORE`, `info = MPI_INFO_NULL`).
+- **v2 (`kamping::v2`)** always requires the communicator, and it is always the last argument, followed only by an
+  optional `status` output. Optional arguments in front of it are left out by passing *fewer* arguments, never by
+  default arguments before `comm`:
+
+  ```cpp
+  v2::send(buf, dest, comm);          v2::send(buf, dest, tag, comm);
+  v2::recv(buf, comm);                v2::recv(buf, source, comm);     v2::recv(buf, source, tag, comm);
+  v2::bcast(buf, comm);               v2::bcast(buf, root, comm);
+  v2::reduce(s, r, comm);             v2::reduce(s, r, op, comm);      v2::reduce(s, r, op, root, comm);
+  ```
+
+  A left-out argument takes the obvious value: send tag `DEFAULT_SEND_TAG` (0), receive from `MPI_ANY_SOURCE` with
+  `MPI_ANY_TAG`, root 0, operation `std::plus<>`. A caller-supplied request for a non-blocking operation is passed
+  *first*. Rooted collectives also have a non-root shorthand without the root-only buffer (`gather(s, [root,] comm)`,
+  `scatter(r, [root,] comm)`, `scatterv(r, [root,] comm)`, `reduce(s, [op, [root,]] comm)`), except `gatherv`,
+  whose non-root receive buffer depends on whether root's counts are deferred.
+
+**Why not default arguments?** On MPICH, `MPI_Comm`, `MPI_Request`, `MPI_Op` and the other handles are `int`, so a
+communicator, a request, an operation, a rank and a tag cannot be told apart by type. Overloads that differ only in
+which of them they expect at a position would be ambiguous or, worse, silently take a communicator for a tag. The
+rules above keep every overload set unambiguous: forms differ in their number of arguments, or in an argument kind
+that is never an `int` (a buffer, a request in first position, a status pointer). The same reason excludes a
+`reduce(s, r, root, comm)` form: a root cannot be told apart from an `MPI_Op`.
+
+---
+
 ## Adding a New Collective
 
 Here's a step-by-step walkthrough using `allgather` as an example.
 
 ### Step 1: Implement the Core Wrapper
 
-**File:** `include/mpi/collectives/allgather.hpp`
+**File:** `mpi-core/include/mpi/collectives/allgather.hpp`
 
 ```cpp
 namespace mpi::experimental {
 
-template <
-    send_buffer                         SBuf,
-    recv_buffer                         RBuf,
-    convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
-void allgather(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = MPI_COMM_WORLD) {
+template <send_buffer SBuf, recv_buffer RBuf, convertible_to_mpi_handle<MPI_Comm> Comm>
+void allgather(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm) {
     int comm_size = 0;
-    MPI_Comm_size(handle(comm), &comm_size);
-    KAMPING_V2_ASSERT(count(rbuf) % comm_size == 0, "recv buffer size must be divisible by comm size");
-    
+    MPI_Comm_size(mpi::experimental::handle(comm), &comm_size);
+    KAMPING_V2_ASSERT(
+        static_cast<int>(mpi::experimental::count(rbuf)) % comm_size == 0,
+        "recv buffer size must be divisible by comm size"
+    );
+
     int err = MPI_Allgather(
-        ptr(sbuf),
-        static_cast<int>(count(sbuf)),
-        type(sbuf),
-        ptr(rbuf),
-        static_cast<int>(count(rbuf)) / comm_size,
-        type(rbuf),
-        handle(comm)
+        mpi::experimental::ptr(sbuf),
+        static_cast<int>(mpi::experimental::count(sbuf)),
+        mpi::experimental::type(sbuf),
+        mpi::experimental::ptr(rbuf),
+        static_cast<int>(mpi::experimental::count(rbuf)) / comm_size,
+        mpi::experimental::type(rbuf),
+        mpi::experimental::handle(comm)
     );
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);
@@ -177,42 +209,39 @@ void allgather(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = MPI_COMM_WORLD) {
 
 **Key points:**
 - Template over buffer concepts (`send_buffer`, `recv_buffer`), not specific types
-- Extract metadata via `count()`, `ptr()`, `type()` free functions
-- Extract handles via `handle()`
+- Extract metadata via the `count()`, `ptr()`, `type()` free functions and handles via `handle()`, always called
+  qualified (`mpi::experimental::count(x)`), so argument-dependent lookup cannot pick up a user's function of the same
+  name
+- Mirror the MPI signature: no default arguments, except a trailing `status = MPI_STATUS_IGNORE` (or `info`)
 - Use `KAMPING_V2_ASSERT` for precondition validation
 - Throw `mpi_error` on MPI failure
 - No inference, no resizing, no ownership tricks — pure MPI wrapper
 
 ### Step 2: Define the Infer Overload
 
-**File:** `include/kamping/v2/infer.hpp`
+**File:** `kamping-v2/include/kamping/v2/infer.hpp`
 
-The operation tag lives in `comm_op` namespace, and the infer overload is generic:
+Add an operation tag to `kamping::v2::comm_op` (`kamping-v2/include/kamping/v2/comm_op.hpp`) and a default
+`infer()` overload for it:
 
 ```cpp
-namespace kamping {
+namespace kamping::v2 {
 
-// In comm_op namespace (also in same file)
 namespace comm_op {
-    struct allgather {};
-}
+struct allgather {};
+} // namespace comm_op
 
 // Default infer overload for allgather
-template <
-    mpi::experimental::send_buffer SBuf,
-    mpi::experimental::recv_buffer RBuf>
+template <mpi::experimental::send_buffer SBuf, mpi::experimental::recv_buffer RBuf>
 void infer(comm_op::allgather, SBuf const& sbuf, RBuf& rbuf, MPI_Comm comm) {
     // If recv is a deferred buffer (has set_recv_count), resize it
-    if constexpr (kamping::ranges::deferred_recv_buf<RBuf>) {
-        int comm_size = 0;
-        MPI_Comm_size(comm, &comm_size);
-        rbuf.set_recv_count(
-            comm_size * static_cast<std::ptrdiff_t>(mpi::experimental::count(sbuf))
-        );
+    if constexpr (kamping::v2::deferred_recv_buf<RBuf>) {
+        int comm_size = mpi::experimental::comm_view{comm}.size();
+        rbuf.set_recv_count(comm_size * static_cast<std::ptrdiff_t>(mpi::experimental::count(sbuf)));
     }
 }
 
-} // namespace kamping
+} // namespace kamping::v2
 ```
 
 **Why a separate infer?** It discovers metadata before the MPI call:
@@ -224,7 +253,10 @@ The infer is called by the v2 wrapper before delegating to the core layer.
 
 ### Step 3: Implement the v2 Wrapper
 
-**File:** `include/kamping/v2/collectives/allgather.hpp`
+Implement the full form with all arguments, then the shortened forms (see [Arguments and defaults](#arguments-and-defaults))
+as thin overloads that forward to it.
+
+**File:** `kamping-v2/include/kamping/v2/collectives/allgather.hpp`
 
 ```cpp
 namespace kamping::v2 {
@@ -232,9 +264,8 @@ namespace kamping::v2 {
 template <
     mpi::experimental::send_buffer                         SBuf,
     mpi::experimental::recv_buffer                         RBuf,
-    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
-auto allgather(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = MPI_COMM_WORLD)
-    -> result<SBuf, RBuf> {
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
+auto allgather(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm) -> result<SBuf, RBuf> {
     
     // Construct result, preserving ownership (lvalue → reference, rvalue → owned)
     result<SBuf, RBuf> res{std::forward<SBuf>(sbuf), std::forward<RBuf>(rbuf)};
@@ -259,7 +290,7 @@ auto allgather(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = MPI_COMM_WORLD)
 
 ### Step 4: Tests
 
-Create `tests/v2/v2_allgather_test.cpp` with:
+Create `kamping-v2/tests/allgather_test.cpp` and register it in `kamping-v2/tests/CMakeLists.txt` with `kamping_v2_add_mpi_test(allgather CORES 1 2 4)`. Cover:
 - Single-rank send/recv
 - Multi-rank with uniform sizes
 - Multi-rank with non-uniform send sizes (validate recv sizing)
@@ -298,7 +329,7 @@ This means a view automatically satisfies `recv_buffer` if its base does, even i
 std::vector<int> data = {...};
 
 // Composed view: resize on receive, override element type
-auto view = data | kamping::views::resize | kamping::views::with_type(MPI_INT);
+auto view = data | kamping::v2::views::resize | kamping::v2::views::with_type(MPI_INT);
 
 // Lazy: metadata is computed only when MPI operation queries it
 // resize is forwarded through the adaptor chain via mpi_resize_for_receive()
@@ -307,7 +338,7 @@ auto view = data | kamping::views::resize | kamping::views::with_type(MPI_INT);
 **Implementation sketch:**
 
 ```cpp
-namespace kamping::views {
+namespace kamping::v2::views {
 
 struct resize_adaptor : adaptor_closure<resize_adaptor> {
     template <std::ranges::range R>
@@ -318,7 +349,7 @@ struct resize_adaptor : adaptor_closure<resize_adaptor> {
 
 inline constexpr resize_adaptor resize;
 
-} // namespace kamping::views
+} // namespace kamping::v2::views
 ```
 
 The `adaptor_closure` base provides `operator|` overloads that call `operator()`.
@@ -356,11 +387,11 @@ void allgatherv(SBuf&& sbuf, RBuf&& rbuf, MPI_Comm comm) {
 
 ## Reduction Operations (`make_op`)
 
-Reduce-like collectives (`reduce`, `allreduce`, `scan`, `exscan`) take an **operation** argument alongside their buffers. Operations follow the same **core-layer, traits-dispatched** design as buffers and handles — everything lives in `include/mpi/ops.hpp` (`mpi::experimental`), with the `kamping::v2` layer only re-exporting the user-facing names.
+Reduce-like collectives (`reduce`, `allreduce`, `scan`, `exscan`) take an **operation** argument alongside their buffers. Operations follow the same **core-layer, traits-dispatched** design as buffers and handles — everything lives in `mpi-core/include/mpi/ops.hpp` (`mpi::experimental`), with the `kamping::v2` layer only re-exporting the user-facing names.
 
 ### Operation dispatch (`as_mpi_op`)
 
-**File:** `include/mpi/ops.hpp`
+**File:** `mpi-core/include/mpi/ops.hpp`
 
 Every reduce-like wrapper resolves its operation argument to a raw `MPI_Op` via `mpi::experimental::as_mpi_op(op, sbuf, rbuf)`, with a 3-tier priority mirroring the buffer/handle accessors:
 
@@ -398,7 +429,7 @@ Overload (a) is constrained on `is_default_constructible_v<Op> && is_invocable_r
 
 ### Making the result flow through collectives
 
-`make_op` returns `ScopedFunctorOp` / `ScopedCallbackOp`, which expose their `MPI_Op` via `.get()` but have no `mpi_handle()` member. Two `handle_traits` specializations (also in `include/mpi/ops.hpp`) bridge that gap:
+`make_op` returns `ScopedFunctorOp` / `ScopedCallbackOp`, which expose their `MPI_Op` via `.get()` but have no `mpi_handle()` member. Two `handle_traits` specializations (also in `mpi-core/include/mpi/ops.hpp`) bridge that gap:
 
 ```cpp
 template <bool Commutative, typename T, typename Op>
@@ -432,27 +463,22 @@ struct mpi::experimental::op_traits<MyOp, std::vector<int>, std::vector<int>> {
 Non-blocking MPI calls return `iresult<Buf>` (or `iresult<SBuf, RBuf>` for sendrecv):
 
 ```cpp
-// Core layer: raw MPI
-template <send_buffer SBuf, ...>
-MPI_Request isend(SBuf&& sbuf, int dest, int tag, MPI_Comm comm) {
-    MPI_Request req;
-    THROW_IF_MPI_ERROR(
-        MPI_Isend(ptr(sbuf), count(sbuf), type(sbuf), dest, tag, comm, &req)
-    );
-    return req;
-}
+// Core layer: the caller supplies the request (last, as in MPI)
+template <send_buffer SBuf, rank Dest, tag Tag, convertible_to_mpi_handle<MPI_Comm> Comm,
+          convertible_to_mpi_handle_ptr<MPI_Request> Request>
+void isend(SBuf&& sbuf, Dest dest, Tag tag, Comm const& comm, Request&& request);
 
-// v2 layer: RAII + buffer ownership
-template <send_buffer SBuf, ...>
-auto v2::isend(SBuf&& sbuf, int dest, int tag, MPI_Comm comm)
-    -> iresult<SBuf> {
-    infer(comm_op::isend{}, sbuf, ...);
-    MPI_Request req = mpi::experimental::isend(sbuf, dest, tag, comm);
-    
-    // Store buffer on heap so it survives a move
-    return iresult<SBuf>{req, std::make_unique<all_t<SBuf>>(all(std::forward<SBuf>(sbuf)))};
+// v2 layer: the iresult owns the request and, for rvalues, the buffer (on the heap, so it survives a move)
+template <send_buffer SBuf, rank Dest, tag Tag, convertible_to_mpi_handle<MPI_Comm> Comm>
+auto isend(SBuf&& sbuf, Dest dest, Tag tag, Comm const& comm) -> iresult<SBuf> {
+    iresult<SBuf> res{std::forward<SBuf>(sbuf)};
+    mpi::experimental::isend(res.view(), dest, tag, comm, res.mpi_handle_ptr());
+    return res;
 }
 ```
+
+The v2 layer also offers each operation with a caller-supplied request, passed as the *first* argument (see
+[Arguments and defaults](#arguments-and-defaults)); those overloads return the buffer instead of an iresult.
 
 **`iresult<Buf>` properties:**
 - Move-only (buffer pointer captured by MPI stays stable)
@@ -554,7 +580,7 @@ namespace my_namespace {
     struct CustomOp {};
     
     template <typename SBuf, typename RBuf>
-    void infer(comm_op::CustomOp, SBuf& sbuf, RBuf& rbuf, MPI_Comm comm) {
+    void infer(CustomOp, SBuf& sbuf, RBuf& rbuf, MPI_Comm comm) {
         // Custom size discovery logic
         // Resize rbuf if deferred
     }
@@ -601,7 +627,7 @@ TEST_F(AllgatherTest, DeferredRecvBuffer) {
     
     auto [s, r] = kamping::v2::allgather(
         send_data,
-        recv_data | kamping::views::resize,
+        recv_data | kamping::v2::views::resize,
         comm
     );
     
@@ -621,11 +647,11 @@ ctest --test-dir build -R test_v2_allgather  # Runs with 1, 2, 4, 8 ranks
 
 | Feature | Files | Key Classes/Functions |
 |---------|-------|----------------------|
-| New collective | `include/mpi/collectives/*.hpp` (core), `include/kamping/v2/collectives/*.hpp` (v2), `include/kamping/v2/infer.hpp` (infer tag + overload) | `mpi::experimental::foo()`, `comm_op::foo`, `infer(comm_op::foo, ...)` |
-| New view adaptor | `include/kamping/v2/views/*.hpp` | Derive from `view_interface<Derived>`, implement `base()` |
+| New collective | `mpi-core/include/mpi/collectives/*.hpp` (core), `kamping-v2/include/kamping/v2/collectives/*.hpp` (v2), `kamping-v2/include/kamping/v2/infer.hpp` (infer tag + overload) | `mpi::experimental::foo()`, `comm_op::foo`, `infer(comm_op::foo, ...)` |
+| New view adaptor | `kamping-v2/include/kamping/v2/views/*.hpp` | Derive from `view_interface<Derived>`, implement `base()` |
 | Custom buffer | User code | Specialize `buffer_traits<T>` or provide `mpi_count()`, `mpi_ptr()`, `mpi_type()` |
 | Custom handle | User code | Specialize `handle_traits<T>` or provide `mpi_handle()` |
-| Reduction operation | `include/mpi/ops.hpp` (core), re-exported in `include/kamping/v2/ops.hpp` | `mpi::experimental::make_op()`, `as_mpi_op()`, `valid_op` |
+| Reduction operation | `mpi-core/include/mpi/ops.hpp` (core), re-exported in `kamping-v2/include/kamping/v2/ops.hpp` | `mpi::experimental::make_op()`, `as_mpi_op()`, `valid_op` |
 | Custom operation type | User code | Specialize `op_traits<Op, SBuf, RBuf>` (or make it convertible to `MPI_Op` via `handle()`) |
 | Non-blocking variant | Same files as blocking | Return `iresult<Buf>` instead of `void` |
 
@@ -690,4 +716,3 @@ specializations on the accessor type carry through automatically.
 ## See Also
 
 - `CLAUDE.md` — project structure, build commands, code conventions
-- `include/kamping/v2/TODO.md` — remaining work and design decisions

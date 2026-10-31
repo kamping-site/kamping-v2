@@ -3,6 +3,9 @@
 
 #pragma once
 
+#include <type_traits>
+#include <utility>
+
 #include <mpi.h>
 
 #include "kamping/v2/p2p/constants.hpp"
@@ -12,43 +15,59 @@
 
 namespace kamping::v2 {
 
+/// Sends `sbuf` to `dest` with `tag` in the given @ref send_mode (`MPI_Send`, `MPI_Bsend`, `MPI_Ssend` or
+/// `MPI_Rsend`).
+/// @return The send buffer (owned if passed as rvalue, borrowed otherwise).
 template <
     is_send_mode                                           SendMode,
     mpi::experimental::send_buffer                         SBuf,
-    mpi::experimental::rank                                Dest = int,
-    mpi::experimental::tag                                 Tag  = int,
-    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
-auto send(SendMode&&, SBuf&& sbuf, Dest dest, Tag tag = DEFAULT_SEND_TAG, Comm const& comm = MPI_COMM_WORLD) -> SBuf {
-    auto send_impl = [](auto&&... args) {
-        if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::standard_t>) {
-            mpi::experimental::send(std::forward<decltype(args)>(args)...);
-        } else if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::buffered_t>) {
-            mpi::experimental::bsend(std::forward<decltype(args)>(args)...);
-        } else if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::sync_t>) {
-            mpi::experimental::ssend(std::forward<decltype(args)>(args)...);
-        } else if constexpr (std::same_as<std::decay_t<SendMode>, send_mode::ready_t>) {
-            mpi::experimental::rsend(std::forward<decltype(args)>(args)...);
-        }
-    };
-    send_impl(sbuf, std::move(dest), std::move(tag), comm);
+    mpi::experimental::rank                                Dest,
+    mpi::experimental::tag                                 Tag,
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
+auto send(SendMode&&, SBuf&& sbuf, Dest dest, Tag tag, Comm const& comm) -> SBuf {
+    using mode_t = std::remove_cvref_t<SendMode>;
+    if constexpr (std::same_as<mode_t, send_mode::standard_t>) {
+        mpi::experimental::send(sbuf, std::move(dest), std::move(tag), comm);
+    } else if constexpr (std::same_as<mode_t, send_mode::buffered_t>) {
+        mpi::experimental::bsend(sbuf, std::move(dest), std::move(tag), comm);
+    } else if constexpr (std::same_as<mode_t, send_mode::sync_t>) {
+        mpi::experimental::ssend(sbuf, std::move(dest), std::move(tag), comm);
+    } else {
+        mpi::experimental::rsend(sbuf, std::move(dest), std::move(tag), comm);
+    }
     return std::forward<SBuf>(sbuf);
 }
 
+/// Sends `sbuf` to `dest` with @ref DEFAULT_SEND_TAG in the given @ref send_mode.
+/// @return The send buffer (owned if passed as rvalue, borrowed otherwise).
 template <
+    is_send_mode                                           SendMode,
     mpi::experimental::send_buffer                         SBuf,
-    mpi::experimental::rank                                Dest = int,
-    mpi::experimental::tag                                 Tag  = int,
-    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
-auto send(SBuf&& sbuf, Dest dest, Tag tag = DEFAULT_SEND_TAG, Comm const& comm = MPI_COMM_WORLD) -> SBuf {
-    return send(send_mode::standard, std::forward<SBuf>(sbuf), std::move(dest), std::move(tag), comm);
+    mpi::experimental::rank                                Dest,
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
+auto send(SendMode&& mode, SBuf&& sbuf, Dest dest, Comm const& comm) -> SBuf {
+    return kamping::v2::send(mode, std::forward<SBuf>(sbuf), std::move(dest), DEFAULT_SEND_TAG, comm);
 }
 
+/// Sends `sbuf` to `dest` with `tag` in standard mode (`MPI_Send`).
+/// @return The send buffer (owned if passed as rvalue, borrowed otherwise).
 template <
     mpi::experimental::send_buffer                         SBuf,
-    mpi::experimental::rank                                Dest = int,
+    mpi::experimental::rank                                Dest,
+    mpi::experimental::tag                                 Tag,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
-    requires(!mpi::experimental::tag<Comm>) // On MPICH MPI_Comm is int, which also satisfies tag; exclude to avoid ambiguity with the tag-defaulted overload.
-auto send(SBuf&& sbuf, Dest dest, Comm const& comm) -> SBuf {
-    return send(send_mode::standard, std::forward<SBuf>(sbuf), std::move(dest), DEFAULT_SEND_TAG, comm);
+auto send(SBuf&& sbuf, Dest dest, Tag tag, Comm const& comm) -> SBuf {
+    return kamping::v2::send(send_mode::standard, std::forward<SBuf>(sbuf), std::move(dest), std::move(tag), comm);
 }
+
+/// Sends `sbuf` to `dest` with @ref DEFAULT_SEND_TAG in standard mode (`MPI_Send`).
+/// @return The send buffer (owned if passed as rvalue, borrowed otherwise).
+template <
+    mpi::experimental::send_buffer                         SBuf,
+    mpi::experimental::rank                                Dest,
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
+auto send(SBuf&& sbuf, Dest dest, Comm const& comm) -> SBuf {
+    return kamping::v2::send(send_mode::standard, std::forward<SBuf>(sbuf), std::move(dest), DEFAULT_SEND_TAG, comm);
+}
+
 } // namespace kamping::v2

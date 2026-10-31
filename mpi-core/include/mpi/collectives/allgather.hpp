@@ -11,25 +11,25 @@
 #include "mpi/handle.hpp"
 
 namespace mpi::experimental {
-template <
-    send_buffer                         SBuf,
-    recv_buffer                         RBuf,
-    convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
-void allgather(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = MPI_COMM_WORLD) {
+/// Gathers `sbuf` from all ranks into `rbuf` on every rank (`MPI_Allgather`).
+///
+/// The per-rank receive count is `count(rbuf) / comm_size`, so `rbuf` must already have room for all ranks.
+template <send_buffer SBuf, recv_buffer RBuf, convertible_to_mpi_handle<MPI_Comm> Comm>
+void allgather(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm) {
     int comm_size = 0;
-    MPI_Comm_size(handle(comm), &comm_size);
+    MPI_Comm_size(mpi::experimental::handle(comm), &comm_size);
     KAMPING_V2_ASSERT(
-        static_cast<int>(count(rbuf)) % comm_size == 0,
+        static_cast<int>(mpi::experimental::count(rbuf)) % comm_size == 0,
         "recv buffer size must be divisible by comm size"
     );
     int err = MPI_Allgather(
-        ptr(sbuf),
-        static_cast<int>(count(sbuf)),
-        type(sbuf),
-        ptr(rbuf),
-        static_cast<int>(count(rbuf)) / comm_size,
-        type(rbuf),
-        handle(comm)
+        mpi::experimental::ptr(sbuf),
+        static_cast<int>(mpi::experimental::count(sbuf)),
+        mpi::experimental::type(sbuf),
+        mpi::experimental::ptr(rbuf),
+        static_cast<int>(mpi::experimental::count(rbuf)) / comm_size,
+        mpi::experimental::type(rbuf),
+        mpi::experimental::handle(comm)
     );
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);

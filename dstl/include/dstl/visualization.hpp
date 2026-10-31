@@ -15,6 +15,7 @@
 
 #include "dstl/grid_comm.hpp"
 #include "dstl/tags.hpp"
+#include "kamping/v2/comm.hpp"
 #include "kamping/v2/views.hpp"
 #include "mpi/collectives/allgather.hpp"
 #include "mpi/comm.hpp"
@@ -57,7 +58,7 @@ namespace dstl {
 /// Collectively gather every rank's `local_thread_count()` over `comm`.
 /// @return A vector of size `comm.size()` indexed by rank, identical on all ranks.
 /// @note Collective over `comm` — every rank must call it.
-[[nodiscard]] inline std::vector<int> gather_thread_counts(mpi::experimental::comm_view comm) {
+[[nodiscard]] inline std::vector<int> gather_thread_counts(kamping::v2::comm_view comm) {
     int const        me = local_thread_count();
     auto const       p  = static_cast<std::size_t>(comm.size());
     std::vector<int> counts(p);
@@ -121,7 +122,7 @@ inline std::string render_grid(grid_comm<Exec> const& grid, std::span<int const>
 
 /// Collectively build a per-rank thread-count table for `comm` (e.g. `rank 3: 8 thread(s)`).
 /// @note Collective over `comm` — every rank must call it; the returned string is identical on all ranks.
-[[nodiscard]] inline std::string as_string(mpi::experimental::comm_view comm) {
+[[nodiscard]] inline std::string as_string(kamping::v2::comm_view comm) {
     auto const threads = gather_thread_counts(comm);
     auto const p       = threads.size();
     int        total   = 0;
@@ -142,7 +143,7 @@ inline std::string render_grid(grid_comm<Exec> const& grid, std::span<int const>
 /// identical on all ranks. For a communication-free structural dump use `std::format("{}", grid)` instead.
 template <is_execution_policy Exec>
 [[nodiscard]] inline std::string as_string(grid_comm<Exec> const& grid) {
-    auto const threads = gather_thread_counts(mpi::experimental::comm_view{grid.mpi_handle()});
+    auto const threads = gather_thread_counts(kamping::v2::comm_view{grid.mpi_handle()});
     return detail::render_grid(grid, threads);
 }
 

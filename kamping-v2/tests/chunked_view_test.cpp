@@ -9,6 +9,7 @@
 #include <gtest/gtest.h>
 #include <mpi.h>
 
+#include "kamping/v2/buffer.hpp"
 #include "kamping/v2/views.hpp"
 #include "kamping/v2/views/chunked_view.hpp"
 #include "kamping/v2/views/payload.hpp"
@@ -67,8 +68,8 @@ TEST(ChunkedViewTest, ValueTypeIsTheBufferType) {
 TEST(ChunkedViewTest, FlattenRoundTrips) {
     // flatten_v(chunked(x)) gives back the data and counts.
     auto        flat = data | views::with_counts(counts) | views::auto_displs() | views::chunked | views::flatten_v();
-    auto const* p    = static_cast<int const*>(mpi::experimental::ptr(flat));
-    EXPECT_EQ(std::vector<int>(p, p + mpi::experimental::count(flat)), data);
-    auto const& flat_counts = mpi::experimental::counts(flat);
+    auto const* p    = static_cast<int const*>(kamping::v2::ptr(flat));
+    EXPECT_EQ(std::vector<int>(p, p + kamping::v2::count(flat)), data);
+    auto const& flat_counts = kamping::v2::counts(flat);
     EXPECT_EQ(std::vector<int>(std::ranges::begin(flat_counts), std::ranges::end(flat_counts)), counts);
 }

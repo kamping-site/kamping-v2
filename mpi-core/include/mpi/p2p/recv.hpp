@@ -10,27 +10,24 @@
 #include "mpi/handle.hpp"
 
 namespace mpi::experimental {
+/// Receives a message from `source` with `tag` into `rbuf` (`MPI_Recv`). `rbuf` must be large enough for the message.
+///
+/// @param status Optional: filled with the status of the received message. Defaults to `MPI_STATUS_IGNORE`.
 template <
     recv_buffer                               RBuf,
-    rank                                      Source = int,
-    tag                                       Tag    = int,
-    convertible_to_mpi_handle<MPI_Comm>       Comm   = MPI_Comm,
+    rank                                      Source,
+    tag                                       Tag,
+    convertible_to_mpi_handle<MPI_Comm>       Comm,
     convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>
-void recv(
-    RBuf&&      rbuf,
-    Source      source = MPI_ANY_SOURCE,
-    Tag         tag    = MPI_ANY_TAG,
-    Comm const& comm   = MPI_COMM_WORLD,
-    Status&&    status = MPI_STATUS_IGNORE
-) {
+void recv(RBuf&& rbuf, Source source, Tag tag, Comm const& comm, Status&& status = MPI_STATUS_IGNORE) {
     int err = MPI_Recv(
-        ptr(rbuf),
-        static_cast<int>(count(rbuf)),
-        type(rbuf),
-        to_rank(source),
-        to_tag(tag),
-        handle(comm),
-        handle_ptr(status)
+        mpi::experimental::ptr(rbuf),
+        static_cast<int>(mpi::experimental::count(rbuf)),
+        mpi::experimental::type(rbuf),
+        mpi::experimental::to_rank(source),
+        mpi::experimental::to_tag(tag),
+        mpi::experimental::handle(comm),
+        mpi::experimental::handle_ptr(status)
     );
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);

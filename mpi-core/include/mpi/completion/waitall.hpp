@@ -25,7 +25,7 @@ namespace mpi::experimental {
 ///                 `requests`; `statuses[i]` receives the status of `requests[i]`. Defaults to `statuses_ignore`.
 template <request_range Requests, output_array_or_ignore_of<MPI_Status> Statuses = statuses_ignore_t>
 void waitall(Requests&& requests, Statuses&& statuses = statuses_ignore_t{}) {
-    auto&&      reqs = handle_range(requests);
+    auto&&      reqs = mpi::experimental::handle_range(requests);
     std::size_t n    = std::ranges::size(reqs);
     int         err =
         MPI_Waitall(static_cast<int>(n), std::ranges::data(reqs), detail::output_array_ptr<MPI_Status>(statuses, n));
@@ -44,7 +44,7 @@ void waitall(Requests&& requests, Statuses&& statuses = statuses_ignore_t{}) {
 /// @return `true` if all operations have completed.
 template <request_range Requests, output_array_or_ignore_of<MPI_Status> Statuses = statuses_ignore_t>
 bool testall(Requests&& requests, Statuses&& statuses = statuses_ignore_t{}) {
-    auto&&      reqs = handle_range(requests);
+    auto&&      reqs = mpi::experimental::handle_range(requests);
     std::size_t n    = std::ranges::size(reqs);
     int         flag = 0;
     int         err  = MPI_Testall(

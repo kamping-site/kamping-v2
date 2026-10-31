@@ -8,100 +8,49 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(KaTestrophe)
 
-# Unit tests (no MPI)
-add_executable(test_v2_auto_counts_view auto_counts_view_test.cpp)
-target_link_libraries(test_v2_auto_counts_view PRIVATE kamping_v2 kamping_v2_warnings GTest::gtest_main GTest::gmock)
-gtest_discover_tests(test_v2_auto_counts_view)
+# kamping_v2_add_unit_test(<name>): a GoogleTest test without MPI, built from <name>_test.cpp.
+function (kamping_v2_add_unit_test name)
+    add_executable(test_v2_${name} ${name}_test.cpp)
+    target_link_libraries(test_v2_${name} PRIVATE kamping_v2 kamping_v2_warnings GTest::gtest_main GTest::gmock)
+    gtest_discover_tests(test_v2_${name})
+endfunction ()
 
-add_executable(test_v2_sentinels sentinels_test.cpp)
-target_link_libraries(test_v2_sentinels PRIVATE kamping_v2 kamping_v2_warnings GTest::gtest_main GTest::gmock)
-gtest_discover_tests(test_v2_sentinels)
+# kamping_v2_add_mpi_test(<name> CORES <n>...): an MPI test built from <name>_test.cpp, run on each core count.
+function (kamping_v2_add_mpi_test name)
+    cmake_parse_arguments(ARG "" "" "CORES" ${ARGN})
+    add_executable(test_v2_${name} ${name}_test.cpp)
+    target_link_libraries(test_v2_${name} PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
+    katestrophe_add_mpi_test(test_v2_${name} CORES ${ARG_CORES})
+endfunction ()
 
-add_executable(test_v2_flatten_v_view flatten_v_view_test.cpp)
-target_link_libraries(test_v2_flatten_v_view PRIVATE kamping_v2 kamping_v2_warnings GTest::gtest_main GTest::gmock)
-gtest_discover_tests(test_v2_flatten_v_view)
+# Views and buffer protocol (no MPI communication)
+kamping_v2_add_unit_test(auto_counts_view)
+kamping_v2_add_unit_test(chunked_view)
+kamping_v2_add_unit_test(counts_displs_by_reference)
+kamping_v2_add_unit_test(flatten_v_view)
+kamping_v2_add_unit_test(materialize)
+kamping_v2_add_unit_test(resize_contract)
+kamping_v2_add_unit_test(sentinels)
+kamping_v2_add_unit_test(umbrella_header)
+kamping_v2_add_unit_test(view_base_rvalue)
+kamping_v2_add_unit_test(view_interface_underlying)
 
-add_executable(test_v2_materialize materialize_test.cpp)
-target_link_libraries(test_v2_materialize PRIVATE kamping_v2 kamping_v2_warnings GTest::gtest_main GTest::gmock)
-gtest_discover_tests(test_v2_materialize)
+# Datatypes and type pools
+kamping_v2_add_mpi_test(comm_view_with_pool CORES 1 2)
+kamping_v2_add_mpi_test(type_pool CORES 1 2)
+kamping_v2_add_mpi_test(value_type CORES 1 2 4)
 
-add_executable(test_v2_resize_contract resize_contract_test.cpp)
-target_link_libraries(test_v2_resize_contract PRIVATE kamping_v2 kamping_v2_warnings GTest::gtest_main)
-gtest_discover_tests(test_v2_resize_contract)
-
-add_executable(test_v2_chunked_view chunked_view_test.cpp)
-target_link_libraries(test_v2_chunked_view PRIVATE kamping_v2 kamping_v2_warnings GTest::gtest_main)
-gtest_discover_tests(test_v2_chunked_view)
-
-add_executable(test_v2_view_interface_underlying view_interface_underlying_test.cpp)
-target_link_libraries(test_v2_view_interface_underlying PRIVATE kamping_v2 kamping_v2_warnings GTest::gtest_main)
-gtest_discover_tests(test_v2_view_interface_underlying)
-
-add_executable(test_v2_counts_displs_by_reference counts_displs_by_reference_test.cpp)
-target_link_libraries(test_v2_counts_displs_by_reference PRIVATE kamping_v2 kamping_v2_warnings GTest::gtest_main)
-gtest_discover_tests(test_v2_counts_displs_by_reference)
-
-add_executable(test_v2_view_base_rvalue view_base_rvalue_test.cpp)
-target_link_libraries(test_v2_view_base_rvalue PRIVATE kamping_v2 kamping_v2_warnings GTest::gtest_main)
-gtest_discover_tests(test_v2_view_base_rvalue)
-
-add_executable(test_v2_handle_range handle_range_test.cpp)
-target_link_libraries(test_v2_handle_range PRIVATE kamping_v2 kamping_v2_warnings GTest::gtest_main)
-gtest_discover_tests(test_v2_handle_range)
-
-# MPI tests
-add_executable(test_v2_type_pool v2_type_pool_test.cpp)
-target_link_libraries(test_v2_type_pool PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
-katestrophe_add_mpi_test(test_v2_type_pool CORES 1 2)
-
-add_executable(test_v2_value_type value_type_test.cpp)
-target_link_libraries(test_v2_value_type PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
-katestrophe_add_mpi_test(test_v2_value_type CORES 1 2 4)
-
-add_executable(test_v2_comm_view_with_pool v2_comm_view_with_pool_test.cpp)
-target_link_libraries(test_v2_comm_view_with_pool PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
-katestrophe_add_mpi_test(test_v2_comm_view_with_pool CORES 1 2)
-
-add_executable(test_v2_request_view request_view_test.cpp)
-target_link_libraries(test_v2_request_view PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
-katestrophe_add_mpi_test(test_v2_request_view CORES 1 2)
-
-add_executable(test_v2_arrays arrays_test.cpp)
-target_link_libraries(test_v2_arrays PRIVATE kamping_v2 kamping_v2_warnings GTest::gtest_main)
-gtest_discover_tests(test_v2_arrays)
-
-add_executable(test_v2_completion completion_test.cpp)
-target_link_libraries(test_v2_completion PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
-katestrophe_add_mpi_test(test_v2_completion CORES 1 2 4)
-
-add_executable(test_v2_probe probe_test.cpp)
-target_link_libraries(test_v2_probe PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
-katestrophe_add_mpi_test(test_v2_probe CORES 2)
-
-add_executable(test_v2_ibarrier ibarrier_test.cpp)
-target_link_libraries(test_v2_ibarrier PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
-katestrophe_add_mpi_test(test_v2_ibarrier CORES 1 2 4)
-
-add_executable(test_v2_handle_vector handle_vector_test.cpp)
-target_link_libraries(test_v2_handle_vector PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
-katestrophe_add_mpi_test(test_v2_handle_vector CORES 1 2)
-
-add_executable(test_v2_win win_test.cpp)
-target_link_libraries(test_v2_win PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
-katestrophe_add_mpi_test(test_v2_win CORES 1 2 4)
-
-add_executable(test_v2_cache cache_test.cpp)
-target_link_libraries(test_v2_cache PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
-katestrophe_add_mpi_test(test_v2_cache CORES 1 2 4)
-
-add_executable(test_v2_iresult iresult_test.cpp)
-target_link_libraries(test_v2_iresult PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
-katestrophe_add_mpi_test(test_v2_iresult CORES 1)
+# Requests, completion and non-blocking results
+kamping_v2_add_mpi_test(completion CORES 1 2 4)
+kamping_v2_add_mpi_test(handle_vector CORES 1 2)
+kamping_v2_add_mpi_test(ibarrier CORES 1 2 4)
+kamping_v2_add_mpi_test(iresult CORES 1)
+kamping_v2_add_mpi_test(request_view CORES 1 2)
 
 # Dropping a still-active request must call std::terminate. Each scenario runs as its own process, since it ends it.
 add_executable(test_v2_terminate_on_active_request terminate_on_active_request_test.cpp)
 target_link_libraries(test_v2_terminate_on_active_request PRIVATE kamping_v2 kamping_v2_warnings)
-foreach(
+foreach (
     scenario
     request_destructor
     request_move_assignment
@@ -112,97 +61,55 @@ foreach(
     iresult_destructor
     iresult_during_unwinding
 )
-    add_test(
-        NAME test_v2_terminate_on_active_request.${scenario}
-        COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 ${MPIEXEC_PREFLAGS}
-                $<TARGET_FILE:test_v2_terminate_on_active_request> ${MPIEXEC_POSTFLAGS} ${scenario}
+    add_test(NAME test_v2_terminate_on_active_request.${scenario}
+             COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 ${MPIEXEC_PREFLAGS}
+                     $<TARGET_FILE:test_v2_terminate_on_active_request> ${MPIEXEC_POSTFLAGS} ${scenario}
     )
     set_tests_properties(
         test_v2_terminate_on_active_request.${scenario}
         PROPERTIES PASS_REGULAR_EXPRESSION "dropped while a request is still active" FAIL_REGULAR_EXPRESSION
                    "NOT TERMINATED" TIMEOUT 30
     )
-endforeach()
+endforeach ()
 set_tests_properties(
     test_v2_terminate_on_active_request.iresult_during_unwinding
     PROPERTIES PASS_REGULAR_EXPRESSION "still active \\(during exception unwinding\\)"
 )
-add_test(
-    NAME test_v2_terminate_on_active_request.completed_requests
-    COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 ${MPIEXEC_PREFLAGS}
-            $<TARGET_FILE:test_v2_terminate_on_active_request> ${MPIEXEC_POSTFLAGS} completed_requests
+add_test(NAME test_v2_terminate_on_active_request.completed_requests
+         COMMAND ${MPIEXEC_EXECUTABLE} ${MPIEXEC_NUMPROC_FLAG} 1 ${MPIEXEC_PREFLAGS}
+                 $<TARGET_FILE:test_v2_terminate_on_active_request> ${MPIEXEC_POSTFLAGS} completed_requests
 )
 set_tests_properties(
-    test_v2_terminate_on_active_request.completed_requests PROPERTIES PASS_REGULAR_EXPRESSION "CONTROL OK" FAIL_REGULAR_EXPRESSION
-                                                          "dropped while a request is still active" TIMEOUT 30
+    test_v2_terminate_on_active_request.completed_requests
+    PROPERTIES PASS_REGULAR_EXPRESSION "CONTROL OK" FAIL_REGULAR_EXPRESSION "dropped while a request is still active"
+               TIMEOUT 30
 )
 
-add_executable(test_v2_info info_test.cpp)
-target_link_libraries(test_v2_info PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
-katestrophe_add_mpi_test(test_v2_info CORES 1)
+# Overload sets and default arguments of all operations
+kamping_v2_add_mpi_test(overloads CORES 1 2 4)
 
-add_executable(test_v2_group group_test.cpp)
-target_link_libraries(test_v2_group PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
-katestrophe_add_mpi_test(test_v2_group CORES 1 2 4)
+# Point-to-point
+kamping_v2_add_mpi_test(isendrecv CORES 1 2 4)
+kamping_v2_add_mpi_test(mrecv CORES 2 4)
+kamping_v2_add_mpi_test(probe CORES 2)
+kamping_v2_add_mpi_test(recv CORES 2 4)
 
-if(MPI_CXX_VERSION VERSION_GREATER_EQUAL "4.0")
-    add_executable(test_v2_session session_test.cpp)
-    target_link_libraries(test_v2_session PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
-    katestrophe_add_mpi_test(test_v2_session CORES 1 2)
-endif()
+# Collectives
+kamping_v2_add_mpi_test(allgather CORES 1 2 4)
+kamping_v2_add_mpi_test(allgatherv CORES 1 2 4)
+kamping_v2_add_mpi_test(allreduce CORES 1 2 4)
+kamping_v2_add_mpi_test(alltoall CORES 1 2 4)
+kamping_v2_add_mpi_test(alltoallv CORES 1 2 4)
+kamping_v2_add_mpi_test(exscan CORES 1 2 4)
+kamping_v2_add_mpi_test(gather CORES 1 2 4)
+kamping_v2_add_mpi_test(gatherv CORES 1 2 4)
+kamping_v2_add_mpi_test(make_op CORES 1 2 4)
+kamping_v2_add_mpi_test(reduce CORES 1 2 4)
+kamping_v2_add_mpi_test(scan CORES 1 2 4)
+kamping_v2_add_mpi_test(scatter CORES 1 2 4)
+kamping_v2_add_mpi_test(scatterv CORES 1 2 4)
 
-add_executable(test_v2_allgatherv v2_allgatherv_test.cpp)
-target_link_libraries(test_v2_allgatherv PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
-katestrophe_add_mpi_test(test_v2_allgatherv CORES 1 2 4)
-
-add_executable(test_v2_alltoall v2_alltoall_test.cpp)
-target_link_libraries(test_v2_alltoall PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
-katestrophe_add_mpi_test(test_v2_alltoall CORES 1 2 4)
-
-add_executable(test_v2_alltoallv v2_alltoallv_test.cpp)
-target_link_libraries(test_v2_alltoallv PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
-katestrophe_add_mpi_test(test_v2_alltoallv CORES 1 2 4)
-
-add_executable(test_v2_allreduce v2_allreduce_test.cpp)
-target_link_libraries(test_v2_allreduce PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
-katestrophe_add_mpi_test(test_v2_allreduce CORES 1 2 4)
-
-add_executable(test_v2_reduce v2_reduce_test.cpp)
-target_link_libraries(test_v2_reduce PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
-katestrophe_add_mpi_test(test_v2_reduce CORES 1 2 4)
-
-add_executable(test_v2_make_op v2_make_op_test.cpp)
-target_link_libraries(test_v2_make_op PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
-katestrophe_add_mpi_test(test_v2_make_op CORES 1 2 4)
-
-add_executable(test_v2_gather v2_gather_test.cpp)
-target_link_libraries(test_v2_gather PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
-katestrophe_add_mpi_test(test_v2_gather CORES 1 2 4)
-
-add_executable(test_v2_gatherv v2_gatherv_test.cpp)
-target_link_libraries(test_v2_gatherv PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
-katestrophe_add_mpi_test(test_v2_gatherv CORES 1 2 4)
-
-add_executable(test_v2_scatter v2_scatter_test.cpp)
-target_link_libraries(test_v2_scatter PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
-katestrophe_add_mpi_test(test_v2_scatter CORES 1 2 4)
-
-add_executable(test_v2_scatterv v2_scatterv_test.cpp)
-target_link_libraries(test_v2_scatterv PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
-katestrophe_add_mpi_test(test_v2_scatterv CORES 1 2 4)
-
-add_executable(test_v2_scan v2_scan_test.cpp)
-target_link_libraries(test_v2_scan PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
-katestrophe_add_mpi_test(test_v2_scan CORES 1 2 4)
-
-add_executable(test_v2_exscan v2_exscan_test.cpp)
-target_link_libraries(test_v2_exscan PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
-katestrophe_add_mpi_test(test_v2_exscan CORES 1 2 4)
-
-add_executable(test_v2_recv v2_recv_test.cpp)
-target_link_libraries(test_v2_recv PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
-katestrophe_add_mpi_test(test_v2_recv CORES 2 4)
-
-add_executable(test_v2_mrecv v2_mrecv_test.cpp)
-target_link_libraries(test_v2_mrecv PRIVATE kamping_v2 kamping_v2_warnings KaTestrophe::main)
-katestrophe_add_mpi_test(test_v2_mrecv CORES 2 4)
+# Sessions (MPI 4.0)
+if (MPI_CXX_VERSION VERSION_GREATER_EQUAL "4.0")
+    kamping_v2_add_mpi_test(session CORES 1 2)
+endif ()

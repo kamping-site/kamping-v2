@@ -29,9 +29,9 @@ std::vector<int> iota_vec(int start, int n) {
 struct NonAssignable {
     int value;
     NonAssignable(int v) : value(v) {}
-    NonAssignable(NonAssignable const&)            = default;
-    NonAssignable& operator=(NonAssignable const&) = delete;
-    NonAssignable& operator=(NonAssignable&&)      = delete;
+    NonAssignable(NonAssignable const&)                    = default;
+    NonAssignable& operator=(NonAssignable const&)         = delete;
+    NonAssignable& operator=(NonAssignable&&)              = delete;
     auto           operator<=>(NonAssignable const&) const = default;
 };
 } // namespace
@@ -154,7 +154,11 @@ TEST(Max, NonAssignableValueType) {
     std::vector<NonAssignable>   data = {NonAssignable{comm.rank()}};
 
     auto const winner = dstl::max(
-        data | kamping::v2::views::with_type(MPI_INT), std::ranges::less{}, std::identity{}, comm, NonAssignable{-1}
+        data | kamping::v2::views::with_type(MPI_INT),
+        std::ranges::less{},
+        std::identity{},
+        comm,
+        NonAssignable{-1}
     );
 
     EXPECT_EQ(winner.value, p - 1);

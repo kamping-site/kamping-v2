@@ -3,13 +3,13 @@
 
 #pragma once
 
-#include <mpi.h>
+#include <span>
 
+#include <mpi.h>
 #include <mpi/sentinels.hpp>
 
 namespace kamping::v2 {
 
-// Re-export core sentinels into kamping::v2 for backwards compatibility.
 using mpi::experimental::bottom;
 using mpi::experimental::bottom_t;
 using mpi::experimental::inplace;
@@ -35,18 +35,30 @@ using mpi::experimental::statuses_ignore_t;
 ///   v2::gatherv(local_data, v2::auto_null_recv_v(), root, comm);   // non-root
 ///   v2::gatherv(local_data, v2::auto_recv_v<int>(), root, comm);   // root
 struct auto_null_recv_v_t {
-    static void*                mpi_ptr()    noexcept { return nullptr; }
-    static MPI_Datatype         mpi_type()   noexcept { return MPI_DATATYPE_NULL; }
-    std::span<int>       mpi_counts()        noexcept { return {}; }
-    std::span<int const> mpi_counts() const  noexcept { return {}; }
-    static std::span<int const> mpi_displs() noexcept { return {}; }
-    static void set_comm_size(int)           noexcept {}
-    static void commit_counts()              noexcept {}
+    static void* mpi_ptr() noexcept {
+        return nullptr;
+    }
+    static MPI_Datatype mpi_type() noexcept {
+        return MPI_DATATYPE_NULL;
+    }
+    std::span<int> mpi_counts() noexcept {
+        return {};
+    }
+    std::span<int const> mpi_counts() const noexcept {
+        return {};
+    }
+    static std::span<int const> mpi_displs() noexcept {
+        return {};
+    }
+    static void set_comm_size(int) noexcept {}
+    static void commit_counts() noexcept {}
 };
 
 /// Factory function returning a fresh `auto_null_recv_v_t` rvalue.
 /// Always call as `auto_null_recv_v()` — never store the result in a `const` variable,
 /// as `deferred_recv_buf_v` requires mutable access to `mpi_counts()`.
-inline auto_null_recv_v_t auto_null_recv_v() noexcept { return {}; }
+inline auto_null_recv_v_t auto_null_recv_v() noexcept {
+    return {};
+}
 
 } // namespace kamping::v2
