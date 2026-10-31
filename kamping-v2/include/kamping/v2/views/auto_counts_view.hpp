@@ -97,44 +97,39 @@ inline constexpr bool enable_borrowed_buffer<auto_counts_view<Base, Counts, resi
 
 namespace kamping::v2::views {
 
-/// Attaches deferred counts stored in an owned `Container`, which infer() resizes to the communicator size:
-/// `buf | auto_counts()`.
-template <typename Container = std::vector<int>>
-constexpr auto auto_counts() {
-    return kamping::v2::adaptor<1, decltype([](auto&& r, auto&& c) {
-                                    return kamping::v2::auto_counts_view(
-                                        kamping::v2::resize,
-                                        std::forward<decltype(r)>(r),
-                                        std::forward<decltype(c)>(c)
-                                    );
-                                })>{}(Container{});
-}
+/// Attaches deferred per-rank counts, which the operation exchanges (see `infer()`):
+/// - `buf | auto_counts` or `buf | auto_counts()`: the counts are stored in an owned `std::vector<int>`, resized to
+///   the communicator size;
+/// - `buf | auto_counts(counts)`: in the caller-provided `counts`, which must already have one entry per rank;
+/// - `buf | auto_counts(resize, counts)`: in the caller-provided `counts`, resized to the communicator size.
+inline constexpr struct auto_counts_fn : kamping::v2::adaptor_factory<auto_counts_fn> {
+    template <typename C>
+        requires std::ranges::range<std::remove_cvref_t<C>>
+    constexpr auto operator()(C&& counts) const {
+        return kamping::v2::adaptor<1, decltype([](auto&& r, auto&& c) {
+                                        return kamping::v2::auto_counts_view(
+                                            std::forward<decltype(r)>(r),
+                                            std::forward<decltype(c)>(c)
+                                        );
+                                    })>{}(std::forward<C>(counts));
+    }
 
-/// Attaches deferred counts stored in a caller-provided buffer, which must already have one entry per rank:
-/// `buf | auto_counts(counts)`.
-template <typename C>
-    requires std::ranges::range<std::remove_cvref_t<C>>
-constexpr auto auto_counts(C&& counts) {
-    return kamping::v2::adaptor<1, decltype([](auto&& r, auto&& c) {
-                                    return kamping::v2::auto_counts_view(
-                                        std::forward<decltype(r)>(r),
-                                        std::forward<decltype(c)>(c)
-                                    );
-                                })>{}(std::forward<C>(counts));
-}
+    template <typename C>
+        requires std::ranges::range<std::remove_cvref_t<C>>
+    constexpr auto operator()(kamping::v2::resize_t, C&& counts) const {
+        return kamping::v2::adaptor<1, decltype([](auto&& r, auto&& c) {
+                                        return kamping::v2::auto_counts_view(
+                                            kamping::v2::resize,
+                                            std::forward<decltype(r)>(r),
+                                            std::forward<decltype(c)>(c)
+                                        );
+                                    })>{}(std::forward<C>(counts));
+    }
 
-/// Attaches deferred counts stored in a caller-provided buffer, which infer() resizes to the communicator size:
-/// `buf | auto_counts(resize, counts)`.
-template <typename C>
-    requires std::ranges::range<std::remove_cvref_t<C>>
-constexpr auto auto_counts(kamping::v2::resize_t, C&& counts) {
-    return kamping::v2::adaptor<1, decltype([](auto&& r, auto&& c) {
-                                    return kamping::v2::auto_counts_view(
-                                        kamping::v2::resize,
-                                        std::forward<decltype(r)>(r),
-                                        std::forward<decltype(c)>(c)
-                                    );
-                                })>{}(std::forward<C>(counts));
-}
+    // Defined last: it calls the overload above, whose return type must be deduced first.
+    constexpr auto operator()() const {
+        return (*this)(kamping::v2::resize, std::vector<int>{});
+    }
+} auto_counts{};
 
 } // namespace kamping::v2::views

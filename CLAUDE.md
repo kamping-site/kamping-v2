@@ -103,7 +103,7 @@ v2 is organized into four explicit layers. Each layer depends only on the layers
 - Accessor dispatch functions (`mpi::experimental::count/ptr/type/counts/displs`) with three-tier priority: `buffer_traits<T>` specialization → member functions (`mpi_count()`, `mpi_ptr()`, etc.) → `std::ranges` / builtin-type fallbacks.
 - `mpi::experimental::buffer_traits<T>` and `handle_traits<T>` — non-intrusive customization points for third-party types.
 - Ownership infrastructure: `ref_view<T>` (non-owning, wraps lvalue), `owning_view<T>` (owning, wraps rvalue), and `all(r)` / `all_t<R>` which select between them.
-- View adaptor machinery: `view_interface_base`, `adaptor_closure`, `adaptor`, `composed_closure` — the pipe `|` operator infrastructure.
+- View adaptor machinery: `view_interface_base`, `adaptor_closure`, `adaptor`, `composed_closure`, `adaptor_factory` (adaptors like `auto_counts` that can be used with or without `()`) — the pipe `|` operator infrastructure.
 - Core view adaptors: `with_type`, `with_count`, `with_counts`, `with_displs`.
 - `mpi::experimental::` MPI wrappers — one MPI call each, no inference, no resizing, throw `mpi_error` on failure. Concrete buffer types `mpi_span` and `mpi_span_v`.
 - `mpi::experimental::handle` / `handle_ptr` / `to_rank` / `to_tag` — extract raw MPI handles from any wrapper.
@@ -168,10 +168,10 @@ All views are composable with `|`. They are lazy; metadata is not computed until
 | `views::with_count(n)` | Overrides element count |
 | `views::with_counts(range)` | Attaches per-rank send/recv counts (variadic operations) |
 | `views::with_displs(range)` | Attaches per-rank displacements; pass `kamping::v2::monotonic` tag to enable O(1) resize |
-| `views::auto_displs([tag,] [container])` | Computes displacements via exclusive_scan of counts; always `has_monotonic_displs` |
+| `views::auto_displs`, `views::auto_displs([resize,] displs)` | Computes displacements via exclusive_scan of counts; always `has_monotonic_displs` |
 | `views::resize_v` | Variadic recv buffer: resizes the underlying container from counts+displs before receive |
 | `views::ref_single(val)` | Wraps a single scalar as a one-element contiguous buffer |
-| `views::auto_counts([buf])` | Deferred variadic counts buffer; `set_comm_size` / `commit_counts` protocol |
+| `views::auto_counts`, `views::auto_counts([resize,] counts)` | Deferred variadic counts buffer; `set_comm_size` / `commit_counts` protocol |
 | `views::serialize` / `views::deserialize<T>()` | Cereal serialization (ecosystem/cereal) |
 
 Ownership semantics follow `std::ranges::all`: an lvalue produces a `ref_view` (borrows); an rvalue produces an `owning_view` (owns). This propagates through the view chain.

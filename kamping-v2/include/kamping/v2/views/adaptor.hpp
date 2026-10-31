@@ -68,6 +68,13 @@ struct adaptor_closure_base {};
 template <typename T>
 concept is_adaptor_closure = std::derived_from<std::remove_cvref_t<T>, adaptor_closure_base>;
 
+/// Tag base class of adaptor factories (see @ref adaptor_factory).
+struct adaptor_factory_base {};
+
+/// Checks whether T is an adaptor factory, which stands for the closure it returns when called without arguments.
+template <typename T>
+concept is_adaptor_factory = std::derived_from<std::remove_cvref_t<T>, adaptor_factory_base>;
+
 /// Detects external range adaptor closures (e.g. std::views::take(2)) by duck typing:
 /// they are not ranges themselves but are callable with a range argument and produce a range.
 /// Used to route std_closure | kamping_closure to composition rather than applying the
@@ -94,7 +101,7 @@ template <typename Derived>
 struct adaptor_closure : adaptor_closure_base {
     // val | closure  →  closure(val)
     template <typename T>
-        requires(!is_adaptor_closure<T>) && (!is_external_closure<T>)
+        requires(!is_adaptor_closure<T>) && (!is_external_closure<T>) && (!is_adaptor_factory<T>)
     friend constexpr auto operator|(T&& val, Derived const& self) {
         return self(std::forward<T>(val));
     }
@@ -103,7 +110,7 @@ struct adaptor_closure : adaptor_closure_base {
     // Moves stored arguments out of temporary closures so that views take ownership
     // rather than holding a dangling ref_view into the closure's storage.
     template <typename T>
-        requires(!is_adaptor_closure<T>) && (!is_external_closure<T>)
+        requires(!is_adaptor_closure<T>) && (!is_external_closure<T>) && (!is_adaptor_factory<T>)
     friend constexpr auto operator|(T&& val, Derived&& self) {
         return std::move(self)(std::forward<T>(val));
     }
@@ -113,6 +120,40 @@ struct adaptor_closure : adaptor_closure_base {
         requires is_adaptor_closure<Other> || is_external_closure<Other>
     friend constexpr auto operator|(Other other, Derived self) {
         return composed_closure<Other, Derived>(std::move(other), std::move(self));
+    }
+
+    // factory | closure  →  factory() | closure
+    template <typename Factory>
+        requires is_adaptor_factory<Factory>
+    friend constexpr auto operator|(Factory const& factory, Derived self) {
+        return factory() | std::move(self);
+    }
+};
+
+// ──────────────────────────────────────────────────────────────────────────────
+// adaptor_factory — an adaptor whose argument-less form can be used without ()
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// CRTP base of an adaptor that takes optional arguments, such as `views::auto_counts`: calling it returns a closure
+/// (`auto_counts()`, `auto_counts(counts)`), and the factory itself stands for its argument-less closure in a pipe,
+/// so `buf | auto_counts` is `buf | auto_counts()`. `Derived` must be callable without arguments.
+///
+/// A factory cannot simply be a closure applying itself to a buffer, since a one-argument call already means
+/// something else (e.g. `auto_counts(counts)` passes the counts storage).
+template <typename Derived>
+struct adaptor_factory : adaptor_factory_base {
+    // val | factory  →  val | factory()   (val may be a buffer or a closure)
+    template <typename T>
+        requires(!is_adaptor_factory<T>)
+    friend constexpr auto operator|(T&& val, Derived const& self) {
+        return std::forward<T>(val) | self();
+    }
+
+    // factory | factory  →  factory() | factory()
+    template <typename Other>
+        requires is_adaptor_factory<Other>
+    friend constexpr auto operator|(Other const& other, Derived const& self) {
+        return other() | self();
     }
 };
 

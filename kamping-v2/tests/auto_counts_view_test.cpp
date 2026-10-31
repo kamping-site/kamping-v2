@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: BSL-1.0
 
 #include <span>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -12,6 +14,8 @@
 #include "kamping/v2/views/auto_displs_view.hpp"
 #include "kamping/v2/views/concepts.hpp"
 #include "kamping/v2/views/resize_v_view.hpp"
+#include "kamping/v2/views/with_counts_view.hpp"
+#include "kamping/v2/views/with_type_view.hpp"
 
 // ── Concept checks ────────────────────────────────────────────────────────────
 
@@ -169,4 +173,44 @@ TEST(AutoCountsViewTest, ResizeVResizesDataBufferFromCounts) {
 
     (void)rbuf.mpi_ptr();
     EXPECT_EQ(data.size(), 6u);
+}
+
+// auto_counts and auto_displs can be used without parentheses, standing for their argument-less form.
+TEST(AutoCountsViewTest, FactoriesWithoutParentheses) {
+    namespace views = kamping::v2::views;
+    std::vector<int> data;
+    std::vector<int> counts{1, 2};
+
+    using with_parens    = decltype(data | views::auto_counts() | views::auto_displs() | views::resize_v);
+    using without_parens = decltype(data | views::auto_counts | views::auto_displs | views::resize_v);
+    static_assert(std::is_same_v<with_parens, without_parens>);
+
+    static_assert(std::is_same_v<
+                  decltype(data | views::with_counts(counts) | views::auto_displs()),
+                  decltype(data | views::with_counts(counts) | views::auto_displs)>);
+
+    // A factory composes with closures and with other factories into a pipeline applied later. The pipeline owns the
+    // counts and displacements storage, so it is applied as an rvalue (as for a stored auto_counts()).
+    auto pipeline = views::auto_counts | views::auto_displs | views::resize_v;
+    static_assert(std::is_same_v<decltype(data | std::move(pipeline)), with_parens>);
+    auto typed = views::with_type(MPI_INT) | views::auto_counts;
+    static_assert(std::is_same_v<
+                  decltype(data | std::move(typed)),
+                  decltype(data | views::with_type(MPI_INT) | views::auto_counts())>);
+
+    // The argument forms still work.
+    auto user_counts = data | views::auto_counts(kamping::v2::resize, std::vector<int>{});
+    user_counts.set_comm_size(2);
+    EXPECT_EQ(std::ranges::size(kamping::v2::counts(user_counts)), 2u);
+
+    auto rbuf = data | views::auto_counts | views::auto_displs | views::resize_v;
+    rbuf.set_comm_size(2);
+    {
+        auto* p = std::ranges::data(kamping::v2::counts(rbuf));
+        p[0]    = 2;
+        p[1]    = 3;
+    }
+    rbuf.commit_counts();
+    (void)rbuf.mpi_ptr();
+    EXPECT_EQ(data.size(), 5u);
 }

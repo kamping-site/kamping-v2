@@ -130,3 +130,21 @@ TEST(V2AllgathervTest, ExplicitCountsAutoDisplsNoResize) {
     }
     EXPECT_EQ(recv_data, expected);
 }
+
+// The deferred variadic receive buffer written as in the KaMPIng v2 paper, without parentheses.
+TEST(V2AllgathervTest, DeferredRecvBufferWithoutParentheses) {
+    namespace views = kamping::v2::views;
+    int rank, size;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    std::vector<int> data(static_cast<std::size_t>(rank) + 1, rank);
+    std::vector<int> rdata;
+    kamping::v2::allgatherv(data, rdata | views::auto_counts | views::auto_displs | views::resize_v, MPI_COMM_WORLD);
+
+    std::vector<int> expected;
+    for (int r = 0; r < size; ++r) {
+        expected.insert(expected.end(), static_cast<std::size_t>(r) + 1, r);
+    }
+    EXPECT_EQ(rdata, expected);
+}

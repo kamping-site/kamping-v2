@@ -32,7 +32,7 @@ v2::recv(buf | views::resize, source, comm);
 
 // Variable-size collectives: per-rank counts are exchanged and the receive buffer is sized for you.
 auto [_, everything] = v2::allgatherv(mine, v2::auto_recv_v<int>(), comm);
-v2::alltoallv(sdata | views::with_counts(scounts) | views::auto_displs(), v2::auto_recv_v<double>(), comm);
+v2::alltoallv(sdata | views::with_counts(scounts) | views::auto_displs, v2::auto_recv_v<double>(), comm);
 
 // GPU and performance-portability containers are buffers, too.
 v2::send(kokkos_view | views::kokkos, dest, comm);
@@ -116,16 +116,18 @@ All views compose with `|` and live in `kamping::v2::views`.
 | `with_count(n)` | Uses `n` as the element count |
 | `with_counts(counts)` | Attaches per-rank counts (variable-size operations) |
 | `with_displs([monotonic,] displs)` | Attaches per-rank displacements |
-| `auto_counts()` | Per-rank counts that the operation exchanges for you |
-| `auto_displs()` | Computes displacements from the counts (exclusive prefix sum) |
+| `auto_counts` | Per-rank counts that the operation exchanges for you |
+| `auto_displs` | Computes displacements from the counts (exclusive prefix sum) |
 | `resize_v` | Resizes a variable-size receive buffer to fit its counts and displacements |
-| `auto_recv_v` | Shorthand for `auto_counts() \| auto_displs() \| resize_v` |
+| `auto_recv_v` | Shorthand for `auto_counts \| auto_displs \| resize_v` |
 | `flatten_v()` | Turns a range of per-rank ranges (or `(value, rank)` pairs) into one variable-size send buffer |
 | `chunked` | The inverse: splits a variable-size buffer into per-rank `std::span`s |
 | `ref_single(x)` | Treats a single value as a one-element buffer |
 | `with_pool(pool)` / `with_auto_pool(pool)` | Attaches a derived datatype from a `type_pool` |
 
-The factories `auto_recv<T>()` and `auto_recv_v<T>()` create a fresh, owned receive buffer that sizes itself.
+`auto_counts` and `auto_displs` store their counts and displacements in an owned `std::vector<int>`; to use your own
+storage, pass it: `auto_counts(counts)`, `auto_displs(resize, displs)`. The factories `auto_recv<T>()` and
+`auto_recv_v<T>()` create a fresh, owned receive buffer that sizes itself.
 
 Derived datatypes are managed by a `type_pool`, which commits a datatype on first use and frees it with the pool.
 For plain structs, `struct_type` derives the layout from the fields via Boost.PFR:
@@ -144,7 +146,7 @@ kamping::v2::send(points | views::with_auto_pool(pool), dest, comm);
 Before each operation, KaMPIng v2 calls the `infer()` customization point, which exchanges metadata between the
 send and receive sides where you asked for it. `views::resize` defers a single receive count: point-to-point
 receives probe the message, and collectives derive the count locally where it is already known (e.g.
-`allreduce`). `views::auto_counts()` defers the per-rank counts of a collective, which are then obtained with one
+`allreduce`). `views::auto_counts` defers the per-rank counts of a collective, which are then obtained with one
 count exchange. For plain buffers `infer()` does nothing, and composing views allocates nothing; work happens on
 first access. You can overload `infer()` for your own buffer types.
 
