@@ -288,15 +288,17 @@ If you use KaMPIng v2, please cite the first paper:
 
 ```bibtex
 @inproceedings{UhlSB26,
-  author    = {Tim Niklas Uhl and Matthias Schimek and Daniel Brommer},
-  title     = {Concepts in Practice: {C++} {MPI} Bindings for the {HPC} Ecosystem --- From a Standardizable Core to a
-               Composable Interface},
-  booktitle = {Recent Advances in the Message Passing Interface (EuroMPI 2026)},
-  series    = {Lecture Notes in Computer Science},
-  publisher = {Springer},
-  year      = {2026},
-  doi       = {10.1007/978-3-032-40777-1_2},
-  eprint    = {2606.09102},
+  author        = {Tim Niklas Uhl and Matthias Schimek and Daniel Brommer},
+  title         = {Concepts in Practice: {C++} {MPI} Bindings for the {HPC}
+                   Ecosystem --- From a Standardizable Core to a Composable
+                   Interface},
+  booktitle     = {Recent Advances in the Message Passing Interface
+                   (EuroMPI 2026)},
+  series        = {Lecture Notes in Computer Science},
+  publisher     = {Springer},
+  year          = {2026},
+  doi           = {10.1007/978-3-032-40777-1_2},
+  eprint        = {2606.09102},
   archivePrefix = {arXiv}
 }
 ```
