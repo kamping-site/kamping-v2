@@ -11,7 +11,7 @@ FetchContent_MakeAvailable(KaTestrophe)
 # mpi_core_add_unit_test(<name>): a GoogleTest test without MPI, built from <name>_test.cpp.
 function (mpi_core_add_unit_test name)
     add_executable(test_core_${name} ${name}_test.cpp)
-    target_link_libraries(test_core_${name} PRIVATE mpi_core mpi_core_warnings GTest::gtest_main)
+    target_link_libraries(test_core_${name} PRIVATE mpi_core kamping_v2_warnings GTest::gtest_main)
     gtest_discover_tests(test_core_${name})
 endfunction ()
 
@@ -19,7 +19,7 @@ endfunction ()
 function (mpi_core_add_mpi_test name)
     cmake_parse_arguments(ARG "" "" "CORES" ${ARGN})
     add_executable(test_core_${name} ${name}_test.cpp)
-    target_link_libraries(test_core_${name} PRIVATE mpi_core mpi_core_warnings KaTestrophe::main)
+    target_link_libraries(test_core_${name} PRIVATE mpi_core kamping_v2_warnings KaTestrophe::main)
     katestrophe_add_mpi_test(test_core_${name} CORES ${ARG_CORES})
 endfunction ()
 

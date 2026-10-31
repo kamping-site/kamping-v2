@@ -171,8 +171,10 @@ reduction operations via `make_op`
 
 ## Getting started
 
-KaMPIng v2 needs CMake 3.25+, a C++20 compiler, and an MPI installation. The easiest way to use it is
-`FetchContent`:
+KaMPIng v2 needs CMake 3.25+, a C++20 compiler, and an MPI installation. Include `<kamping/v2.hpp>` for
+everything, or individual headers such as `<kamping/v2/collectives/alltoallv.hpp>` to keep compile times down.
+
+### With FetchContent
 
 ```cmake
 include(FetchContent)
@@ -186,8 +188,29 @@ FetchContent_MakeAvailable(kamping_v2)
 target_link_libraries(my_app PRIVATE kamping::v2)
 ```
 
-Include `<kamping/v2.hpp>` for everything, or individual headers such as `<kamping/v2/collectives/alltoallv.hpp>`
-to keep compile times down.
+To use only the core layer, add `SOURCE_SUBDIR mpi-core` to `FetchContent_Declare` and link `mpi::core`. Set
+`KAMPING_V2_ENABLE_<ADAPTER>` before `FetchContent_MakeAvailable` to get an ecosystem adapter.
+
+### As an installed package
+
+```bash
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DKAMPING_V2_ENABLE_CEREAL=ON   # enable the adapters you need
+cmake --install build --prefix /path/to/prefix
+```
+
+```cmake
+find_package(kamping-v2 0.1 REQUIRED COMPONENTS v2 cereal)
+target_link_libraries(my_app PRIVATE kamping::v2 kamping::ecosystem::cereal)
+```
+
+| Component | Target | Contents |
+|-----------|--------|----------|
+| `core` | `mpi::core` | The core layer |
+| `v2` | `kamping::v2` | The ergonomic layer (loads `core`) |
+| `dstl` | `dstl::dstl` | Distributed algorithms (loads `v2`) |
+| `cereal`, `kokkos`, `thrust`, `sycl` | `kamping::ecosystem::<name>` | Ecosystem adapters (load `v2`), if enabled when installing |
+
+Without `COMPONENTS`, all installed components are loaded. The package bundles kamping-types.
 
 ### Building the tests and examples
 
@@ -199,11 +222,16 @@ ctest --preset debug
 
 | CMake option | Default | Description |
 |--------------|---------|-------------|
-| `KAMPING_BUILD_EXAMPLES_AND_TESTS` | `OFF` | Build tests and examples (on in the presets) |
-| `KAMPING_WARNINGS_ARE_ERRORS` | `OFF` | Treat warnings as errors |
-| `KAMPING_ENABLE_SERIALIZATION` | `OFF` | Build the Cereal adapter |
-| `KAMPING_ENABLE_KOKKOS` | `OFF` | Build the Kokkos adapter |
-| `KAMPING_ENABLE_REFLECTION` | `ON` | Derive MPI datatypes for plain structs via Boost.PFR |
+| `KAMPING_V2_BUILD_EXAMPLES_AND_TESTS` | `OFF` | Build tests and examples (on in the presets) |
+| `KAMPING_V2_WARNINGS_ARE_ERRORS` | `OFF` | Treat warnings as errors in tests and examples |
+| `KAMPING_V2_INSTALL` | on if top-level | Generate install rules |
+| `KAMPING_V2_ENABLE_REFLECTION` | `ON` | Derive MPI datatypes for plain structs via Boost.PFR |
+| `KAMPING_V2_REFLECTION_USE_SYSTEM_BOOST_FOR_PFR` | `OFF` | Take Boost.PFR from a system Boost |
+| `KAMPING_V2_ENABLE_CEREAL` | `OFF` | Build the Cereal adapter |
+| `KAMPING_V2_ENABLE_KOKKOS` | `OFF` | Build the Kokkos adapter |
+| `KAMPING_V2_ENABLE_KOKKOS_COMM` | `OFF` | Let the Kokkos adapter use KokkosComm |
+| `KAMPING_V2_ENABLE_THRUST` | `OFF` | Build the Thrust adapter (CUDA) |
+| `KAMPING_V2_ENABLE_SYCL` | `OFF` | Build the SYCL adapter (Intel oneAPI DPC++) |
 
 ## Repository layout
 
@@ -213,7 +241,7 @@ KaMPIng v2 is built in layers. You can use the lower ones on their own.
 |-----------|-----------|--------------|------------|
 | `mpi-core/` | `mpi::experimental` | `mpi::core` | Thin, explicit MPI wrappers: one MPI call each, no inference or resizing |
 | `kamping-v2/` | `kamping::v2` | `kamping::v2` | The ergonomic layer: views, `infer()`, self-sizing buffers, `iresult` |
-| `dstl/` | `dstl` | `dstl` | Distributed algorithms built on top (sparse all-to-all, grid all-to-all, scans, …) |
+| `dstl/` | `dstl` | `dstl::dstl` | Distributed algorithms built on top (sparse all-to-all, grid all-to-all, scans, …) |
 | `ecosystem/` | `kamping::v2`, `kamping::v2::views` | `kamping::ecosystem::<name>` | Adapters for Cereal, Kokkos, Thrust, and SYCL |
 
 MPI datatypes for user types come from `kamping-types`, which is shared with

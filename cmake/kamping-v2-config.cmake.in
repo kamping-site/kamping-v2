@@ -1,0 +1,67 @@
+# CMake package configuration of kamping-v2.
+#
+#   find_package(kamping-v2 [<version>] [COMPONENTS <component>...])
+#
+# Components: core (mpi::core), v2 (kamping::v2), dstl (dstl::dstl), and the ecosystem adapters cereal, kokkos, thrust
+# and sycl (kamping::ecosystem::<name>), as far as they were installed. Without COMPONENTS, all installed components
+# are loaded. Each component loads the components it depends on.
+
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+set(_kamping_v2_installed @KAMPING_V2_PACKAGE_COMPONENTS@)
+# All components in dependency order, each after the components it requires.
+set(_kamping_v2_order types core v2 dstl cereal kokkos thrust sycl)
+
+if (kamping-v2_FIND_COMPONENTS)
+    set(_kamping_v2_wanted ${kamping-v2_FIND_COMPONENTS})
+else ()
+    set(_kamping_v2_wanted ${_kamping_v2_installed})
+endif ()
+
+foreach (_kamping_v2_component IN LISTS _kamping_v2_wanted)
+    if (NOT _kamping_v2_component IN_LIST _kamping_v2_order)
+        set(kamping-v2_FOUND FALSE)
+        set(kamping-v2_NOT_FOUND_MESSAGE "kamping-v2: unknown component '${_kamping_v2_component}'.")
+        return()
+    endif ()
+endforeach ()
+
+# Load the components in dependency order; a component adds the components it requires to the wanted list while it is
+# loaded (via its dependencies file), which only ever adds components that come earlier in the order. Hence iterate in
+# reverse to collect, then load forward.
+list(REVERSE _kamping_v2_order)
+foreach (_kamping_v2_component IN LISTS _kamping_v2_order)
+    if (_kamping_v2_component IN_LIST _kamping_v2_wanted
+        AND EXISTS "${CMAKE_CURRENT_LIST_DIR}/kamping-v2-${_kamping_v2_component}-dependencies.cmake"
+    )
+        set(_kamping_v2_requires_${_kamping_v2_component})
+        file(STRINGS "${CMAKE_CURRENT_LIST_DIR}/kamping-v2-${_kamping_v2_component}-dependencies.cmake"
+             _kamping_v2_line REGEX "^set\\(_kamping_v2_requires_"
+        )
+        string(REGEX REPLACE "^set\\(_kamping_v2_requires_[a-z]+ ?(.*)\\)$" "\\1" _kamping_v2_line "${_kamping_v2_line}")
+        separate_arguments(_kamping_v2_line)
+        list(APPEND _kamping_v2_wanted ${_kamping_v2_line})
+    endif ()
+endforeach ()
+list(REVERSE _kamping_v2_order)
+
+foreach (_kamping_v2_component IN LISTS _kamping_v2_order)
+    if (NOT _kamping_v2_component IN_LIST _kamping_v2_wanted)
+        continue()
+    endif ()
+    if (NOT _kamping_v2_component IN_LIST _kamping_v2_installed)
+        set(kamping-v2_${_kamping_v2_component}_FOUND FALSE)
+        continue()
+    endif ()
+    include("${CMAKE_CURRENT_LIST_DIR}/kamping-v2-${_kamping_v2_component}-dependencies.cmake")
+    # find_dependency() reports a missing dependency by setting kamping-v2_FOUND and returning from the included file.
+    if (DEFINED kamping-v2_FOUND AND NOT kamping-v2_FOUND)
+        return()
+    endif ()
+    include("${CMAKE_CURRENT_LIST_DIR}/kamping-v2-${_kamping_v2_component}-targets.cmake")
+    set(kamping-v2_${_kamping_v2_component}_FOUND TRUE)
+endforeach ()
+
+check_required_components(kamping-v2)

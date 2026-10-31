@@ -184,7 +184,11 @@ TEST(OverloadsTest, RootedCollectives) {
     // gatherv: explicit counts on root
     if (on_0) {
         std::vector<int> recv(static_cast<std::size_t>(size));
-        v2::gatherv(std::vector<int>{comm.rank()}, recv | v2::views::with_counts(counts) | v2::views::auto_displs(), comm);
+        v2::gatherv(
+            std::vector<int>{comm.rank()},
+            recv | v2::views::with_counts(counts) | v2::views::auto_displs(),
+            comm
+        );
         EXPECT_EQ(recv.back(), last);
     } else {
         v2::gatherv(std::vector<int>{comm.rank()}, v2::null_buf_v, comm);

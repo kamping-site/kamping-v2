@@ -19,16 +19,23 @@ cmake --preset release
 cmake --build --preset release --parallel
 
 # Traditional
-cmake -B build -DCMAKE_BUILD_TYPE=Debug -DKAMPING_BUILD_EXAMPLES_AND_TESTS=ON
+cmake -B build -DCMAKE_BUILD_TYPE=Debug -DKAMPING_V2_BUILD_EXAMPLES_AND_TESTS=ON
 cmake --build build --parallel
 ```
 
-Key CMake options:
-- `KAMPING_BUILD_EXAMPLES_AND_TESTS` — must be ON to build tests (default OFF in library mode)
-- `KAMPING_WARNINGS_ARE_ERRORS` — treat compiler warnings as errors (default OFF)
-- `KAMPING_ENABLE_SERIALIZATION` — Cereal ecosystem adapter (default OFF)
-- `KAMPING_ENABLE_KOKKOS` — Kokkos ecosystem adapter (default OFF)
-- `KAMPING_ENABLE_REFLECTION` — Boost.PFR struct reflection in kamping-types (default ON)
+Key CMake options (all defined in `cmake/kamping-v2-setup.cmake`):
+- `KAMPING_V2_BUILD_EXAMPLES_AND_TESTS` — must be ON to build tests (default OFF in library mode)
+- `KAMPING_V2_WARNINGS_ARE_ERRORS` — treat compiler warnings as errors (default OFF)
+- `KAMPING_V2_INSTALL` — generate install rules (default ON when top-level)
+- `KAMPING_V2_ENABLE_CEREAL` / `_KOKKOS` / `_KOKKOS_COMM` / `_THRUST` / `_SYCL` — ecosystem adapters (default OFF)
+- `KAMPING_V2_ENABLE_REFLECTION` — Boost.PFR struct reflection in kamping-types (default ON)
+
+### CMake structure
+
+- `cmake/kamping-v2-setup.cmake` is included by every entry point (the root and `mpi-core/`, `kamping-v2/`, `dstl/`, `ecosystem/*/`, which can each be configured on their own). It holds the options, the dependencies (MPI, kassert, Boost.PFR, kamping-types), the `kamping_v2_warnings` target for tests and examples, and the helpers below.
+- Libraries are header-only INTERFACE targets created with `kamping_v2_add_header_only_library()`, whose headers form a `FILE_SET HEADERS`. A component that depends on a sibling pulls it in with `kamping_v2_require_component()`.
+- `kamping_v2_install_component()` installs a component into the `kamping-v2` CMake package (`find_package(kamping-v2 COMPONENTS core v2 dstl cereal ...)`); each component has its own export set and dependencies file. kamping-types (and Boost.PFR, if fetched) are bundled as the internal `types` component, since they have no install rules of their own.
+- `tests/install/` installs the build tree into a scratch prefix and builds a consumer project against it (`test_install.*`).
 
 ## Testing
 

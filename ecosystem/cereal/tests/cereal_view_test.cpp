@@ -30,9 +30,9 @@ TEST(CerealView, SendRecv) {
     Map const data{{"one", 1}, {"two", 2}, {"forty-two", 42}};
 
     if (rank == 0) {
-        kamping::v2::send(data | kamping::v2::views::serialize, 1, 0);
+        kamping::v2::send(data | kamping::v2::views::serialize, 1, 0, MPI_COMM_WORLD);
     } else if (rank == 1) {
-        auto result = kamping::v2::recv(kamping::v2::views::deserialize<Map>(), 0, 0);
+        auto result = kamping::v2::recv(kamping::v2::views::deserialize<Map>(), 0, 0, MPI_COMM_WORLD);
         EXPECT_EQ(*result, data);
     }
 }
@@ -75,7 +75,7 @@ TEST(CerealView, Bcast) {
         data = {{"one", 1}, {"two", 2}, {"forty-two", 42}};
 
     auto view = data | kamping::v2::views::serialize;
-    kamping::v2::bcast(view, 0);
+    kamping::v2::bcast(view, 0, MPI_COMM_WORLD);
     view.unwrap(); // deserializes into data on non-root; no-op on root
 
     EXPECT_EQ(data, (Map{{"one", 1}, {"two", 2}, {"forty-two", 42}}));

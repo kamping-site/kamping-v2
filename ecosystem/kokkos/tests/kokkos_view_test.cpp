@@ -38,12 +38,12 @@ TEST(KokkosView, SendRecv) {
         Kokkos::deep_copy(matrix, host_matrix);
 
         auto row = Kokkos::subview(matrix, 1, Kokkos::ALL());
-        kamping::v2::send(row | kamping::v2::views::kokkos, 1, 0);
+        kamping::v2::send(row | kamping::v2::views::kokkos, 1, 0, MPI_COMM_WORLD);
 
     } else if (rank == 1) {
         matrix_t matrix("recv_matrix", 4, 5);
         auto     row      = Kokkos::subview(matrix, 2, Kokkos::ALL());
-        auto     received = kamping::v2::recv(row | kamping::v2::views::kokkos, 0, 0);
+        auto     received = kamping::v2::recv(row | kamping::v2::views::kokkos, 0, 0, MPI_COMM_WORLD);
         received.unwrap();
         Kokkos::fence();
 
@@ -71,10 +71,10 @@ TEST(KokkosView, SendRecvAutoView) {
         for (int i = 0; i < 6; ++i)
             host_v(i) = 200 + i;
         Kokkos::deep_copy(v, host_v);
-        kamping::v2::send(v | kamping::v2::views::kokkos, 1, 1);
+        kamping::v2::send(v | kamping::v2::views::kokkos, 1, 1, MPI_COMM_WORLD);
 
     } else if (rank == 1) {
-        auto  received = kamping::v2::recv(kamping::v2::views::auto_kokkos_view<int>(), 0, 1);
+        auto  received = kamping::v2::recv(kamping::v2::views::auto_kokkos_view<int>(), 0, 1, MPI_COMM_WORLD);
         auto& data     = *received.underlying();
         auto  host     = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{}, data);
 
@@ -108,7 +108,9 @@ TEST(KokkosView, Alltoallv) {
     auto result = kamping::v2::alltoallv(
         send_matrix | kamping::v2::views::kokkos | kamping::v2::views::with_counts(send_counts)
             | kamping::v2::views::auto_displs(),
-        recv_matrix | kamping::v2::views::kokkos | kamping::v2::views::auto_counts() | kamping::v2::views::auto_displs()
+        recv_matrix | kamping::v2::views::kokkos | kamping::v2::views::auto_counts()
+            | kamping::v2::views::auto_displs(),
+        MPI_COMM_WORLD
     );
 
     auto& rbuf = result.get<1>();
