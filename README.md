@@ -5,7 +5,7 @@
 <h1 align="center">KaMPIng v2</h1>
 
 <p align="center">
-  <em>MPI for modern C++: pass your containers, let the library figure out the rest.</em>
+  <em>Modern C++ MPI bindings: pass your containers, compose what you need.</em>
 </p>
 
 <p align="center">
@@ -14,105 +14,96 @@
 
 ---
 
-MPI is powerful, but calling it from C++ means juggling raw pointers, element counts, datatypes, and
-displacement arrays by hand, and getting any of them wrong usually crashes or hangs. **KaMPIng v2** lets you
-hand MPI the objects you already have, like a `std::vector`, a `std::span`, or a Kokkos view. The library works
-out the pointer, the count, and the datatype for you. When you need more, such as a receive buffer that grows to
-fit, per-rank counts, or a custom datatype, you add it with a small, readable `|` pipe, much like
-`std::ranges` views.
+Calling MPI from C++ means passing raw pointers, element counts, datatypes and displacement arrays by hand, and
+getting one of them wrong usually crashes or hangs. **KaMPIng v2** lets you pass the objects you already have,
+such as a `std::vector`, a `std::span` or a Kokkos view, and works out the pointer, count and datatype for you.
+When you need more, you add it with a `|` pipe in the style of `std::ranges` views: a receive buffer that resizes
+itself, per-rank counts that are exchanged for you, or a custom datatype.
 
 ```cpp
 #include <kamping/v2.hpp>
 
-namespace v2 = kamping::v2;
+namespace v2    = kamping::v2;
+namespace views = kamping::v2::views;
 
-int main(int argc, char* argv[]) {
-    v2::environment env(argc, argv);
-    v2::comm_view   comm{MPI_COMM_WORLD};
+// Point-to-point: the receiver does not need to know the message size in advance.
+v2::send(data, dest, comm);
+v2::recv(buf | views::resize, source, comm);
 
-    // Point-to-point: the receiver does not need to know the message size in advance.
-    if (comm.rank() == 0) {
-        std::vector<int> data{1, 2, 3, 4};
-        v2::send(data, 1, comm);
-    } else if (comm.rank() == 1) {
-        std::vector<int> data;
-        v2::recv(data | v2::views::resize, 0, comm); // resized to fit the message
-    }
+// Variable-size collectives: per-rank counts are exchanged and the receive buffer is sized for you.
+auto [_, everything] = v2::allgatherv(mine, v2::auto_recv_v<int>(), comm);
+v2::alltoallv(sdata | views::with_counts(scounts) | views::auto_displs(), v2::auto_recv_v<double>(), comm);
 
-    // Collectives: every rank contributes a different amount; counts are exchanged for you.
-    std::vector<int> mine(static_cast<std::size_t>(comm.rank()) + 1, comm.rank());
-    auto [_, everything] = v2::allgatherv(mine, v2::auto_recv_v<int>(), comm);
-
-    // Reductions with standard functors; ref_single turns a single value into a buffer.
-    int rank = comm.rank();
-    int sum  = 0;
-    v2::allreduce(v2::views::ref_single(rank), v2::views::ref_single(sum), std::plus<>{}, comm);
-}
+// GPU and performance-portability containers are buffers, too.
+v2::send(kokkos_view | views::kokkos, dest, comm);
 ```
 
-KaMPIng v2 is header-only and requires C++20. It is the successor of [KaMPIng](https://github.com/kamping-site/kamping),
-redesigned around C++20 concepts instead of named parameters.
+KaMPIng v2 is header-only and requires C++20. It is the successor of [KaMPIng](https://github.com/kamping-site/kamping)
+and is described in our [EuroMPI 2026 paper](#publications) ([preprint](https://arxiv.org/abs/2606.09102)).
 
 ## Highlights
 
-- **Zero-boilerplate buffers.** Any contiguous range of a builtin type is a valid MPI buffer as is. Other types
-  plug in through a trait or a few member functions, with no inheritance and no wrappers.
-- **Receive buffers that size themselves.** Pipe a container through `views::resize`, and KaMPIng probes the
-  message or exchanges the counts before receiving.
-- **Composable views.** `with_type`, `with_counts`, `with_displs`, `auto_displs`, `flatten_v`, … combine with `|`
-  and compute their metadata lazily.
-- **Ownership you can see.** Pass an lvalue and the library borrows it. Pass an rvalue and it takes ownership
-  and hands the buffer back when the operation completes.
-- **Safe non-blocking operations.** `isend`/`irecv` return an `iresult` that keeps its buffer alive. Forgetting
-  to complete it is caught loudly instead of silently corrupting memory.
-- **Bring your own ecosystem.** Adapters for Cereal (serialization), Kokkos, Thrust, and SYCL.
+- **Your containers are MPI buffers.** Contiguous ranges of builtin types work as they are, including standard
+  views like `std::views::take(n)`. Other types plug in through a trait or a few member functions; no inheritance,
+  no wrapper classes.
+- **Composable views.** `with_type`, `with_counts`, `auto_displs`, `resize`, `flatten_v`, … attach exactly the MPI
+  metadata you need, compose with each other and with `std::views`, and compute lazily.
+- **You only pay for what you use.** Convenience is opt-in at the call site: a receive buffer only probes or
+  exchanges counts if you pipe it through `views::resize` or ask for `auto_recv_v`. KaMPIng v2 never performs
+  communication you did not ask for.
+- **Memory-safe non-blocking operations.** `isend`/`irecv` return an `iresult` that keeps an owned buffer out of
+  reach until the operation has completed, and catches requests that are never completed.
+- **Ready for the HPC ecosystem.** Adapters for Kokkos, Thrust, SYCL and Cereal serialization, built on the same
+  buffer protocol as everything else.
+- **A standardizable core underneath.** Everything is built on [mpi-core](#mpi-core-the-foundation), a thin
+  C++ MPI interface you can also use on its own.
 
-## How it works
+## mpi-core: the foundation
 
-An MPI call needs a few facts about each buffer: where its data starts, how many elements it holds, and their
-MPI datatype. Variadic operations such as `alltoallv` also need per-rank counts and displacements. KaMPIng asks
-your object for these facts through a small set of accessor functions:
+KaMPIng v2 consists of two layers, plus the ecosystem adapters:
 
-| Accessor | Default for a `std::vector<int>` | Customize via |
-|----------|----------------------------------|---------------|
-| `count(buf)` | `std::ranges::size` | `mpi_count()` member or `buffer_traits` |
-| `ptr(buf)` | `std::ranges::data` | `mpi_ptr()` member or `buffer_traits` |
-| `type(buf)` | `MPI_INT` (deduced) | `mpi_type()` member, `buffer_traits`, or `views::with_type(dt)` |
-| `counts(buf)`, `displs(buf)` | — | `mpi_counts()`/`mpi_displs()` members, `views::with_counts`, `views::auto_displs`, … |
+| Layer | Namespace | Role |
+|-------|-----------|------|
+| **mpi-core** (`mpi-core/`) | `mpi::experimental` | The C++ core interface: MPI's own abstractions (data buffers, object handles, procedures) as C++20 concepts. One MPI call per function, MPI semantics unchanged, no hidden allocation or communication. |
+| **KaMPIng v2** (`kamping-v2/`) | `kamping::v2` | Convenience and safety on top: buffer views, receive buffers that size themselves, ownership-aware results and `iresult`, and defaults for omitted arguments. |
+| **Ecosystem adapters** (`ecosystem/`) | `kamping::v2::views` | Kokkos, Thrust, SYCL and Cereal, as buffers usable with both layers. |
 
-To adapt a type you can't modify, specialize `buffer_traits`:
+mpi-core is deliberately minimal. It mirrors the MPI standard closely, so that it can serve as a reference for
+standardized C++ bindings, and it is the extension point for everything above it: a type that works with mpi-core
+works with KaMPIng v2 and with all views. Use it directly when you want exact MPI semantics, are building your own
+abstractions, or adopt C++ bindings incrementally in an existing MPI code base. It also accepts native MPI handles
+and your existing wrapper types.
 
 ```cpp
-template <>
-struct mpi::experimental::buffer_traits<MyType> {
-    static std::ptrdiff_t count(MyType const& t) { return t.size; }
-    static int const*     ptr(MyType const& t)   { return t.values; } // used for sending
-    static int*           ptr(MyType& t)         { return t.values; } // used for receiving
-    static MPI_Datatype   type(MyType const&)    { return MPI_INT; }
+std::vector<double> v = ...;
+mpi::experimental::send(v, dest, tag, MPI_COMM_WORLD);                         // mpi-core: explicit, one MPI call
+kamping::v2::recv(buf | kamping::v2::views::resize, source, comm);             // KaMPIng v2: probes, then resizes
+```
+
+### Buffers and customization
+
+A type is a data buffer if `ptr()`, `count()` and `type()` are defined for it; variable-size operations such as
+`alltoallv` additionally need per-rank `counts()` and `displs()`. Each accessor is looked up in three steps:
+
+1. a `buffer_traits<T>` specialization, for types you don't own;
+2. a member function (`mpi_ptr()`, `mpi_count()`, `mpi_type()`, …), for types you control;
+3. the standard range interface: `std::ranges::data()`, `std::ranges::size()`, and the MPI datatype of the element
+   type.
+
+The steps apply per accessor, so a specialization only provides what cannot be derived. A `thrust::device_vector`
+only needs its pointer:
+
+```cpp
+template <typename T, typename Alloc>
+struct mpi::experimental::buffer_traits<thrust::device_vector<T, Alloc>> {
+    static T const* ptr(thrust::device_vector<T, Alloc> const& v) { return thrust::raw_pointer_cast(v.data()); }
+    static T*       ptr(thrust::device_vector<T, Alloc>& v)       { return thrust::raw_pointer_cast(v.data()); }
 };
 ```
 
-Before each operation, KaMPIng calls a customization point named `infer()`. It fills in whatever a buffer left
-open, for example by probing a message to size a `views::resize` buffer. You can overload `infer()` for your
-own buffer types to exchange extra metadata.
-
-## Calling conventions
-
-The communicator always comes last. Arguments with an obvious default can be left out from the front of it, so you
-only spell out what differs:
-
-```cpp
-v2::send(buf, dest, comm);          // tag 0
-v2::send(buf, dest, tag, comm);
-v2::recv(buf, comm);                // any source, any tag
-v2::recv(buf, source, tag, comm);
-v2::bcast(buf, comm);               // root 0
-v2::reduce(s, r, comm);             // std::plus<>, root 0
-v2::reduce(s, r, MPI_MAX, root, comm);
-```
-
-Rooted collectives have a shorthand for the ranks that don't need the root-only buffer, e.g. `v2::gather(s, comm)`
-on non-root ranks.
+MPI objects come in non-owning (`comm_view`) and owning, move-only RAII (`comm`) forms, and every argument that
+stands for an MPI object also accepts the native handle or your own wrapper type (via `handle_traits`). With
+`MPI_ERRORS_RETURN`, MPI errors are thrown as `mpi_error`.
 
 ## Views
 
@@ -123,38 +114,80 @@ All views compose with `|` and live in `kamping::v2::views`.
 | `resize` | Resizes the container to fit the incoming data before receiving |
 | `with_type(dt)` | Uses the MPI datatype `dt` |
 | `with_count(n)` | Uses `n` as the element count |
-| `with_counts(counts)` | Attaches per-rank counts (variadic operations) |
+| `with_counts(counts)` | Attaches per-rank counts (variable-size operations) |
 | `with_displs([monotonic,] displs)` | Attaches per-rank displacements |
-| `auto_counts([[resize,] counts])` | Per-rank counts that the operation exchanges for you |
-| `auto_displs([[resize,] displs])` | Computes displacements from the counts (exclusive prefix sum) |
-| `resize_v` | Resizes a variadic receive buffer to fit its counts and displacements |
+| `auto_counts()` | Per-rank counts that the operation exchanges for you |
+| `auto_displs()` | Computes displacements from the counts (exclusive prefix sum) |
+| `resize_v` | Resizes a variable-size receive buffer to fit its counts and displacements |
 | `auto_recv_v` | Shorthand for `auto_counts() \| auto_displs() \| resize_v` |
-| `flatten_v()` | Turns a range of per-rank ranges (or `(rank, value)` pairs) into one variadic send buffer |
-| `chunked` | The inverse: splits a variadic buffer into per-rank `std::span`s |
+| `flatten_v()` | Turns a range of per-rank ranges (or `(value, rank)` pairs) into one variable-size send buffer |
+| `chunked` | The inverse: splits a variable-size buffer into per-rank `std::span`s |
 | `ref_single(x)` | Treats a single value as a one-element buffer |
 | `with_pool(pool)` / `with_auto_pool(pool)` | Attaches a derived datatype from a `type_pool` |
 
 The factories `auto_recv<T>()` and `auto_recv_v<T>()` create a fresh, owned receive buffer that sizes itself.
 
-## Non-blocking operations
-
-Non-blocking operations return an `iresult`, which owns the request and, for rvalue buffers, the buffer as well.
-The buffer lives on the heap, so moving the `iresult` around never invalidates the pointer MPI is writing to.
+Derived datatypes are managed by a `type_pool`, which commits a datatype on first use and frees it with the pool.
+For plain structs, `struct_type` derives the layout from the fields via Boost.PFR:
 
 ```cpp
-// Receiver: the iresult owns the vector until the receive completes.
-auto pending = v2::irecv(std::vector<int>{} | v2::views::resize, 0, comm);
-// ... do other work ...
-std::vector<int> data = pending.wait().underlying(); // the owned buffer is handed back
+struct Point { int id; double x; };
+template <>
+struct kamping::types::mpi_type_traits<Point> : kamping::types::struct_type<Point> {};
 
-// Sender: `data` is borrowed, so test() just reports completion.
-auto sending = v2::isend(data, 1, comm);
-while (!sending.test()) { /* do other work */ }
+kamping::v2::type_pool pool;
+kamping::v2::send(points | views::with_auto_pool(pool), dest, comm);
 ```
 
-An `iresult` must be completed with `wait()` or a successful `test()`. KaMPIng never completes a request
-behind your back. Destroying one that is still active prints a diagnostic and calls `std::terminate()`, so the
-buffer is never freed while MPI may still use it.
+## Receive buffers that size themselves
+
+Before each operation, KaMPIng v2 calls the `infer()` customization point, which exchanges metadata between the
+send and receive sides where you asked for it. `views::resize` defers a single receive count: point-to-point
+receives probe the message, and collectives derive the count locally where it is already known (e.g.
+`allreduce`). `views::auto_counts()` defers the per-rank counts of a collective, which are then obtained with one
+count exchange. For plain buffers `infer()` does nothing, and composing views allocates nothing; work happens on
+first access. You can overload `infer()` for your own buffer types.
+
+## Non-blocking operations
+
+Buffers passed as rvalues are moved into the operation and handed back; lvalues are borrowed. A non-blocking
+operation returns an `iresult` that owns the request and, for rvalues, the buffer, so the buffer can't be touched
+while MPI may still use it:
+
+```cpp
+auto pending = kamping::v2::irecv(std::vector<int>{} | views::resize, source, comm);
+// ... do other work ...
+std::vector<int> data = pending.wait().underlying(); // the owned buffer is handed back
+```
+
+An `iresult` must be completed with `wait()` or a successful `test()`. Destroying one that is still active prints
+a diagnostic and calls `std::terminate()` instead of freeing a buffer MPI may still be writing to.
+
+## Calling conventions
+
+In KaMPIng v2 the communicator always comes last, and arguments with an obvious default can be left out in front
+of it:
+
+```cpp
+kamping::v2::send(buf, dest, comm);                // tag 0
+kamping::v2::recv(buf, comm);                      // any source, any tag
+kamping::v2::bcast(buf, comm);                     // root 0
+kamping::v2::reduce(s, r, comm);                   // std::plus<>, root 0
+kamping::v2::reduce(s, r, MPI_MAX, root, comm);
+```
+
+mpi-core mirrors MPI and has no such defaults.
+
+## Ecosystem adapters
+
+| Adapter | Header | Usage |
+|---------|--------|-------|
+| Kokkos | `<kamping/v2/ecosystem/kokkos.hpp>` | `kv \| views::kokkos`; packs non-contiguous views, composes with `views::resize` |
+| Thrust | `<kamping/v2/ecosystem/thrust_buffer_traits.hpp>` | makes `thrust::device_vector` a buffer directly (or use `d_vec \| views::thrust`) |
+| SYCL | `<kamping/v2/ecosystem/sycl.hpp>` | inside a host task: `acc \| views::sycl(ih)` |
+| Cereal | `<kamping/v2/ecosystem/cereal.hpp>` | `views::serialize` / `views::deserialize<T>()` for types without an MPI datatype |
+
+Device memory from `cudaMalloc` or `sycl::malloc_device` needs no adapter: wrap it in a `std::span`.
 
 ## Supported operations
 
@@ -168,6 +201,8 @@ buffer is never freed while MPI may still use it.
 
 **Objects:** communicators, groups, windows, info objects, sessions (MPI 4), attribute caching, and custom
 reduction operations via `make_op`
+
+Tested with MPICH, Open MPI and Intel MPI, using GCC and Clang.
 
 ## Getting started
 
@@ -233,20 +268,38 @@ ctest --preset debug
 | `KAMPING_V2_ENABLE_THRUST` | `OFF` | Build the Thrust adapter (CUDA) |
 | `KAMPING_V2_ENABLE_SYCL` | `OFF` | Build the SYCL adapter (Intel oneAPI DPC++) |
 
-## Repository layout
+## Publications
 
-KaMPIng v2 is built in layers. You can use the lower ones on their own.
+KaMPIng v2 and its core interface are described in
 
-| Directory | Namespace | CMake target | What it is |
-|-----------|-----------|--------------|------------|
-| `mpi-core/` | `mpi::experimental` | `mpi::core` | Thin, explicit MPI wrappers: one MPI call each, no inference or resizing |
-| `kamping-v2/` | `kamping::v2` | `kamping::v2` | The ergonomic layer: views, `infer()`, self-sizing buffers, `iresult` |
-| `dstl/` | `dstl` | `dstl::dstl` | Distributed algorithms built on top (sparse all-to-all, grid all-to-all, scans, …) |
-| `ecosystem/` | `kamping::v2`, `kamping::v2::views` | `kamping::v2::<name>` | Adapters for Cereal, Kokkos, Thrust, and SYCL (`<kamping/v2/ecosystem/<name>.hpp>`) |
+> T. N. Uhl, M. Schimek, D. Brommer. **Concepts in Practice: C++ MPI Bindings for the HPC Ecosystem — From a
+> Standardizable Core to a Composable Interface.** In *Recent Advances in the Message Passing Interface (EuroMPI
+> 2026)*, LNCS, Springer. [doi:10.1007/978-3-032-40777-1_2](https://doi.org/10.1007/978-3-032-40777-1_2) ·
+> preprint: [arXiv:2606.09102](https://arxiv.org/abs/2606.09102)
 
-MPI datatypes for user types come from `kamping-types`, which is shared with
-[KaMPIng v1](https://github.com/kamping-site/kamping) and fetched automatically. KaMPIng v1 and v2 are
-independent and can be used in the same program.
+which realizes the design principles of
+
+> C. N. Avans, A. A. Correa, S. Ghosh, M. Schimek, J. Schuchart, A. Skjellum, E. D. Suggs, T. N. Uhl. **Concepts for
+> Designing Modern C++ Interfaces for MPI.** In *EuroMPI 2025*, LNCS, pp. 165–183, Springer.
+> [doi:10.1007/978-3-032-07194-1_10](https://doi.org/10.1007/978-3-032-07194-1_10) ·
+> preprint: [arXiv:2506.14610](https://arxiv.org/abs/2506.14610)
+
+If you use KaMPIng v2, please cite the first paper:
+
+```bibtex
+@inproceedings{UhlSB26,
+  author    = {Tim Niklas Uhl and Matthias Schimek and Daniel Brommer},
+  title     = {Concepts in Practice: {C++} {MPI} Bindings for the {HPC} Ecosystem --- From a Standardizable Core to a
+               Composable Interface},
+  booktitle = {Recent Advances in the Message Passing Interface (EuroMPI 2026)},
+  series    = {Lecture Notes in Computer Science},
+  publisher = {Springer},
+  year      = {2026},
+  doi       = {10.1007/978-3-032-40777-1_2},
+  eprint    = {2606.09102},
+  archivePrefix = {arXiv}
+}
+```
 
 ## License
 
