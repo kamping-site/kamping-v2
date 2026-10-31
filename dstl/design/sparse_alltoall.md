@@ -191,30 +191,72 @@ Instead of the tag contract, cache a private duplicate of each user communicator
 of different calls would still need separating (alternating internal tags, or a sequence number per
 cached communicator), but no longer user traffic.
 
-### Layer 2 — flat buffer convenience
+### Layer 2 — receive into one buffer
 
-Takes a variadic send buffer (flat data + per-rank counts + displacements), sends only to ranks
-with non-zero counts, and writes into a recv buffer:
+Receives all messages into a single recv buffer, in arrival order:
 
 ```cpp
-void dstl::sparse_alltoall(Algorithm, SBuf&& sbuf, RBuf&& rbuf, Layout = layout::unordered{}, Tag tag, Comm const& comm);
+std::size_t dstl::sparse_alltoall(Algorithm, SBuf&& sbuf, RBuf&& rbuf, Tag tag, Comm const& comm);
 ```
 
-- `layout::unordered` (default): arrival order, into a plain `recv_buffer`;
-- `layout::ordered_by_source`: the `MPI_Alltoallv` layout, into a `recv_buffer_v` (O(p) counts, as
-  in `request_reply`; `detail::size_from_source_counts` sizes it). Offsets depend on all incoming
-  sizes:
-  - NBX cannot hold probes until the end (see the callback contract), so it receives into a staging
-    buffer in arrival order and copies segments into source order afterwards (stable, so repeated
-    sources keep send order);
-  - PCX/RSX know k up front: `mprobe` all k messages, size the output from their counts, then `mrecv`
-    each directly at its offset — zero-copy. This cannot go through the Layer 1 callback (it would
-    hold probes across the end of the call), so it is implemented per protocol.
+**Input: no separate interface.** Any Layer 1 input works. A flat variadic send buffer (data + per-rank
+counts + displacements) becomes one through a `chunked` view, the inverse of `flatten_v`: a dense
+range of `std::span`s, one per rank, into the flat data. The spans do not own their data (so they
+pass `messages_outlive_iteration`), empty ones are not sent, and the view's value type is the flat
+buffer's `type()`:
+
+```cpp
+dstl::sparse_alltoall(nbx, flat | views::with_counts(counts) | views::auto_displs() | views::chunked, rbuf, tag, comm);
+```
+
+`chunked` is not marked `already_flat_buffer`; `flatten_v(chunked(x))` round-trips. It needs an element
+type for its spans, so the flat buffer must expose one (`range_value_t` or `value_type`).
+
+**Thin layer on Layer 1.** Layer 2 is a Layer 1 call with a callback that receives each message at
+the next free position of the recv buffer; the protocols are unchanged. All arguments after the recv
+buffer (tag, communicator, cached RSX windows) are forwarded to Layer 1. It returns the number of
+elements received.
+
+**Output: arrival order only.**
+
+- **Presized buffer** (the default, as everywhere in kamping): each message is received with `imrecv`
+  at the running offset right after it is probed, so receives overlap; an `imrecv` counts as a started
+  receive, so NBX's synchronous sends complete as with `mrecv`. All receives are waited for after the
+  exchange. The buffer must be large enough (asserted).
+- **`views::resize`**: the total is unknown until the exchange ends, and the buffer must not be resized
+  under in-flight receives. Each message is therefore received with a blocking `mrecv`, after growing
+  the buffer to fit it (amortized by the container's geometric growth). Overlapping receives would
+  need batches of probes and a batch-aware Layer 1 (an earlier draft did this); a matched message is
+  already on its way, so `mrecv` mostly waits for its data and the gain is small. At the end the
+  buffer is sized to exactly the received elements. This relies on the resize contract below.
+
+**Resize contract.** `resize_for_receive(n)` (and `mpi_resize_for_receive`) resize to `n` elements,
+keeping the values of `[0, min(old, n))`; new elements are unspecified. Like a receive, a resize only
+touches the range it has to. Standard containers (`resize`) and the Kokkos adapter (`Kokkos::resize`)
+already behave this way; the contract is documented and tested separately, before Layer 2.
+
+**No provenance.** Arrival order loses which data came from where. Layer 2 does not record it: a
+caller who needs sources, per-message counts or any other control uses the Layer 1 callback directly.
+
+### No `ordered_by_source`
+
+An `MPI_Alltoallv` layout (grouped by source, counts and displacements per source) needs the counts
+per source. They are either given or exchanged with an `alltoall` (as `infer(comm_op::alltoallv)` does
+for `auto_counts`). Once they are known, every process knows exactly whom it receives from, so the
+protocols are pointless: post an `irecv` per non-zero source at its displacement, send, wait — PEX,
+i.e. an `alltoallv` that communicates point-to-point only where there is data. That is an optimization
+of `alltoallv`, not of `sparse_alltoall`: if wanted, it belongs in dstl's alltoallv family (next to
+`flat_alltoallv` and `grid_alltoallv`). The protocols only pay off without counts, i.e. in arrival
+order.
+
+Producing the `MPI_Alltoallv` layout from arrival order plus per-message sources (recorded with a
+Layer 1 callback; stable sort by source, permute the segments) is a local operation and applies to
+any unordered data.
 
 ### Convenience variants
 
 Built on Layer 1, collecting all received messages (e.g. as `(source, data)` pairs, or flat data plus
-per-element sources), accepting the algorithm tag like it.
+per-element sources), accepting the algorithm tag like it. Layer 2 covers flat data without sources.
 
 ---
 
