@@ -3,6 +3,7 @@
 
 // Compiles the umbrella header, which catches name clashes between the re-exported core names and the v2 layer.
 
+#include <concepts>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -19,4 +20,15 @@ TEST(UmbrellaHeaderTest, ReexportsBufferContract) {
     EXPECT_EQ(kamping::v2::ptr(v), v.data());
     EXPECT_EQ(kamping::v2::type(v), MPI_INT);
     EXPECT_EQ(kamping::v2::count(v | kamping::v2::views::with_count(2)), 2);
+}
+
+TEST(UmbrellaHeaderTest, ReexportsRequestsAndCompletion) {
+    static_assert(std::same_as<kamping::v2::request, mpi::experimental::request>);
+    static_assert(std::same_as<kamping::v2::request_vector, mpi::experimental::request_vector>);
+    static_assert(std::same_as<kamping::v2::request_view, mpi::experimental::request_view>);
+    static_assert(std::same_as<kamping::v2::status_vector, mpi::experimental::status_vector>);
+    static_assert(requires(std::vector<MPI_Request>& requests) {
+        kamping::v2::waitall(requests);
+        kamping::v2::testall(requests);
+    });
 }

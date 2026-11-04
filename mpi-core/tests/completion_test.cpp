@@ -13,7 +13,10 @@
 #include <gtest/gtest.h>
 #include <mpi.h>
 
-#include "kamping/v2/completion.hpp"
+#include "mpi/completion/wait.hpp"
+#include "mpi/completion/waitall.hpp"
+#include "mpi/completion/waitany.hpp"
+#include "mpi/completion/waitsome.hpp"
 #include "mpi/p2p/irecv.hpp"
 #include "mpi/p2p/isend.hpp"
 #include "mpi/request.hpp"
@@ -298,13 +301,4 @@ TEST(CompletionTest, WaitsomeAndTestsomeOnNoActiveRequests) {
     std::vector<int>         indices(2);
     EXPECT_EQ(me::waitsome(requests, indices), std::nullopt);
     EXPECT_EQ(me::testsome(requests, indices), std::nullopt);
-}
-
-// ── kamping::v2 re-exports ───────────────────────────────────────────────────
-
-TEST(CompletionTest, V2Reexports) {
-    self_messages m(2);
-    kamping::v2::waitall(m.requests);
-    EXPECT_TRUE(kamping::v2::testall(m.requests));
-    m.expect_received();
 }

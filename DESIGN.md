@@ -290,7 +290,7 @@ auto allgather(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm) -> result<SBuf, RBuf>
 
 ### Step 4: Tests
 
-Create `kamping-v2/tests/allgather_test.cpp` and register it in `kamping-v2/tests/CMakeLists.txt` with `kamping_v2_add_mpi_test(allgather CORES 1 2 4)`. Cover:
+Create `kamping-v2/tests/allgather_test.cpp` and register it in `kamping-v2/tests/CMakeLists.txt` as `test_v2_allgather` (`add_executable`, `target_link_libraries` with `kamping_v2 kamping_v2_warnings KaTestrophe::main`, and `katestrophe_add_mpi_test(test_v2_allgather CORES 1 2 4)`). Cover:
 - Single-rank send/recv
 - Multi-rank with uniform sizes
 - Multi-rank with non-uniform send sizes (validate recv sizing)

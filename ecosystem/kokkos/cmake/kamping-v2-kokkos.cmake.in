@@ -1,0 +1,8 @@
+# The kamping-v2 component 'kokkos': kamping::v2::kokkos.
+include_guard()
+include("${CMAKE_CURRENT_LIST_DIR}/kamping-v2-v2.cmake")
+find_dependency(Kokkos)
+if (@KAMPING_V2_ENABLE_KOKKOS_COMM@)
+    find_dependency(KokkosComm)
+endif ()
+include("${CMAKE_CURRENT_LIST_DIR}/kamping-v2-kokkos-targets.cmake")

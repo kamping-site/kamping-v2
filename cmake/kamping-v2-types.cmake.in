@@ -1,0 +1,6 @@
+# The internal kamping-v2 component 'types': kamping-types and Boost.PFR.
+include_guard()
+find_dependency(MPI COMPONENTS CXX)
+find_dependency(kamping CONFIG PATHS "${CMAKE_CURRENT_LIST_DIR}/../kamping/kassert" NO_DEFAULT_PATH)
+@KAMPING_V2_PFR_DEPENDENCY@
+include("${CMAKE_CURRENT_LIST_DIR}/kamping-v2-types-targets.cmake")

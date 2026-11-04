@@ -2,7 +2,9 @@ cmake_minimum_required(VERSION 3.25)
 project(kamping-v2-kokkos LANGUAGES CXX)
 
 include(${CMAKE_CURRENT_LIST_DIR}/../../cmake/kamping-v2-setup.cmake)
-kamping_v2_require_component(kamping-v2 kamping::v2)
+if (NOT TARGET kamping::v2)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../../kamping-v2 kamping-v2)
+endif ()
 
 FetchContent_Declare(
     Kokkos
@@ -12,10 +14,14 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(Kokkos)
 
-kamping_v2_add_header_only_library(kamping_v2_kokkos kamping::v2::kokkos ${CMAKE_CURRENT_SOURCE_DIR}/include)
+add_library(kamping_v2_kokkos INTERFACE)
+add_library(kamping::v2::kokkos ALIAS kamping_v2_kokkos)
+target_compile_features(kamping_v2_kokkos INTERFACE cxx_std_20)
+target_sources(
+    kamping_v2_kokkos INTERFACE FILE_SET HEADERS BASE_DIRS include FILES include/kamping/v2/ecosystem/kokkos.hpp
+)
 set_target_properties(kamping_v2_kokkos PROPERTIES EXPORT_NAME kokkos)
 target_link_libraries(kamping_v2_kokkos INTERFACE kamping::v2 Kokkos::kokkos)
-set(kokkos_dependencies "find_dependency(Kokkos)")
 
 if (KAMPING_V2_ENABLE_KOKKOS_COMM)
     FetchContent_Declare(
@@ -43,16 +49,22 @@ if (KAMPING_V2_ENABLE_KOKKOS_COMM)
     endif ()
     target_compile_definitions(kamping_v2_kokkos INTERFACE KAMPING_HAS_KOKKOS_COMM)
     target_link_libraries(kamping_v2_kokkos INTERFACE KokkosComm::KokkosComm)
-    list(APPEND kokkos_dependencies "find_dependency(KokkosComm)")
 endif ()
 
-kamping_v2_install_component(
-    kokkos
-    TARGETS kamping_v2_kokkos
-    NAMESPACE kamping::v2::
-    REQUIRES v2
-    DEPENDENCIES ${kokkos_dependencies}
-)
+if (KAMPING_V2_INSTALL)
+    install(
+        TARGETS kamping_v2_kokkos
+        EXPORT kamping-v2-kokkos-targets
+        FILE_SET HEADERS
+    )
+    install(
+        EXPORT kamping-v2-kokkos-targets
+        NAMESPACE kamping::v2::
+        DESTINATION ${KAMPING_V2_INSTALL_CMAKEDIR}
+    )
+    configure_file(cmake/kamping-v2-kokkos.cmake.in kamping-v2-kokkos.cmake @ONLY)
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/kamping-v2-kokkos.cmake DESTINATION ${KAMPING_V2_INSTALL_CMAKEDIR})
+endif ()
 
 if (PROJECT_IS_TOP_LEVEL OR KAMPING_V2_BUILD_EXAMPLES_AND_TESTS)
     add_subdirectory(examples)

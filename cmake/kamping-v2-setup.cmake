@@ -1,10 +1,8 @@
 # Shared setup for all entry points of this repository: the root CMakeLists.txt as well as mpi-core/, kamping-v2/, dstl/
 # and ecosystem/*/, which can each be used on their own (e.g. via FetchContent with SOURCE_SUBDIR). Include it after
-# project(); it runs once per build tree.
-#
-# Provides - the KAMPING_V2_* options, - the dependencies MPI, kassert, Boost.PFR and kamping-types, - the
-# kamping_v2_warnings target used by tests and examples, - kamping_v2_require_component() to pull in a sibling component
-# that is not built yet, - kamping_v2_install_component() to install a component into the kamping-v2 CMake package.
+# project(); it runs once per build tree. It defines the KAMPING_V2_* options, makes the dependencies available, and
+# defines the kamping_v2_warnings target for tests and examples. If KAMPING_V2_INSTALL is set, it installs the package
+# configuration and the internal 'types' component; each component installs itself.
 
 include_guard(GLOBAL)
 
@@ -13,14 +11,7 @@ include(CMakePackageConfigHelpers)
 include(FetchContent)
 include(GNUInstallDirs)
 
-set(KAMPING_V2_SOURCE_ROOT
-    "${CMAKE_CURRENT_LIST_DIR}/.."
-    CACHE INTERNAL ""
-)
-cmake_path(NORMAL_PATH KAMPING_V2_SOURCE_ROOT)
-
-# ── Options
-# ────────────────────────────────────────────────────────────────────────────────────────────────────────────
+# ── Options ───────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 option(KAMPING_V2_BUILD_EXAMPLES_AND_TESTS "Build the tests and examples of all components." OFF)
 option(KAMPING_V2_WARNINGS_ARE_ERRORS "Treat compiler warnings as errors in tests and examples." OFF)
@@ -40,8 +31,7 @@ if (PROJECT_IS_TOP_LEVEL)
     include(CTest)
 endif ()
 
-# ── Dependencies
-# ───────────────────────────────────────────────────────────────────────────────────────────────────────
+# ── Dependencies ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
 if (NOT TARGET MPI::MPI_CXX)
     set(MPI_DETERMINE_LIBRARY_VERSION TRUE)
@@ -93,6 +83,14 @@ if (KAMPING_V2_ENABLE_REFLECTION
     add_library(Boost::pfr ALIAS kamping_v2_pfr)
 endif ()
 
+# KaTestrophe (GoogleTest with MPI), for the tests. Only declared here; the tests/ directories of the components fetch it
+# with FetchContent_MakeAvailable(KaTestrophe), so it is downloaded only when tests are built.
+FetchContent_Declare(
+    KaTestrophe
+    GIT_REPOSITORY https://github.com/kamping-site/KaTestrophe.cmake
+    GIT_TAG v1.1.0
+)
+
 # kamping-types (MPI datatype construction), maintained in the KaMPIng (v1) repository.
 if (NOT TARGET kamping::types)
     block()
@@ -103,15 +101,15 @@ if (NOT TARGET kamping::types)
     FetchContent_Declare(
         kamping_types
         GIT_REPOSITORY https://github.com/kamping-site/kamping
-        GIT_TAG main
+        # v0.3.0 plus kamping#808 (ScopedFunctorOp must not require T to be assignable); use the next tag once released.
+        GIT_TAG 001f21510a7edef33248a9d4063073a7b05b5696
         SOURCE_SUBDIR kamping-types
     )
     FetchContent_MakeAvailable(kamping_types)
     endblock()
 endif ()
 
-# ── Warnings
-# ───────────────────────────────────────────────────────────────────────────────────────────────────────────
+# ── Warnings ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 # Warning flags for the tests and examples of all components. Not part of the installed package.
 add_library(kamping_v2_warnings INTERFACE)
@@ -129,154 +127,65 @@ if (KAMPING_V2_WARNINGS_ARE_ERRORS)
     target_compile_options(kamping_v2_warnings INTERFACE $<IF:$<CXX_COMPILER_ID:MSVC>,/WX,-Werror>)
 endif ()
 
-# ── Components
-# ─────────────────────────────────────────────────────────────────────────────────────────────────────────
+# ── Package ───────────────────────────────────────────────────────────────────────────────────────────────────────────
 
-# kamping_v2_require_component(<subdirectory> <target>)
-#
-# Adds the sibling component in <subdirectory> (relative to the repository root) unless <target> already exists, so that
-# a component can be built on its own.
-function (kamping_v2_require_component subdirectory target)
-    if (NOT TARGET ${target})
-        add_subdirectory("${KAMPING_V2_SOURCE_ROOT}/${subdirectory}" "${CMAKE_BINARY_DIR}/_kamping_v2/${subdirectory}")
-    endif ()
-endfunction ()
-
-# kamping_v2_add_header_only_library(<target> <alias> <include directory>)
-#
-# Creates the INTERFACE library <target> with alias <alias>, whose headers are the *.hpp files below <include
-# directory>, as a HEADERS file set (which also provides the include directory, in the build and install tree).
-function (kamping_v2_add_header_only_library target alias include_dir)
-    file(GLOB_RECURSE headers CONFIGURE_DEPENDS "${include_dir}/*.hpp")
-    add_library(${target} INTERFACE)
-    target_sources(${target} INTERFACE FILE_SET HEADERS BASE_DIRS "${include_dir}" FILES ${headers})
-    target_compile_features(${target} INTERFACE cxx_std_20)
-    add_library(${alias} ALIAS ${target})
-endfunction ()
-
+# Every component <c> installs its targets as kamping-v2-<c>-targets.cmake and a file kamping-v2-<c>.cmake that finds
+# the dependencies of <c> and includes its targets; kamping-v2-config.cmake loads the requested components.
 set(KAMPING_V2_INSTALL_CMAKEDIR "${CMAKE_INSTALL_LIBDIR}/cmake/kamping-v2")
 
-# kamping_v2_install_component( <component> TARGETS <target>...      the targets of the component NAMESPACE <namespace>
-# namespace of the exported targets (e.g. "kamping::"; the name is the EXPORT_NAME) REQUIRES <component>...  other
-# kamping-v2 components this one depends on DEPENDENCIES <code>...   find_dependency() calls for its external
-# dependencies )
-#
-# Installs the targets and headers of a component and registers it in the kamping-v2 package, so that
-# find_package(kamping-v2 COMPONENTS <component>) loads it together with its dependencies.
-function (kamping_v2_install_component component)
-    if (NOT KAMPING_V2_INSTALL)
-        return()
-    endif ()
-    cmake_parse_arguments(ARG "" "NAMESPACE" "TARGETS;REQUIRES;DEPENDENCIES" ${ARGN})
-
-    install(
-        TARGETS ${ARG_TARGETS}
-        EXPORT kamping-v2-${component}-targets
-        FILE_SET HEADERS
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
-        COMPONENT ${component}
+if (KAMPING_V2_INSTALL)
+    configure_package_config_file(
+        "${CMAKE_CURRENT_LIST_DIR}/kamping-v2-config.cmake.in" "${CMAKE_BINARY_DIR}/kamping-v2-config.cmake"
+        INSTALL_DESTINATION ${KAMPING_V2_INSTALL_CMAKEDIR}
     )
-    install(
-        EXPORT kamping-v2-${component}-targets
-        NAMESPACE ${ARG_NAMESPACE}
-        DESTINATION ${KAMPING_V2_INSTALL_CMAKEDIR}
-        COMPONENT ${component}
+    write_basic_package_version_file(
+        "${CMAKE_BINARY_DIR}/kamping-v2-config-version.cmake"
+        VERSION ${KAMPING_V2_VERSION}
+        COMPATIBILITY SameMinorVersion ARCH_INDEPENDENT
+    )
+    install(FILES "${CMAKE_BINARY_DIR}/kamping-v2-config.cmake" "${CMAKE_BINARY_DIR}/kamping-v2-config-version.cmake"
+            DESTINATION ${KAMPING_V2_INSTALL_CMAKEDIR}
     )
 
-    set(content "# Dependencies of the kamping-v2 component '${component}'. Generated by kamping-v2-setup.cmake.\n")
-    string(APPEND content "set(_kamping_v2_requires_${component} ${ARG_REQUIRES})\n")
-    foreach (dependency IN LISTS ARG_DEPENDENCIES)
-        string(APPEND content "${dependency}\n")
-    endforeach ()
-    set(file "${CMAKE_BINARY_DIR}/kamping-v2-package/kamping-v2-${component}-dependencies.cmake")
-    file(WRITE "${file}" "${content}")
-    install(
-        FILES "${file}"
-        DESTINATION ${KAMPING_V2_INSTALL_CMAKEDIR}
-        COMPONENT ${component}
-    )
-
-    set_property(GLOBAL APPEND PROPERTY KAMPING_V2_INSTALLED_COMPONENTS ${component})
-
-    if ("types" IN_LIST ARG_REQUIRES)
-        _kamping_v2_install_types()
-    endif ()
-endfunction ()
-
-# Installs kamping-types (and Boost.PFR, if built from source) as the internal 'types' component: neither provides
-# install rules of its own when fetched. Their targets are adapted here: the include directories they set point into the
-# source tree, so they are replaced by a HEADERS file set.
-function (_kamping_v2_install_types)
-    get_property(done GLOBAL PROPERTY _KAMPING_V2_TYPES_INSTALLED)
-    if (done)
-        return()
-    endif ()
-    set_property(GLOBAL PROPERTY _KAMPING_V2_TYPES_INSTALLED TRUE)
-
+    block()
+    # The internal 'types' component: kamping-types, and Boost.PFR if it is built from source or wrapped from a system
+    # Boost. Neither provides install rules when fetched, and their include directories point into the source tree.
     get_target_property(imported kamping_types IMPORTED)
     if (imported)
         message(FATAL_ERROR "kamping-v2: installing requires kamping-types to be built from source (FetchContent).")
     endif ()
-
-    set(targets kamping_types)
-    set(dependencies
-        "find_dependency(MPI COMPONENTS CXX)"
-        "find_dependency(kamping CONFIG PATHS \"\${CMAKE_CURRENT_LIST_DIR}/../kamping/kassert\" NO_DEFAULT_PATH)"
-    )
-    _kamping_v2_adopt_headers(kamping_types types)
-
+    set_target_properties(kamping_types PROPERTIES EXPORT_NAME types)
+    set(types_targets kamping_types)
+    set(vendored kamping_types)
+    set(KAMPING_V2_PFR_DEPENDENCY "")
     if (TARGET boost_pfr)
-        get_target_property(pfr_imported boost_pfr IMPORTED)
-        if (NOT pfr_imported)
-            _kamping_v2_adopt_headers(boost_pfr pfr)
-            list(APPEND targets boost_pfr)
-        endif ()
+        set_target_properties(boost_pfr PROPERTIES EXPORT_NAME pfr)
+        list(APPEND types_targets boost_pfr)
+        list(APPEND vendored boost_pfr)
     elseif (TARGET kamping_v2_pfr)
-        list(APPEND targets kamping_v2_pfr)
-        list(APPEND dependencies "find_dependency(Boost 1.75 COMPONENTS headers CONFIG)")
+        list(APPEND types_targets kamping_v2_pfr)
+        set(KAMPING_V2_PFR_DEPENDENCY "find_dependency(Boost 1.75 COMPONENTS headers CONFIG)")
     elseif (TARGET Boost::pfr)
-        list(APPEND dependencies "find_dependency(pfr 2.2.0)")
+        set(KAMPING_V2_PFR_DEPENDENCY "find_dependency(pfr 2.2.0)")
     endif ()
-
-    kamping_v2_install_component(
-        types
-        TARGETS ${targets}
+    foreach (target IN LISTS vendored)
+        get_target_property(source_dir ${target} SOURCE_DIR)
+        set_target_properties(
+            ${target}
+            PROPERTIES INTERFACE_INCLUDE_DIRECTORIES
+                       "$<BUILD_INTERFACE:${source_dir}/include>;$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
+        )
+        install(DIRECTORY "${source_dir}/include/" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+    endforeach ()
+    install(TARGETS ${types_targets} EXPORT kamping-v2-types-targets)
+    install(
+        EXPORT kamping-v2-types-targets
         NAMESPACE kamping_v2::
-        DEPENDENCIES ${dependencies}
+        DESTINATION ${KAMPING_V2_INSTALL_CMAKEDIR}
     )
-endfunction ()
-
-# Replaces the source-tree include directory of the fetched target <target> (the include/ directory next to the
-# CMakeLists.txt that defines it) by a HEADERS file set.
-function (_kamping_v2_adopt_headers target export_name)
-    get_target_property(source_dir ${target} SOURCE_DIR)
-    set(dir "${source_dir}/include")
-    file(GLOB_RECURSE headers CONFIGURE_DEPENDS "${dir}/*.hpp")
-    set_property(TARGET ${target} PROPERTY INTERFACE_INCLUDE_DIRECTORIES "")
-    target_sources(${target} INTERFACE FILE_SET HEADERS BASE_DIRS "${dir}" FILES ${headers})
-    set_target_properties(${target} PROPERTIES EXPORT_NAME ${export_name})
-endfunction ()
-
-# Writes the package configuration once all components of this build tree have registered. Deferred to the end of the
-# directory that included this file first, i.e. the entry point.
-function (_kamping_v2_install_package)
-    if (NOT KAMPING_V2_INSTALL)
-        return()
-    endif ()
-    get_property(components GLOBAL PROPERTY KAMPING_V2_INSTALLED_COMPONENTS)
-    set(KAMPING_V2_PACKAGE_COMPONENTS ${components})
-    set(dir "${CMAKE_BINARY_DIR}/kamping-v2-package")
-    configure_package_config_file(
-        "${KAMPING_V2_SOURCE_ROOT}/cmake/kamping-v2-config.cmake.in" "${dir}/kamping-v2-config.cmake"
-        INSTALL_DESTINATION ${KAMPING_V2_INSTALL_CMAKEDIR}
+    configure_file(
+        "${CMAKE_CURRENT_LIST_DIR}/kamping-v2-types.cmake.in" "${CMAKE_BINARY_DIR}/kamping-v2-types.cmake" @ONLY
     )
-    write_basic_package_version_file(
-        "${dir}/kamping-v2-config-version.cmake"
-        VERSION ${KAMPING_V2_VERSION}
-        COMPATIBILITY SameMinorVersion ARCH_INDEPENDENT
-    )
-    install(FILES "${dir}/kamping-v2-config.cmake" "${dir}/kamping-v2-config-version.cmake"
-            DESTINATION ${KAMPING_V2_INSTALL_CMAKEDIR}
-    )
-endfunction ()
-cmake_language(DEFER DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}" CALL _kamping_v2_install_package)
+    install(FILES "${CMAKE_BINARY_DIR}/kamping-v2-types.cmake" DESTINATION ${KAMPING_V2_INSTALL_CMAKEDIR})
+    endblock()
+endif ()

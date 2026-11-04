@@ -12,11 +12,15 @@
 #include <gtest/gtest.h>
 #include <mpi.h>
 
-#include "kamping/v2/completion.hpp"
-#include "kamping/v2/request.hpp"
-#include "kamping/v2/status.hpp"
+#include "mpi/completion/waitall.hpp"
+#include "mpi/completion/waitany.hpp"
+#include "mpi/completion/waitsome.hpp"
 #include "mpi/p2p/irecv.hpp"
 #include "mpi/p2p/isend.hpp"
+#include "mpi/request.hpp"
+#include "mpi/request_vector.hpp"
+#include "mpi/status.hpp"
+#include "mpi/status_vector.hpp"
 
 namespace me = mpi::experimental;
 
@@ -46,7 +50,6 @@ static_assert(!std::is_copy_constructible_v<me::request_vector>);
 static_assert(std::is_nothrow_move_constructible_v<me::request_vector>);
 static_assert(std::is_nothrow_move_assignable_v<me::request_vector>);
 static_assert(std::same_as<std::ranges::range_reference_t<me::request_vector>, me::request_view>);
-static_assert(std::same_as<kamping::v2::request_vector, me::request_vector>);
 
 TEST(RequestVectorTest, StartsWithNullSlots) {
     me::request_vector requests(3);
@@ -208,7 +211,6 @@ static_assert(!std::is_copy_constructible_v<me::request>);
 static_assert(std::is_nothrow_move_constructible_v<me::request>);
 static_assert(std::is_nothrow_move_assignable_v<me::request>);
 static_assert(me::convertible_to_mpi_handle_ptr<me::request, MPI_Request>);
-static_assert(std::same_as<kamping::v2::request, me::request>);
 
 TEST(RequestTest, DefaultIsNull) {
     me::request r;
@@ -282,7 +284,6 @@ TEST(RequestTest, ConvertsToRequestView) {
 static_assert(std::is_copy_constructible_v<me::status_vector>);
 static_assert(std::same_as<std::ranges::range_reference_t<me::status_vector>, me::status_view>);
 static_assert(std::same_as<std::ranges::range_reference_t<me::status_vector const>, me::const_status_view>);
-static_assert(std::same_as<kamping::v2::status_vector, me::status_vector>);
 
 TEST(StatusVectorTest, WaitallFillsStatuses) {
     me::request_vector requests;
