@@ -502,12 +502,27 @@ class _DoxygenObject:
         pass
 
 
+def _signature_listing(element: ET.Element | None) -> ET.Element | None:
+    if element is None:
+        return None
+    return next((p for p in element.iter("programlisting") if p.get("filename") == ".signature"), None)
+
+
 class DoxygenView(_DoxygenObject, CPPFunctionObject):
     domain_directive = "cpp:function"
     option_spec = dict(CPPFunctionObject.option_spec)
 
+    def lookup(self, qualified: str) -> ET.Element | None:
+        # The comment of `inline constexpr struct foo_fn {...} foo{};` is attached to the variable or to the struct,
+        # depending on the Doxygen version: take the one with the signature block.
+        index = _index(self.env)
+        for candidate in (index.by_name.get(qualified), index.by_name.get(f"{qualified}_fn")):
+            if _signature_listing(candidate) is not None:
+                return candidate
+        return super().lookup(qualified)
+
     def signatures(self, element: ET.Element, short_name: str) -> list[str]:
-        listing = next((p for p in element.iter("programlisting") if p.get("filename") == ".signature"), None)
+        listing = _signature_listing(element)
         if listing is None:
             return []
         # one declaration per line; indented lines continue the previous one

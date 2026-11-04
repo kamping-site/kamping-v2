@@ -18,8 +18,9 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Ubuntu's Doxygen is too old: the docs need >= 1.10, and the concept definitions >= 1.13.
-  DOXYGEN_VERSION: 1.14.0
+  # Ubuntu's Doxygen is too old (the docs need >= 1.10, the concept definitions >= 1.13); pin a release so that CI
+  # and local builds see the same XML.
+  DOXYGEN_VERSION: 1.18.0
 
 jobs:
   build:
