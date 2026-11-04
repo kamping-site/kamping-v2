@@ -183,7 +183,7 @@ public:
             return *existing;
         }
         auto value = std::unique_ptr<T>(new T(std::invoke(std::forward<F>(make))));
-        int  err   = Kind::set_attr(handle(obj), _keyval, value.get());
+        int  err   = Kind::set_attr(mpi::experimental::handle(obj), _keyval, value.get());
         if (err != MPI_SUCCESS) {
             throw mpi_error(err);
         }
@@ -197,7 +197,7 @@ public:
     [[nodiscard]] T* find(Obj const& obj) const {
         void* value = nullptr;
         int   found = 0;
-        int   err   = Kind::get_attr(handle(obj), _keyval, &value, &found);
+        int   err   = Kind::get_attr(mpi::experimental::handle(obj), _keyval, &value, &found);
         if (err != MPI_SUCCESS) {
             throw mpi_error(err);
         }
@@ -212,7 +212,7 @@ public:
         if (find(obj) == nullptr) {
             return false;
         }
-        int err = Kind::delete_attr(handle(obj), _keyval);
+        int err = Kind::delete_attr(mpi::experimental::handle(obj), _keyval);
         if (err != MPI_SUCCESS) {
             throw mpi_error(err);
         }

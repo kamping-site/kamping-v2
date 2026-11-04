@@ -40,9 +40,8 @@ struct par_comm {};
 
 /// Concept: one of the execution policy tags above.
 template <typename T>
-concept is_execution_policy = std::is_same_v<T, execution_policy::seq> ||
-                              std::is_same_v<T, execution_policy::par> ||
-                              std::is_same_v<T, execution_policy::par_comm>;
+concept is_execution_policy = std::is_same_v<T, execution_policy::seq> || std::is_same_v<T, execution_policy::par>
+                              || std::is_same_v<T, execution_policy::par_comm>;
 
 // Recv ordering (D5)
 
@@ -63,7 +62,6 @@ struct ordered_by_source {};
 /// alltoallv (`grid_compatible_output_layout`) and the request_reply output (which reuses the same two
 /// tags: `unordered` → a plain `recv_buffer`, `ordered_by_source` → a variadic `recv_buffer_v`).
 template <typename T>
-concept is_output_layout =
-    std::is_same_v<T, layout::unordered> || std::is_same_v<T, layout::ordered_by_source>;
+concept is_output_layout = std::is_same_v<T, layout::unordered> || std::is_same_v<T, layout::ordered_by_source>;
 
 } // namespace dstl

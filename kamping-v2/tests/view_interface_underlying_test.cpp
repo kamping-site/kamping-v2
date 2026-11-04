@@ -35,7 +35,9 @@ TEST(UnderlyingTest, ConstLvalueReturnsConstRef) {
 // ── rvalue overload (the new behaviour) ───────────────────────────────────────
 
 TEST(UnderlyingTest, RvalueOwningViewReturnsValue) {
-    auto make_view = [] { return owning_view<std::vector<int>>{std::vector<int>{1, 2, 3}}; };
+    auto make_view = [] {
+        return owning_view<std::vector<int>>{std::vector<int>{1, 2, 3}};
+    };
 
     // Return type must be by value, not a reference.
     static_assert(std::same_as<decltype(make_view().underlying()), std::vector<int>>);

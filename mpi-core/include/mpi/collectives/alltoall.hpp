@@ -11,28 +11,31 @@
 #include "mpi/handle.hpp"
 
 namespace mpi::experimental {
-template <send_buffer SBuf, recv_buffer RBuf, convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
-void alltoall(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = MPI_COMM_WORLD) {
+/// Sends an equal share of `sbuf` to every rank and receives one share from every rank into `rbuf` (`MPI_Alltoall`).
+///
+/// The per-rank counts are `count(sbuf) / comm_size` and `count(rbuf) / comm_size`.
+template <send_buffer SBuf, recv_buffer RBuf, convertible_to_mpi_handle<MPI_Comm> Comm>
+void alltoall(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm) {
     int comm_size = 0;
-    MPI_Comm_size(handle(comm), &comm_size);
-    using scount_t = decltype(count(sbuf));
-    using rcount_t = decltype(count(rbuf));
+    MPI_Comm_size(mpi::experimental::handle(comm), &comm_size);
+    using scount_t = decltype(mpi::experimental::count(sbuf));
+    using rcount_t = decltype(mpi::experimental::count(rbuf));
     KAMPING_V2_ASSERT(
-        count(sbuf) % static_cast<scount_t>(comm_size) == scount_t{0},
+        mpi::experimental::count(sbuf) % static_cast<scount_t>(comm_size) == scount_t{0},
         "send buffer size must be divisible by comm size"
     );
     KAMPING_V2_ASSERT(
-        count(rbuf) % static_cast<rcount_t>(comm_size) == rcount_t{0},
+        mpi::experimental::count(rbuf) % static_cast<rcount_t>(comm_size) == rcount_t{0},
         "recv buffer size must be divisible by comm size"
     );
     int err = MPI_Alltoall(
-        ptr(sbuf),
-        static_cast<int>(count(sbuf)) / comm_size,
-        type(sbuf),
-        ptr(rbuf),
-        static_cast<int>(count(rbuf)) / comm_size,
-        type(rbuf),
-        handle(comm)
+        mpi::experimental::ptr(sbuf),
+        static_cast<int>(mpi::experimental::count(sbuf)) / comm_size,
+        mpi::experimental::type(sbuf),
+        mpi::experimental::ptr(rbuf),
+        static_cast<int>(mpi::experimental::count(rbuf)) / comm_size,
+        mpi::experimental::type(rbuf),
+        mpi::experimental::handle(comm)
     );
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);

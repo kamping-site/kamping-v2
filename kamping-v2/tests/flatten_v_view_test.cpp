@@ -11,8 +11,8 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include "kamping/v2/buffer.hpp"
 #include "kamping/v2/views.hpp"
-#include "mpi/buffer.hpp"
 
 using namespace ::testing;
 
@@ -22,10 +22,10 @@ namespace {
 // protocol accessors. Triggers the lazy flatten on first access.
 template <typename View>
 std::tuple<std::vector<int>, std::vector<int>, std::vector<int>> collect(View const& view) {
-    auto const  n = static_cast<std::ptrdiff_t>(mpi::experimental::count(view));
-    auto const* p = mpi::experimental::ptr(view);
-    auto const  c = mpi::experimental::counts(view);
-    auto const  d = mpi::experimental::displs(view);
+    auto const  n = static_cast<std::ptrdiff_t>(kamping::v2::count(view));
+    auto const* p = kamping::v2::ptr(view);
+    auto const  c = kamping::v2::counts(view);
+    auto const  d = kamping::v2::displs(view);
     return {
         std::vector<int>(p, p + n),
         std::vector<int>(std::ranges::begin(c), std::ranges::end(c)),

@@ -25,7 +25,7 @@ namespace mpi::experimental {
 /// of `MPI_Request` obtained through handle_range(). It must be sized, since its size is the request count.
 template <typename T>
 concept request_range = convertible_to_mpi_handle_range<T, MPI_Request>
-                        && std::ranges::sized_range<decltype(handle_range(std::declval<T&>()))>;
+                        && std::ranges::sized_range<decltype(mpi::experimental::handle_range(std::declval<T&>()))>;
 
 /// An output array of `E`. Handle elements are obtained through handle_range(), so that types such as
 /// `status_vector` can expose their storage; other element types (e.g. `int` indices) must be a plain contiguous
@@ -64,7 +64,7 @@ E* output_array_ptr(T& array, [[maybe_unused]] std::size_t required) {
     if constexpr (output_array_sentinel_of<T, E>) {
         return std::remove_cvref_t<T>::mpi_ptr();
     } else if constexpr (builtin_handle<E>) {
-        return checked_output_ptr<E>(handle_range(array), required);
+        return checked_output_ptr<E>(mpi::experimental::handle_range(array), required);
     } else {
         return checked_output_ptr<E>(array, required);
     }

@@ -12,10 +12,8 @@
 
 namespace mpi::experimental {
 
-// ── CRTP mixin ──────────────────────────────────────────────────────────────
-// Provides the shared read accessors (.source(), .tag(), .count()) for both
-// status and status_view. Derived must implement `status_ptr() const -> MPI_Status const*`.
-
+/// CRTP mixin providing the read accessors `.source()`, `.tag()` and `.count()` shared by all status types. `Derived`
+/// must implement `MPI_Status const* status_ptr() const`.
 template <typename Derived>
 class status_accessors {
     [[nodiscard]] MPI_Status const* ptr() const {

@@ -17,45 +17,48 @@
 
 namespace kamping::v2 {
 
-/// Scatter (blocking, two-buffer form).
+/// Distributes equal shares of `sbuf` on `root` to all ranks, receiving into `rbuf` (`MPI_Scatter`).
 ///
-/// Distributes data from root to all ranks. All ranks must call this function.
-/// On non-root, pass `v2::null_buf` as sbuf (MPI ignores it). On root, rbuf
-/// may be `v2::inplace` to keep root's own segment in place within sbuf.
-///
-/// @param sbuf  Send buffer on root (total count must be divisible by comm size);
-///              `null_buf` on non-root.
-/// @param rbuf  Recv buffer on every rank; may be a resizable view (`views::resize`)
-///              or `v2::inplace` on root.
-/// @param root  Root rank (default: 0).
-/// @param comm  MPI communicator (default: MPI_COMM_WORLD).
+/// On root, the count of `sbuf` must be divisible by the communicator size, and `rbuf` may be `inplace` to keep
+/// root's share in `sbuf`. The other ranks pass `null_buf` as `sbuf` or use the overloads without send buffer.
+/// `rbuf` may be a deferred receive buffer (e.g. `views::resize`).
+/// @return The send and receive buffer (owned if passed as rvalue, borrowed otherwise).
 template <
     mpi::experimental::send_buffer                         SBuf,
     mpi::experimental::recv_buffer                         RBuf,
-    mpi::experimental::rank                                Root = int,
-    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
-auto scatter(SBuf&& sbuf, RBuf&& rbuf, Root root = 0, Comm const& comm = MPI_COMM_WORLD) -> result<SBuf, RBuf> {
+    mpi::experimental::rank                                Root,
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
+auto scatter(SBuf&& sbuf, RBuf&& rbuf, Root root, Comm const& comm) -> result<SBuf, RBuf> {
     result<SBuf, RBuf> res{std::forward<SBuf>(sbuf), std::forward<RBuf>(rbuf)};
     infer(comm_op::scatter{}, res.send, res.recv, mpi::experimental::to_rank(root), mpi::experimental::handle(comm));
     mpi::experimental::scatter(res.send, res.recv, std::move(root), comm);
     return res;
 }
 
-/// Scatter (blocking, non-root shorthand).
-///
-/// Convenience overload for non-root ranks: sbuf defaults to `null_buf`.
-/// Root must use the two-buffer form.
-///
-/// @param rbuf  Recv buffer; may be a resizable view (`views::resize`).
-/// @param root  Root rank (default: 0).
-/// @param comm  MPI communicator (default: MPI_COMM_WORLD).
+/// Scatters from rank 0; see the overload above.
+template <
+    mpi::experimental::send_buffer                         SBuf,
+    mpi::experimental::recv_buffer                         RBuf,
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
+auto scatter(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm) -> result<SBuf, RBuf> {
+    return kamping::v2::scatter(std::forward<SBuf>(sbuf), std::forward<RBuf>(rbuf), 0, comm);
+}
+
+/// Non-root shorthand of @ref scatter: receives this rank's share from `root` into `rbuf`, without a send buffer.
+/// @return The receive buffer.
 template <
     mpi::experimental::recv_buffer                         RBuf,
-    mpi::experimental::rank                                Root = int,
-    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
-auto scatter(RBuf&& rbuf, Root root = 0, Comm const& comm = MPI_COMM_WORLD) -> RBuf {
-    auto res = kamping::v2::scatter(null_buf_t{}, std::forward<RBuf>(rbuf), std::move(root), comm);
-    return std::move(res).recv;
+    mpi::experimental::rank                                Root,
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
+auto scatter(RBuf&& rbuf, Root root, Comm const& comm) -> RBuf {
+    return kamping::v2::scatter(null_buf_t{}, std::forward<RBuf>(rbuf), std::move(root), comm).recv;
+}
+
+/// Non-root shorthand of @ref scatter: receives this rank's share from rank 0 into `rbuf`, without a send buffer.
+/// @return The receive buffer.
+template <mpi::experimental::recv_buffer RBuf, mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
+auto scatter(RBuf&& rbuf, Comm const& comm) -> RBuf {
+    return kamping::v2::scatter(null_buf_t{}, std::forward<RBuf>(rbuf), 0, comm).recv;
 }
 
 } // namespace kamping::v2

@@ -23,22 +23,22 @@
 
 #include "dstl/grid_comm.hpp"
 #include "dstl/visualization.hpp"
+#include "kamping/v2/comm.hpp"
 #include "kamping/v2/environment.hpp"
-#include "mpi/comm.hpp"
 
 int main(int argc, char** argv) {
     // dstl::execution_policy::par needs MPI_THREAD_FUNNELED: the main thread issues every MPI call while the OpenMP
     // threads only do node-local work (the rebin / final deposit in dstl::grid_alltoallv).
-    kamping::v2::environment          env(argc, argv, mpi::experimental::ThreadLevel::funneled);
-    mpi::experimental::comm_view const world{MPI_COMM_WORLD};
-    int const                         rank = world.rank();
+    kamping::v2::environment     env(argc, argv, kamping::v2::ThreadLevel::funneled);
+    kamping::v2::comm_view const world{MPI_COMM_WORLD};
+    int const                    rank = world.rank();
 
     // A funneled OpenMP region: no MPI inside, only the local thread team (sized by OMP_NUM_THREADS)
     // reporting itself.
 #ifdef _OPENMP
     #pragma omp parallel
     {
-        #pragma omp single
+    #pragma omp single
         std::cout << std::format("[rank {}] OpenMP active, {} thread(s)\n", rank, omp_get_num_threads());
     }
 #else

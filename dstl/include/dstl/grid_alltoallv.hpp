@@ -26,13 +26,13 @@
 #include "dstl/grid_comm.hpp"
 #include "dstl/tags.hpp"
 #include "kamping/kassert/kassert.hpp"
+#include "kamping/v2/buffer.hpp"
 #include "kamping/v2/collectives/alltoall.hpp"
 #include "kamping/v2/collectives/alltoallv.hpp"
+#include "kamping/v2/comm.hpp"
 #include "kamping/v2/result.hpp"
 #include "kamping/v2/views.hpp"
 #include "kamping/v2/views/concepts.hpp"
-#include "mpi/buffer.hpp"
-#include "mpi/comm.hpp"
 
 /// @file
 /// dstl::grid_alltoallv — a k-dimensional grid (message-combining) all-to-all-v.
@@ -75,7 +75,7 @@ concept grid_element = std::default_initializable<T> && std::indirectly_copyable
 /// knowable element type and so cannot drive the local block copies the routing performs; it is correctly
 /// rejected.)
 template <typename SBuf>
-concept grid_send_buffer = mpi::experimental::send_buffer_v<SBuf> && std::ranges::contiguous_range<SBuf>
+concept grid_send_buffer = kamping::v2::send_buffer_v<SBuf> && std::ranges::contiguous_range<SBuf>
                            && detail::grid_element<std::ranges::range_value_t<SBuf>>;
 
 /// Concept: a recv-layout tag the grid alltoallv knows how to produce — either `layout::unordered`
@@ -99,8 +99,8 @@ concept grid_compatible_output_layout =
 /// machinery in the body (see `ensure_recv_capacity` / `size_from_source_counts`).
 template <typename RBuf, typename Order>
 concept grid_recv_buffer = std::ranges::contiguous_range<RBuf>
-                           && ((std::is_same_v<Order, layout::ordered_by_source> && mpi::experimental::recv_buffer_v<RBuf>)
-                               || (!std::is_same_v<Order, layout::ordered_by_source> && mpi::experimental::recv_buffer<RBuf>))
+                           && ((std::is_same_v<Order, layout::ordered_by_source> && kamping::v2::recv_buffer_v<RBuf>)
+                               || (!std::is_same_v<Order, layout::ordered_by_source> && kamping::v2::recv_buffer<RBuf>))
                            && detail::grid_element<std::ranges::range_value_t<RBuf>>;
 
 namespace detail {
@@ -184,7 +184,7 @@ void reorder_by_source_rank(
 
     // Pass 2 — scatter. Each chunk copies its cursors into a thread-private vector first, so the
     // per-element cursor increments never share a cache line with another thread.
-    auto* out = mpi::experimental::ptr(rbuf);
+    auto* out = kamping::v2::ptr(rbuf);
     chunks.for_each_chunk([&](int c, std::ptrdiff_t lo, std::ptrdiff_t hi) {
         std::vector<int> cursor = write_pos[static_cast<std::size_t>(c)];
         for (auto j = lo; j < hi; ++j) {
@@ -285,13 +285,13 @@ void rebin(
 /// needed only to size a variadic deferred recv buffer in `ordered_by_source` mode.
 template <typename T, bool Ordered, bool ParallelRebin, typename RBuf>
 void route_phase(
-    routing_state<T>&            state,
-    std::size_t                  dim_size,
-    MPI_Datatype                 dt,
-    mpi::experimental::comm_view subcomm,
-    RBuf&                        rbuf,
-    bool                         is_last,
-    [[maybe_unused]] int         global_size
+    routing_state<T>&      state,
+    std::size_t            dim_size,
+    MPI_Datatype           dt,
+    kamping::v2::comm_view subcomm,
+    RBuf&                  rbuf,
+    bool                   is_last,
+    [[maybe_unused]] int   global_size
 ) {
     namespace views = kamping::v2::views;
 
@@ -468,7 +468,11 @@ void route_phase(
 /// (e.g. a plain `std::vector<T>` or `views::resize`).
 ///
 /// @tparam Order Recv ordering tag: `unordered` (default) or `ordered_by_source`.
-template <grid_send_buffer SBuf, typename RBuf, is_execution_policy Exec, grid_compatible_output_layout Order = layout::unordered>
+template <
+    grid_send_buffer SBuf,
+    typename RBuf,
+    is_execution_policy           Exec,
+    grid_compatible_output_layout Order = layout::unordered>
     requires grid_recv_buffer<RBuf, Order>
              // ordered_by_source regroups the routed elements into rbuf with a local counting-sort copy
              // (T_send staging -> rbuf), so it needs a host-side conversion; unordered fills rbuf directly
@@ -481,17 +485,17 @@ auto grid_alltoallv(SBuf&& sbuf, RBuf&& rbuf, grid_comm<Exec> const& grid, [[may
     constexpr bool ordered  = std::is_same_v<Order, layout::ordered_by_source>;
     constexpr bool parallel = !std::is_same_v<Exec, execution_policy::seq>;
 
-    auto const p  = static_cast<std::size_t>(grid.size());
+    auto const p = static_cast<std::size_t>(grid.size());
 
     if constexpr (kamping::v2::deferred_send_buf_v<std::remove_cvref_t<SBuf>>) {
         sbuf.set_comm_size(static_cast<int>(p));
     }
 
-    auto const dt = mpi::experimental::type(sbuf); // dt_send: drives every staging exchange
+    auto const dt = kamping::v2::type(sbuf); // dt_send: drives every staging exchange
 
-    auto&&      send_counts = mpi::experimental::counts(sbuf); // contiguous range of int, size p
-    auto&&      send_displs = mpi::experimental::displs(sbuf); // contiguous range of int, size p
-    auto const* src         = mpi::experimental::ptr(sbuf);    // T const* (contiguous == &*begin(sbuf))
+    auto&&      send_counts = kamping::v2::counts(sbuf); // contiguous range of int, size p
+    auto&&      send_displs = kamping::v2::displs(sbuf); // contiguous range of int, size p
+    auto const* src         = kamping::v2::ptr(sbuf);    // T const* (contiguous == &*begin(sbuf))
 
     // Initial state: compact the send buffer into the count-tree's leaf order. With the row-major
     //    grid_comm convention the global-rank order IS the leaf order — dimension 0 (the largest

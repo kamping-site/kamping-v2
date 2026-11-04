@@ -11,8 +11,9 @@
 #include "kamping/v2/p2p/irecv.hpp"
 #include "kamping/v2/p2p/isend.hpp"
 #if MPI_VERSION >= 4
-#    include "kamping/v2/p2p/isendrecv.hpp"
+    #include "kamping/v2/p2p/isendrecv.hpp"
 #endif
+#include "kamping/v2/comm.hpp"
 #include "kamping/v2/p2p/recv.hpp"
 #include "kamping/v2/p2p/send.hpp"
 #include "kamping/v2/p2p/sendrecv.hpp"
@@ -40,8 +41,8 @@ struct mpi::experimental::buffer_traits<my_struct> {
 };
 
 int main(int argc, char* argv[]) {
-    kamping::v2::environment           env(argc, argv);
-    mpi::experimental::comm_view const world{MPI_COMM_WORLD};
+    kamping::v2::environment     env(argc, argv);
+    kamping::v2::comm_view const world{MPI_COMM_WORLD};
     MPI_Comm_set_errhandler(MPI_COMM_WORLD, MPI_ERRORS_RETURN);
 
     mpi::experimental::send(my_struct{}, MPI_PROC_NULL, 0, MPI_COMM_WORLD);
@@ -50,22 +51,32 @@ int main(int argc, char* argv[]) {
         kamping::v2::send(std::move(v), 1, world);
     } else if (world.rank() == 1) {
         std::vector<int> v;
-        kamping::v2::recv(v | kamping::v2::views::resize);
+        kamping::v2::recv(v | kamping::v2::views::resize, world);
         std::cout << "result = [";
         bool first = true;
-        for (auto const& x : v) { if (!first) std::cout << ", "; first = false; std::cout << x; }
+        for (auto const& x: v) {
+            if (!first)
+                std::cout << ", ";
+            first = false;
+            std::cout << x;
+        }
         std::cout << "]\n";
     }
 
     if (world.rank() == 0) {
         std::vector<int> const v{11, 12, 13, 14};
-        kamping::v2::isend(v, 1).wait();
+        kamping::v2::isend(v, 1, world).wait();
     } else if (world.rank() == 1) {
         MPI_Status status;
-        auto       v = kamping::v2::irecv(std::vector<int>{10} | kamping::v2::views::resize).wait(&status);
+        auto       v = kamping::v2::irecv(std::vector<int>{10} | kamping::v2::views::resize, world).wait(&status);
         std::cout << "v = [";
         bool first = true;
-        for (auto const& x : v) { if (!first) std::cout << ", "; first = false; std::cout << x; }
+        for (auto const& x: v) {
+            if (!first)
+                std::cout << ", ";
+            first = false;
+            std::cout << x;
+        }
         std::cout << "]\n";
     }
 
@@ -77,7 +88,12 @@ int main(int argc, char* argv[]) {
         auto [_, recvd] = kamping::v2::sendrecv(send_data, peer, recv_data | kamping::v2::views::resize, peer, world);
         std::cout << "rank " << world.rank() << " recvd = [";
         bool first = true;
-        for (auto const& x : recvd) { if (!first) std::cout << ", "; first = false; std::cout << x; }
+        for (auto const& x: recvd) {
+            if (!first)
+                std::cout << ", ";
+            first = false;
+            std::cout << x;
+        }
         std::cout << "]\n";
     }
 
@@ -91,7 +107,12 @@ int main(int argc, char* argv[]) {
             kamping::v2::isendrecv(send_data, peer, recv_data | kamping::v2::views::resize, peer, world).wait();
         std::cout << "rank " << world.rank() << " isendrecv recvd = [";
         bool first2 = true;
-        for (auto const& x : recvd2) { if (!first2) std::cout << ", "; first2 = false; std::cout << x; }
+        for (auto const& x: recvd2) {
+            if (!first2)
+                std::cout << ", ";
+            first2 = false;
+            std::cout << x;
+        }
         std::cout << "]\n";
     }
 #endif

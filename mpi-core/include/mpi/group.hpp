@@ -82,7 +82,9 @@ public:
     explicit group_view(MPI_Group g) noexcept : _group(g) {}
 
     /// @return The underlying `MPI_Group` (for `handle()` dispatch).
-    [[nodiscard]] MPI_Group mpi_handle() const noexcept { return _group; }
+    [[nodiscard]] MPI_Group mpi_handle() const noexcept {
+        return _group;
+    }
 
 private:
     MPI_Group _group;
@@ -149,10 +151,14 @@ public:
     ///
     /// Allows passing a `group` wherever a `group_view` is expected without
     /// an explicit cast. The view borrows; it does not extend lifetime.
-    operator group_view() const noexcept { return group_view{_group}; }
+    operator group_view() const noexcept {
+        return group_view{_group};
+    }
 
     /// @return The underlying `MPI_Group` (for `handle()` dispatch).
-    [[nodiscard]] MPI_Group mpi_handle() const noexcept { return _group; }
+    [[nodiscard]] MPI_Group mpi_handle() const noexcept {
+        return _group;
+    }
 
 private:
     struct adopt_t {};
@@ -176,9 +182,12 @@ GroupEquality group_accessors<Derived>::compare(group_view other) const {
     int result = MPI_IDENT;
     MPI_Group_compare(grp(), other.mpi_handle(), &result);
     switch (result) {
-        case MPI_IDENT:   return GroupEquality::Identical;
-        case MPI_SIMILAR: return GroupEquality::Similar;
-        default:          return GroupEquality::Unequal;
+        case MPI_IDENT:
+            return GroupEquality::Identical;
+        case MPI_SIMILAR:
+            return GroupEquality::Similar;
+        default:
+            return GroupEquality::Unequal;
     }
 }
 

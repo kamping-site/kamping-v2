@@ -10,12 +10,12 @@
 #include <mpi.h>
 
 #include "dstl/with_subset.hpp"
+#include "kamping/v2/buffer.hpp"
 #include "kamping/v2/collectives/exscan.hpp"
 #include "kamping/v2/comm.hpp"
+#include "kamping/v2/handle.hpp"
 #include "kamping/v2/views/ref_single_view.hpp"
 #include "kamping/v2/views/with_type_view.hpp"
-#include "mpi/buffer.hpp"
-#include "mpi/handle.hpp"
 
 namespace dstl {
 
@@ -39,20 +39,15 @@ namespace dstl {
 /// @pre out must have the same element count as r on each rank.
 /// @pre op must be associative and mappable to an MPI_Op.
 template <
-    std::ranges::forward_range                              R,
-    mpi::experimental::recv_buffer                          O,
-    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm     = MPI_Comm,
-    class                                                   BinaryOp = std::plus<>>
-    requires mpi::experimental::has_mpi_type<R>
-void inclusive_scan(
-    R&&         r,
-    O&&         out,
-    BinaryOp    op   = {},
-    Comm const& comm = MPI_COMM_WORLD
-) {
-    using T                      = std::ranges::range_value_t<R>;
-    MPI_Datatype const mpi_type  = mpi::experimental::type(r);
-    kamping::v2::comm_view const cv{mpi::experimental::handle(comm)};
+    std::ranges::forward_range                       R,
+    kamping::v2::recv_buffer                         O,
+    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm,
+    class BinaryOp                                        = std::plus<>>
+    requires kamping::v2::has_mpi_type<R>
+void inclusive_scan(R&& r, O&& out, BinaryOp op = {}, Comm const& comm = MPI_COMM_WORLD) {
+    using T                               = std::ranges::range_value_t<R>;
+    MPI_Datatype const           mpi_type = kamping::v2::type(r);
+    kamping::v2::comm_view const cv{kamping::v2::handle(comm)};
 
     T rank_prefix{};
     with_subset(cv, !std::ranges::empty(r), [&](kamping::v2::comm_view sub_comm) {
@@ -71,7 +66,7 @@ void inclusive_scan(
         // Rank 0 of the sub-communicator has no predecessor; its local scan is already correct.
         // All other ranks shift their output up by the cumulative prefix from previous ranks.
         if (sub_comm.rank() > 0) {
-            for (auto& x : out) {
+            for (auto& x: out) {
                 x = op(rank_prefix, x);
             }
         }

@@ -10,14 +10,14 @@
 
 #include <mpi.h>
 
+#include "kamping/v2/buffer.hpp"
 #include "kamping/v2/collectives/allreduce.hpp"
 #include "kamping/v2/collectives/reduce.hpp"
 #include "kamping/v2/comm.hpp"
+#include "kamping/v2/handle.hpp"
 #include "kamping/v2/sentinels.hpp"
 #include "kamping/v2/views/ref_single_view.hpp"
 #include "kamping/v2/views/with_type_view.hpp"
-#include "mpi/buffer.hpp"
-#include "mpi/handle.hpp"
 
 namespace dstl {
 
@@ -35,17 +35,17 @@ namespace dstl {
 /// @pre op must be associative, commutative, and mappable to an MPI_Op.
 /// @pre If any rank's range is empty, T{} must be the identity element for op.
 template <
-    std::ranges::forward_range                             R,
-    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm,
-    class BinaryOp                                              = std::plus<>>
-    requires mpi::experimental::has_mpi_type<R>
+    std::ranges::forward_range                       R,
+    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm,
+    class BinaryOp                                        = std::plus<>>
+    requires kamping::v2::has_mpi_type<R>
 auto reduce(R&& r, std::ranges::range_value_t<R> init = {}, BinaryOp op = {}, Comm const& comm = MPI_COMM_WORLD)
     -> std::ranges::range_value_t<R> {
     using T                     = std::ranges::range_value_t<R>;
-    MPI_Datatype const mpi_type = mpi::experimental::type(r);
+    MPI_Datatype const mpi_type = kamping::v2::type(r);
 
-    auto first = std::ranges::begin(r);
-    auto last  = std::ranges::end(r);
+    auto first  = std::ranges::begin(r);
+    auto last   = std::ranges::end(r);
     T    result = (first == last) ? T{} : std::reduce(std::next(first), last, *first, op);
 
     kamping::v2::allreduce(
@@ -68,24 +68,24 @@ auto reduce(R&& r, std::ranges::range_value_t<R> init = {}, BinaryOp op = {}, Co
 /// @pre op must be associative, commutative, and mappable to an MPI_Op.
 /// @pre If any rank's range is empty, T{} must be the identity element for op.
 template <
-    std::ranges::forward_range                             R,
-    mpi::experimental::rank                                Rank = int,
-    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm,
-    class BinaryOp                                              = std::plus<>>
-    requires mpi::experimental::has_mpi_type<R>
+    std::ranges::forward_range                       R,
+    kamping::v2::rank                                Rank = int,
+    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm,
+    class BinaryOp                                        = std::plus<>>
+    requires kamping::v2::has_mpi_type<R>
 auto reduce_to_root(
     R&& r, std::ranges::range_value_t<R> init = {}, BinaryOp op = {}, Rank root = {}, Comm const& comm = MPI_COMM_WORLD
 ) -> std::optional<std::ranges::range_value_t<R>> {
     using T                     = std::ranges::range_value_t<R>;
-    MPI_Datatype const mpi_type = mpi::experimental::type(r);
+    MPI_Datatype const mpi_type = kamping::v2::type(r);
 
     auto first  = std::ranges::begin(r);
     auto last   = std::ranges::end(r);
     T    result = (first == last) ? T{} : std::reduce(std::next(first), last, *first, op);
 
-    kamping::v2::comm_view cv{mpi::experimental::handle(comm)};
+    kamping::v2::comm_view cv{kamping::v2::handle(comm)};
 
-    if (cv.rank() == mpi::experimental::to_rank(root)) {
+    if (cv.rank() == kamping::v2::to_rank(root)) {
         kamping::v2::reduce(
             kamping::v2::inplace,
             kamping::v2::views::ref_single(result) | kamping::v2::views::with_type(mpi_type),

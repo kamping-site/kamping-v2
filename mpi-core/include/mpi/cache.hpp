@@ -93,7 +93,7 @@ public:
         if (T* existing = find(obj)) {
             return *existing;
         }
-        handle_type const h     = handle(obj);
+        handle_type const h     = mpi::experimental::handle(obj);
         auto              value = std::unique_ptr<T>(new T(std::invoke(std::forward<F>(make))));
         _impl->entries.emplace_back(h, std::move(value));
         T* const ptr = _impl->entries.back().second.get();
@@ -109,7 +109,7 @@ public:
     /// @throws mpi_error if the attribute lookup fails.
     template <convertible_to_mpi_handle<handle_type> Obj>
     [[nodiscard]] T* find(Obj const& obj) {
-        return lookup(handle(obj));
+        return lookup(mpi::experimental::handle(obj));
     }
 
     /// @return The value cached for `obj`, or `nullptr` if there is none. The cache owns its values, so a const cache
@@ -117,7 +117,7 @@ public:
     /// @throws mpi_error if the attribute lookup fails.
     template <convertible_to_mpi_handle<handle_type> Obj>
     [[nodiscard]] T const* find(Obj const& obj) const {
-        return lookup(handle(obj));
+        return lookup(mpi::experimental::handle(obj));
     }
 
     /// @brief Destroys the value cached for `obj`, if any.
@@ -128,7 +128,7 @@ public:
         if (find(obj) == nullptr) {
             return false;
         }
-        int err = Kind::delete_attr(handle(obj), _impl->keyval);
+        int err = Kind::delete_attr(mpi::experimental::handle(obj), _impl->keyval);
         if (err != MPI_SUCCESS) {
             throw mpi_error(err);
         }

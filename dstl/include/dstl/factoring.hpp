@@ -9,6 +9,7 @@
 
 #include <mpi.h>
 
+#include "kamping/v2/comm.hpp"
 #include "kamping/v2/views/ref_single_view.hpp"
 #include "mpi/collectives/allreduce.hpp"
 #include "mpi/comm.hpp"
@@ -27,7 +28,7 @@ namespace dstl {
 struct dims_create {
     std::size_t levels = 2;
 
-    std::vector<std::size_t> operator()(mpi::experimental::comm_view global) const {
+    std::vector<std::size_t> operator()(kamping::v2::comm_view global) const {
         auto             nnodes = global.size();
         auto             ndims  = static_cast<int>(levels);
         std::vector<int> dims(static_cast<std::size_t>(ndims), 0);
@@ -40,7 +41,7 @@ struct dims_create {
 /// derived from MPI_Comm_split_type(MPI_COMM_TYPE_SHARED). Falls back to dims_create{2}
 /// when the node decomposition is ragged (heterogeneous node sizes).
 struct topology_aware {
-    std::vector<std::size_t> operator()(mpi::experimental::comm_view global) const {
+    std::vector<std::size_t> operator()(kamping::v2::comm_view global) const {
         auto     p      = static_cast<std::size_t>(global.size());
         MPI_Comm shared = MPI_COMM_NULL;
         MPI_Comm_split_type(global.mpi_handle(), MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &shared);
@@ -77,14 +78,14 @@ struct topology_aware {
 struct explicit_dims {
     std::vector<std::size_t> dims;
 
-    std::vector<std::size_t> operator()(mpi::experimental::comm_view /* global */) const {
+    std::vector<std::size_t> operator()(kamping::v2::comm_view /* global */) const {
         return dims;
     }
 };
 
 /// Concept: a callable mapping a comm_view to a factor vector.
 template <typename T>
-concept factoring = requires(T const& strategy, mpi::experimental::comm_view global) {
+concept factoring = requires(T const& strategy, kamping::v2::comm_view global) {
     { strategy(global) } -> std::convertible_to<std::vector<std::size_t>>;
 };
 

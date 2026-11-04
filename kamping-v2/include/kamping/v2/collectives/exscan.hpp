@@ -17,31 +17,20 @@
 
 namespace kamping::v2 {
 
-/// Exclusive prefix scan (blocking, two-buffer form).
+/// Computes the exclusive prefix reduction of `sbuf` over the ranks with `op` into `rbuf` (`MPI_Exscan`).
 ///
-/// Computes an exclusive prefix reduction and places the result in the receive buffer.
-/// All ranks are symmetric (no root).
+/// Pass `inplace` as `sbuf` to use `rbuf` for both input and output. `rbuf` may be a deferred receive buffer (e.g.
+/// `views::resize`).
 ///
-/// @note The receive buffer content on rank 0 is left undefined by MPI. v2 does not
-///       fill rank 0's buffer — this is application logic. Document and handle at
-///       the call site if needed.
-///
-/// @tparam SBuf Send buffer type satisfying send_buffer
-/// @tparam RBuf Receive buffer type satisfying recv_buffer; may be a resizable view (views::resize).
-/// @tparam Op   Operation type satisfying valid_op<Op, SBuf, RBuf> (default: std::plus<>)
-/// @tparam Comm Communicator type (default: MPI_Comm)
-///
-/// @param sbuf Send buffer; pass kamping::v2::inplace to use rbuf for both send and recv.
-/// @param rbuf Receive buffer. Content on rank 0 is undefined after the call.
-/// @param op   Reduction operation (MPI_Op or builtin operation, default: std::plus<>).
-/// @param comm MPI communicator (default: MPI_COMM_WORLD).
+/// The content of `rbuf` on rank 0 is undefined after the call, as in MPI.
+/// @param op Reduction operation: an `MPI_Op`, a standard functor such as `std::plus<>`, or the result of `make_op`.
+/// @return The send and receive buffer (owned if passed as rvalue, borrowed otherwise).
 template <
     mpi::experimental::send_buffer                         SBuf,
     mpi::experimental::recv_buffer                         RBuf,
-    mpi::experimental::valid_op<SBuf, RBuf>                Op   = std::plus<>,
-    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
-auto exscan(SBuf&& sbuf, RBuf&& rbuf, Op const& op = std::plus<>{}, Comm const& comm = MPI_COMM_WORLD)
-    -> result<SBuf, RBuf> {
+    mpi::experimental::valid_op<SBuf, RBuf>                Op,
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
+auto exscan(SBuf&& sbuf, RBuf&& rbuf, Op const& op, Comm const& comm) -> result<SBuf, RBuf> {
     result<SBuf, RBuf> res{std::forward<SBuf>(sbuf), std::forward<RBuf>(rbuf)};
     infer(
         comm_op::exscan{},
@@ -52,6 +41,16 @@ auto exscan(SBuf&& sbuf, RBuf&& rbuf, Op const& op = std::plus<>{}, Comm const& 
     );
     mpi::experimental::exscan(res.send, res.recv, op, comm);
     return res;
+}
+
+/// Like the overload above, with `std::plus<>` as operation.
+template <
+    mpi::experimental::send_buffer                         SBuf,
+    mpi::experimental::recv_buffer                         RBuf,
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
+    requires mpi::experimental::valid_op<std::plus<>, SBuf, RBuf>
+auto exscan(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm) -> result<SBuf, RBuf> {
+    return kamping::v2::exscan(std::forward<SBuf>(sbuf), std::forward<RBuf>(rbuf), std::plus<>{}, comm);
 }
 
 } // namespace kamping::v2

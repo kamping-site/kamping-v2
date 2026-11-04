@@ -4,5 +4,6 @@
 #pragma once
 
 namespace kamping::v2 {
-constexpr int DEFAULT_SEND_TAG = 0;
-}
+/// The tag used by point-to-point operations that are called without an explicit tag.
+inline constexpr int DEFAULT_SEND_TAG = 0;
+} // namespace kamping::v2

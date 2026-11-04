@@ -1,0 +1,7 @@
+# The kamping-v2 component 'dstl': dstl::dstl.
+include_guard()
+include("${CMAKE_CURRENT_LIST_DIR}/kamping-v2-v2.cmake")
+if (@OpenMP_CXX_FOUND@)
+    find_dependency(OpenMP COMPONENTS CXX)
+endif ()
+include("${CMAKE_CURRENT_LIST_DIR}/kamping-v2-dstl-targets.cmake")

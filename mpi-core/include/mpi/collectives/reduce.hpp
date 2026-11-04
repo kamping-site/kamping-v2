@@ -36,48 +36,49 @@ template <
     send_buffer                         SBuf,
     recv_buffer                         RBuf,
     valid_op<SBuf, RBuf>                Op,
-    rank                                Root = int,
-    convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
-void reduce(SBuf&& sbuf, RBuf&& rbuf, Op const& op, Root root, Comm const& comm = MPI_COMM_WORLD) {
-    auto sbuf_ptr = ptr(sbuf);
+    rank                                Root,
+    convertible_to_mpi_handle<MPI_Comm> Comm>
+void reduce(SBuf&& sbuf, RBuf&& rbuf, Op const& op, Root root, Comm const& comm) {
+    auto sbuf_ptr = mpi::experimental::ptr(sbuf);
     int  rank     = 0;
-    MPI_Comm_rank(handle(comm), &rank);
-    int root_rank = to_rank(root);
+    MPI_Comm_rank(mpi::experimental::handle(comm), &rank);
+    int root_rank = mpi::experimental::to_rank(root);
 
     if (sbuf_ptr == MPI_IN_PLACE) {
         // Inplace: count and type from rbuf
         KAMPING_V2_ASSERT(rank == root_rank, "inplace reduce only valid on root");
         int err = MPI_Reduce(
             sbuf_ptr,
-            ptr(rbuf),
-            static_cast<int>(count(rbuf)),
-            type(rbuf),
-            as_mpi_op(op, sbuf, rbuf),
+            mpi::experimental::ptr(rbuf),
+            static_cast<int>(mpi::experimental::count(rbuf)),
+            mpi::experimental::type(rbuf),
+            mpi::experimental::as_mpi_op(op, sbuf, rbuf),
             root_rank,
-            handle(comm)
+            mpi::experimental::handle(comm)
         );
         if (err != MPI_SUCCESS) {
             throw mpi_error(err);
         }
     } else {
         // Normal: count and type from sbuf
-        using scount_t = decltype(count(sbuf));
+        using scount_t = decltype(mpi::experimental::count(sbuf));
         KAMPING_V2_ASSERT(
-            rank != root_rank || count(sbuf) == static_cast<scount_t>(count(rbuf)),
+            rank != root_rank
+                || mpi::experimental::count(sbuf) == static_cast<scount_t>(mpi::experimental::count(rbuf)),
             "on root: send and receive buffers must have the same count"
         );
         KAMPING_V2_ASSERT(
-            rank != root_rank || type(sbuf) == type(rbuf),
+            rank != root_rank || mpi::experimental::type(sbuf) == mpi::experimental::type(rbuf),
             "on root: send and receive buffers must have the same type"
         );
         int err = MPI_Reduce(
             sbuf_ptr,
-            ptr(rbuf),
-            static_cast<int>(count(sbuf)),
-            type(sbuf),
-            as_mpi_op(op, sbuf, rbuf),
+            mpi::experimental::ptr(rbuf),
+            static_cast<int>(mpi::experimental::count(sbuf)),
+            mpi::experimental::type(sbuf),
+            mpi::experimental::as_mpi_op(op, sbuf, rbuf),
             root_rank,
-            handle(comm)
+            mpi::experimental::handle(comm)
         );
         if (err != MPI_SUCCESS) {
             throw mpi_error(err);

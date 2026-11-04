@@ -12,28 +12,29 @@
 
 namespace kamping::v2 {
 
+/// Overrides the element count (`mpi_count()`) of the wrapped buffer.
 template <typename Base>
 class with_count_view : public view_interface<with_count_view<Base>> {
-    Base           base_;
-    std::ptrdiff_t count_;
+    Base           _base;
+    std::ptrdiff_t _count;
 
 public:
     constexpr Base const& base() const& noexcept {
-        return base_;
+        return _base;
     }
     constexpr Base& base() & noexcept {
-        return base_;
+        return _base;
     }
     constexpr Base&& base() && noexcept {
-        return std::move(base_);
+        return std::move(_base);
     }
 
     template <typename R>
-    with_count_view(R&& base, std::ptrdiff_t count) : base_(kamping::v2::all(std::forward<R>(base))),
-                                                      count_(count) {}
+    with_count_view(R&& base, std::ptrdiff_t count) : _base(kamping::v2::all(std::forward<R>(base))),
+                                                      _count(count) {}
 
     constexpr std::ptrdiff_t mpi_count() const {
-        return count_;
+        return _count;
     }
 };
 
@@ -47,8 +48,10 @@ inline constexpr bool enable_borrowed_buffer<with_count_view<Base>> = enable_bor
 
 namespace kamping::v2::views {
 
-// Useful for non-range objects that expose mpi_ptr() but no size — compose with with_type
-// to build a complete data_buffer. For limiting the element count of a range, prefer std::views::take.
+/// Overrides the element count: `buf | views::with_count(n)`.
+///
+/// Useful for non-range objects that expose mpi_ptr() but no size — compose with with_type
+/// to build a complete data_buffer. For limiting the element count of a range, prefer std::views::take.
 inline constexpr kamping::v2::adaptor<1, decltype([](auto&& r, std::ptrdiff_t count) {
                                           return kamping::v2::with_count_view(std::forward<decltype(r)>(r), count);
                                       })>

@@ -12,22 +12,20 @@
 #include "mpi/handle.hpp"
 
 namespace mpi::experimental {
-template <
-    send_buffer                         SBuf,
-    recv_buffer_v                       RBuf,
-    rank                                Root,
-    convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+/// Gathers `sbuf` from all ranks into the variadic buffer `rbuf` on `root` (`MPI_Gatherv`). `rbuf` is ignored on the
+/// other ranks.
+template <send_buffer SBuf, recv_buffer_v RBuf, rank Root, convertible_to_mpi_handle<MPI_Comm> Comm>
 void gatherv(SBuf&& sbuf, RBuf&& rbuf, Root root, Comm const& comm) {
     int err = MPI_Gatherv(
-        ptr(sbuf),
-        static_cast<int>(count(sbuf)),
-        type(sbuf),
-        ptr(rbuf),
-        std::ranges::data(counts(rbuf)),
-        std::ranges::data(displs(rbuf)),
-        type(rbuf),
-        to_rank(root),
-        handle(comm)
+        mpi::experimental::ptr(sbuf),
+        static_cast<int>(mpi::experimental::count(sbuf)),
+        mpi::experimental::type(sbuf),
+        mpi::experimental::ptr(rbuf),
+        std::ranges::data(mpi::experimental::counts(rbuf)),
+        std::ranges::data(mpi::experimental::displs(rbuf)),
+        mpi::experimental::type(rbuf),
+        mpi::experimental::to_rank(root),
+        mpi::experimental::handle(comm)
     );
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);

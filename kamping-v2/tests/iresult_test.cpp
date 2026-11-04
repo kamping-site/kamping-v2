@@ -9,6 +9,7 @@
 #include <gtest/gtest.h>
 #include <mpi.h>
 
+#include "kamping/v2/handle.hpp"
 #include "kamping/v2/iresult.hpp"
 #include "mpi/handle.hpp"
 
@@ -69,13 +70,13 @@ TEST(IresultTest, MoveAssignmentOverCompletedIresultReleasesOldBuffer) {
     events.clear();
     std::string                          old_name = "old request", new_name = "new request";
     kamping::v2::iresult<tracked_buffer> target(tracked_buffer{"old buffer"});
-    start_logged_request(mpi::experimental::handle_ptr(target), old_name);
+    start_logged_request(kamping::v2::handle_ptr(target), old_name);
     while (!target.test()) {
     }
     events.clear();
 
     kamping::v2::iresult<tracked_buffer> source(tracked_buffer{"new buffer"});
-    start_logged_request(mpi::experimental::handle_ptr(source), new_name);
+    start_logged_request(kamping::v2::handle_ptr(source), new_name);
     target = std::move(source);
     EXPECT_TRUE(events.empty()); // the old buffer was already moved out by test()
 
@@ -89,7 +90,7 @@ TEST(IresultTest, SendRecvWaitThenReleaseBuffers) {
     std::string request_name = "request";
     {
         kamping::v2::iresult<tracked_buffer, tracked_buffer> res(tracked_buffer{"send"}, tracked_buffer{"recv"});
-        start_logged_request(mpi::experimental::handle_ptr(res), request_name);
+        start_logged_request(kamping::v2::handle_ptr(res), request_name);
         auto result = res.wait();
         EXPECT_EQ(result.recv.name, "recv");
         EXPECT_EQ(events, (std::vector<std::string>{"request completed"}));
@@ -99,7 +100,7 @@ TEST(IresultTest, SendRecvWaitThenReleaseBuffers) {
 
 // ── Completion ───────────────────────────────────────────────────────────────
 
-static_assert(mpi::experimental::convertible_to_mpi_handle_ptr<kamping::v2::iresult<std::vector<int>>, MPI_Request>);
+static_assert(kamping::v2::convertible_to_mpi_handle_ptr<kamping::v2::iresult<std::vector<int>>, MPI_Request>);
 static_assert(mpi::experimental::
                   convertible_to_mpi_handle_ptr<kamping::v2::iresult<std::vector<int>, std::vector<int>>, MPI_Request>);
 
@@ -108,7 +109,7 @@ TEST(IresultTest, WaitReturnsOwnedBufferAndDestructorDoesNotWaitAgain) {
     std::string request_name = "request";
     {
         kamping::v2::iresult<tracked_buffer> res(tracked_buffer{"buffer"});
-        start_logged_request(mpi::experimental::handle_ptr(res), request_name);
+        start_logged_request(kamping::v2::handle_ptr(res), request_name);
         tracked_buffer buf = res.wait();
         EXPECT_EQ(buf.name, "buffer");
         EXPECT_EQ(events, (std::vector<std::string>{"request completed"}));
@@ -120,7 +121,7 @@ TEST(IresultTest, TestReturnsOwnedBufferOnCompletion) {
     events.clear();
     std::string                          request_name = "request";
     kamping::v2::iresult<tracked_buffer> res(tracked_buffer{"buffer"});
-    start_logged_request(mpi::experimental::handle_ptr(res), request_name);
+    start_logged_request(kamping::v2::handle_ptr(res), request_name);
     std::optional<tracked_buffer> buf;
     while (!(buf = res.test())) {
     }
@@ -131,7 +132,7 @@ TEST(IresultTest, BorrowedBufferTestReturnsBool) {
     std::vector<int>                        data(1);
     std::string                             request_name = "request";
     kamping::v2::iresult<std::vector<int>&> res(data);
-    start_logged_request(mpi::experimental::handle_ptr(res), request_name);
+    start_logged_request(kamping::v2::handle_ptr(res), request_name);
     while (!res.test()) {
     }
     EXPECT_EQ(&res.wait(), &data);

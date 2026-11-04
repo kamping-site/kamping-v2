@@ -19,12 +19,15 @@ namespace mpi::experimental {
 /// Sentinel buffer that passes `MPI_BOTTOM` as the data pointer.
 /// Used with derived datatypes that embed absolute addresses.
 /// Not a complete `data_buffer` on its own — compose with views::with_type
-/// and views::with_size before passing to an MPI operation.
+/// and views::with_count before passing to an MPI operation.
 ///
-///   v2::send(v2::bottom | views::with_type(my_abs_type) | views::with_size(1), dest, comm);
+///   v2::send(v2::bottom | views::with_type(my_abs_type) | views::with_count(1), dest, comm);
 struct bottom_t {
-    static void* mpi_ptr() noexcept { return MPI_BOTTOM; }
+    static void* mpi_ptr() noexcept {
+        return MPI_BOTTOM;
+    }
 };
+/// The @ref bottom_t sentinel.
 inline constexpr bottom_t bottom{};
 
 /// Sentinel buffer that passes `MPI_IN_PLACE` as the data pointer.
@@ -33,10 +36,17 @@ inline constexpr bottom_t bottom{};
 /// `recv_buffer`. The receive buffer must be pre-sized; deferred resize is
 /// not supported for in-place operations.
 struct inplace_t {
-    static void*          mpi_ptr()  noexcept { return MPI_IN_PLACE; }
-    static std::ptrdiff_t mpi_count() noexcept { return 0; }
-    static MPI_Datatype   mpi_type()  noexcept { return MPI_DATATYPE_NULL; }
+    static void* mpi_ptr() noexcept {
+        return MPI_IN_PLACE;
+    }
+    static std::ptrdiff_t mpi_count() noexcept {
+        return 0;
+    }
+    static MPI_Datatype mpi_type() noexcept {
+        return MPI_DATATYPE_NULL;
+    }
 };
+/// The @ref inplace_t sentinel.
 inline constexpr inplace_t inplace{};
 
 /// Sentinel buffer that passes `nullptr` as the data pointer.
@@ -49,14 +59,21 @@ inline constexpr inplace_t inplace{};
 ///   v2::gather(local_data, null_buf, root, comm);  // non-root
 ///   v2::send(null_buf, dest, tag, comm);           // zero-byte signal
 struct null_buf_t {
-    static void*          mpi_ptr()  noexcept { return nullptr; }
-    static std::ptrdiff_t mpi_count() noexcept { return 0; }
-    static MPI_Datatype   mpi_type()  noexcept { return MPI_BYTE; }
+    static void* mpi_ptr() noexcept {
+        return nullptr;
+    }
+    static std::ptrdiff_t mpi_count() noexcept {
+        return 0;
+    }
+    static MPI_Datatype mpi_type() noexcept {
+        return MPI_BYTE;
+    }
 };
+/// The @ref null_buf_t sentinel.
 inline constexpr null_buf_t null_buf{};
 
-/// Variadic sentinel recv buffer that passes `nullptr` as the data pointer
-/// and empty spans for counts and displacements. Satisfies `recv_buffer_v`.
+/// Variadic sentinel buffer that passes `nullptr` as the data pointer
+/// and empty spans for counts and displacements. Satisfies `send_buffer_v` and `recv_buffer_v`.
 /// Used for non-root ranks in variadic collectives (e.g. gatherv, scatterv)
 /// when explicit per-rank counts are already known and no deferred inference
 /// is needed. For inference-triggered resizing on root, use
@@ -64,11 +81,20 @@ inline constexpr null_buf_t null_buf{};
 ///
 ///   v2::gatherv(local_data, null_buf_v, root, comm);  // non-root, explicit counts on root
 struct null_buf_v_t {
-    static void*                mpi_ptr()    noexcept { return nullptr; }
-    static MPI_Datatype         mpi_type()   noexcept { return MPI_DATATYPE_NULL; }
-    static std::span<int const> mpi_counts() noexcept { return {}; }
-    static std::span<int const> mpi_displs() noexcept { return {}; }
+    static void* mpi_ptr() noexcept {
+        return nullptr;
+    }
+    static MPI_Datatype mpi_type() noexcept {
+        return MPI_DATATYPE_NULL;
+    }
+    static std::span<int const> mpi_counts() noexcept {
+        return {};
+    }
+    static std::span<int const> mpi_displs() noexcept {
+        return {};
+    }
 };
+/// The @ref null_buf_v_t sentinel.
 inline constexpr null_buf_v_t null_buf_v{};
 
 // ─── Output array sentinels ──────────────────────────────────────────────────
@@ -86,6 +112,7 @@ struct statuses_ignore_t {
         return MPI_STATUSES_IGNORE;
     }
 };
+/// The @ref statuses_ignore_t sentinel.
 inline constexpr statuses_ignore_t statuses_ignore{};
 
 } // namespace mpi::experimental

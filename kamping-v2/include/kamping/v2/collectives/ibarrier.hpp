@@ -9,15 +9,15 @@
 #include "mpi/collectives/ibarrier.hpp"
 
 namespace kamping::v2 {
-using mpi::experimental::ibarrier;
+using mpi::experimental::ibarrier; // ibarrier(comm, request): with a caller-supplied request
 
 /// @brief Starts a non-blocking barrier on `comm` (`MPI_Ibarrier`).
 ///
 /// Since a barrier has no buffer, this returns a plain @ref request rather than an `iresult`. It completes once all
 /// ranks of `comm` have started the barrier and must be completed with `wait()` or a successful `test()`.
 /// @return The request of the barrier.
-template <mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
-[[nodiscard]] request ibarrier(Comm const& comm = MPI_COMM_WORLD) {
+template <mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
+[[nodiscard]] request ibarrier(Comm const& comm) {
     request req;
     mpi::experimental::ibarrier(comm, req);
     return req;

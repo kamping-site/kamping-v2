@@ -18,10 +18,10 @@
 #include "dstl/tags.hpp"
 #include "kamping/kassert/kassert.hpp"
 #include "kamping/v2/collectives/allreduce.hpp"
+#include "kamping/v2/comm.hpp"
+#include "kamping/v2/environment.hpp"
 #include "kamping/v2/sentinels.hpp"
 #include "kamping/v2/views/ref_single_view.hpp"
-#include "mpi/comm.hpp"
-#include "mpi/environment.hpp"
 
 /// @file
 /// dstl::thread_multiple_comm — a single-exchange (flat) all-to-all-v communicator that parallelizes the MPI
@@ -49,7 +49,7 @@ namespace dstl {
 /// (Flat) communicator for the thread_multiple model: it owns
 /// `t = flat_max_threads()` duplicated communicators so that `t` concurrent MPI_Alltoallv calls can
 /// run, one per thread.
-class thread_multiple_comm : public mpi::experimental::comm_accessors<thread_multiple_comm> {
+class thread_multiple_comm : public kamping::v2::comm_accessors<thread_multiple_comm> {
 public:
     using execution_policy_type = execution_policy::par_comm;
 
@@ -60,9 +60,9 @@ public:
     /// later are collective, so thread `t` on every rank has to participate. `flat_max_threads()`
     /// (i.e. `omp_get_max_threads()`) can legitimately differ across ranks under CPU affinity or
     /// oversubscription, so we agree on the maximum via an MPI_Allreduce before duplicating.
-    explicit thread_multiple_comm(mpi::experimental::comm_view global) : _global(global) {
+    explicit thread_multiple_comm(kamping::v2::comm_view global) : _global(global) {
         KAMPING_ASSERT(
-            mpi::experimental::environment::thread_level() >= mpi::experimental::ThreadLevel::multiple,
+            kamping::v2::environment::thread_level() >= kamping::v2::ThreadLevel::multiple,
             "thread_multiple_comm<thread_multiple>: the MPI runtime does not provide MPI_THREAD_MULTIPLE"
         );
         int t = flat_max_threads();
@@ -87,18 +87,18 @@ public:
     }
 
     /// @return A view of the underlying global communicator.
-    [[nodiscard]] mpi::experimental::comm_view global() const noexcept {
+    [[nodiscard]] kamping::v2::comm_view global() const noexcept {
         return _global;
     }
 
     /// @return The `t` per-thread communicators used by the concurrent exchange.
-    [[nodiscard]] std::span<mpi::experimental::comm const> thread_comms() const noexcept {
+    [[nodiscard]] std::span<kamping::v2::comm const> thread_comms() const noexcept {
         return {_thread_comms.data(), _thread_comms.size()};
     }
 
 private:
-    mpi::experimental::comm_view         _global;
-    std::vector<mpi::experimental::comm> _thread_comms;
+    kamping::v2::comm_view         _global;
+    std::vector<kamping::v2::comm> _thread_comms;
 };
 
 } // namespace dstl

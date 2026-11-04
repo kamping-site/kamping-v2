@@ -1,15 +1,5 @@
-// This file is part of KaMPIng.
-//
-// Copyright 2022-2026 The KaMPIng Authors
-//
-// KaMPIng is free software : you can redistribute it and/or modify it under the terms of the GNU Lesser General Public
-// License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later
-// version. KaMPIng is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the
-// implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU Lesser General Public License
-// for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License along with KaMPIng.  If not, see
-// <https://www.gnu.org/licenses/>.
+// Copyright (c) 2026 Karlsruhe Institute of Technology
+// SPDX-License-Identifier: BSL-1.0
 
 /// @file
 /// @brief Owning (`info`) and non-owning (`info_view`) wrappers for `MPI_Info`.
@@ -71,8 +61,10 @@ struct info_value_traits<bool> {
         return v ? "true" : "false";
     }
     static bool from_string(std::string const& s) {
-        if (s == "true" || s == "1") return true;
-        if (s == "false" || s == "0") return false;
+        if (s == "true" || s == "1")
+            return true;
+        if (s == "false" || s == "0")
+            return false;
         throw std::invalid_argument("info_value_traits<bool>::from_string: cannot parse \"" + s + "\"");
     }
 };
@@ -85,7 +77,7 @@ struct info_value_traits<T> {
         return std::to_string(v);
     }
     static T from_string(std::string const& s) {
-        T    result{};
+        T result{};
         auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), result);
         if (ec != std::errc{}) {
             throw std::invalid_argument("info_value_traits::from_string: cannot parse \"" + s + "\"");
@@ -154,7 +146,7 @@ inline std::pair<std::string, std::string> fetch_info_entry(MPI_Info info, int i
 
 // Forward declarations — entry_iterator befriends the free operator==,
 // whose definition follows after entry_sentinel is complete.
-class  entry_iterator;
+class entry_iterator;
 struct entry_sentinel;
 [[nodiscard]] bool operator==(entry_iterator const& it, entry_sentinel s) noexcept;
 
@@ -218,12 +210,8 @@ static_assert(std::sentinel_for<entry_sentinel, entry_iterator>);
 
 class info;
 
-// ─── info_accessors CRTP mixin ────────────────────────────────────────────────
-//
-// Shared accessors for `info` (owning) and `info_view` (non-owning).
-// Derived must implement:
-//   `MPI_Info mpi_handle() const noexcept;`
-
+/// CRTP mixin providing the accessors shared by `info` (owning) and `info_view` (non-owning). `Derived` must implement
+/// `MPI_Info mpi_handle() const noexcept`.
 template <typename Derived>
 class info_accessors {
     [[nodiscard]] MPI_Info h() const noexcept {
@@ -243,7 +231,8 @@ class info_accessors {
 #else
         MPI_Info_get_valuelen(h(), key, &vlen, &flag);
 #endif
-        if (!flag) return std::nullopt;
+        if (!flag)
+            return std::nullopt;
         return vlen;
     }
 
@@ -254,7 +243,8 @@ public:
     [[nodiscard]] int nkeys() const {
         int  n   = 0;
         auto err = MPI_Info_get_nkeys(h(), &n);
-        if (err != MPI_SUCCESS) throw mpi_error(err);
+        if (err != MPI_SUCCESS)
+            throw mpi_error(err);
         return n;
     }
 
@@ -264,7 +254,8 @@ public:
     [[nodiscard]] std::string nth_key(int n) const {
         char buf[MPI_MAX_INFO_KEY + 1] = {};
         auto err                       = MPI_Info_get_nthkey(h(), n, buf);
-        if (err != MPI_SUCCESS) throw mpi_error(err);
+        if (err != MPI_SUCCESS)
+            throw mpi_error(err);
         return std::string(buf); // stops at first \0
     }
 
@@ -274,17 +265,20 @@ public:
     [[nodiscard]] std::optional<std::string> get(std::string_view key) const {
         std::string const key_s(key);
         auto const        vlen = value_length(key_s.c_str());
-        if (!vlen) return std::nullopt;
+        if (!vlen)
+            return std::nullopt;
 
         std::string value(static_cast<std::size_t>(*vlen), '\0');
         int         flag = 0;
 #if MPI_VERSION >= 4
-        int buflen = *vlen + 1;
-        auto err   = MPI_Info_get_string(h(), key_s.c_str(), &buflen, value.data(), &flag);
-        if (err != MPI_SUCCESS) throw mpi_error(err);
+        int  buflen = *vlen + 1;
+        auto err    = MPI_Info_get_string(h(), key_s.c_str(), &buflen, value.data(), &flag);
+        if (err != MPI_SUCCESS)
+            throw mpi_error(err);
 #else
         auto err = MPI_Info_get(h(), key_s.c_str(), *vlen, value.data(), &flag);
-        if (err != MPI_SUCCESS) throw mpi_error(err);
+        if (err != MPI_SUCCESS)
+            throw mpi_error(err);
 #endif
         // Truncate at the first embedded \0 (defensive)
         if (auto pos = value.find('\0'); pos != std::string::npos) {
@@ -297,7 +291,8 @@ public:
     template <typename T>
     [[nodiscard]] std::optional<T> get(std::string_view key) const {
         auto maybe = get(key);
-        if (!maybe) return std::nullopt;
+        if (!maybe)
+            return std::nullopt;
         return info_value_traits<T>::from_string(*maybe);
     }
 
@@ -316,7 +311,8 @@ public:
         std::string const key_s(key);
         std::string const val_s(value);
         auto              err = MPI_Info_set(h(), key_s.c_str(), val_s.c_str());
-        if (err != MPI_SUCCESS) throw mpi_error(err);
+        if (err != MPI_SUCCESS)
+            throw mpi_error(err);
     }
 
     /// @brief Type-safe set.  Requires `info_value_traits<T>` to be specialized.
@@ -337,7 +333,8 @@ public:
     void erase(std::string_view key) {
         std::string const key_s(key);
         auto              err = MPI_Info_delete(h(), key_s.c_str());
-        if (err != MPI_SUCCESS) throw mpi_error(err);
+        if (err != MPI_SUCCESS)
+            throw mpi_error(err);
     }
 
     // ── iteration ────────────────────────────────────────────────────────────
@@ -370,7 +367,6 @@ public:
     /// @return A new `info` with the same key–value pairs.
     /// @throws mpi_error if `MPI_Info_dup` fails.
     [[nodiscard]] info dup() const; // defined out-of-line after info
-
 };
 
 // ─── info_view ───────────────────────────────────────────────────────────────
@@ -388,7 +384,9 @@ public:
     explicit info_view(MPI_Info info) noexcept : _info(info) {}
 
     /// @return The underlying `MPI_Info` (for `mpi::experimental::handle()` dispatch).
-    [[nodiscard]] MPI_Info mpi_handle() const noexcept { return _info; }
+    [[nodiscard]] MPI_Info mpi_handle() const noexcept {
+        return _info;
+    }
 
 private:
     MPI_Info _info;
@@ -409,7 +407,8 @@ public:
     /// @throws mpi_error if the MPI call fails.
     info() {
         auto err = MPI_Info_create(&_info);
-        if (err != MPI_SUCCESS) throw mpi_error(err);
+        if (err != MPI_SUCCESS)
+            throw mpi_error(err);
     }
 
     info(info const&)            = delete;
@@ -471,10 +470,14 @@ public:
     ///
     /// Allows passing an `info` wherever an `info_view` is expected without
     /// an explicit cast. The view borrows; it does not extend lifetime.
-    operator info_view() const noexcept { return info_view{_info}; }
+    operator info_view() const noexcept {
+        return info_view{_info};
+    }
 
     /// @return The underlying `MPI_Info` (for `mpi::experimental::handle()` dispatch).
-    [[nodiscard]] MPI_Info mpi_handle() const noexcept { return _info; }
+    [[nodiscard]] MPI_Info mpi_handle() const noexcept {
+        return _info;
+    }
 
 private:
     struct adopt_t {};
@@ -497,7 +500,8 @@ template <typename Derived>
 inline info info_accessors<Derived>::dup() const {
     MPI_Info copy = MPI_INFO_NULL;
     auto     err  = MPI_Info_dup(h(), &copy);
-    if (err != MPI_SUCCESS) throw mpi_error(err);
+    if (err != MPI_SUCCESS)
+        throw mpi_error(err);
     return info::from_native(copy);
 }
 

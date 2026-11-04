@@ -1,70 +1,100 @@
 cmake_minimum_required(VERSION 3.25)
 project(mpi-core LANGUAGES CXX)
 
-include(FetchContent)
-
-# Bootstrap dependencies when mpi-core is used as a standalone FetchContent entry point.
-# In the monorepo build these targets are already provided by the root CMakeLists.txt.
-if (NOT TARGET MPI::MPI_CXX)
-    set(MPI_DETERMINE_LIBRARY_VERSION TRUE)
-    find_package(MPI REQUIRED)
-endif ()
-
-if (NOT TARGET kamping_v2::kassert)
-    # Configure the kassert variables inside a block() so they stay scoped to this kassert instance
-    # and do not leak into the shared kamping-types component, which configures its own kassert
-    # instance. The created target is global and remains available outside the block.
-    block()
-        set(KASSERT_CMAKE_NAMESPACE kamping_v2)
-        set(KASSERT_CXX_NAMESPACE kamping::v2::kassert)
-        set(KASSERT_INCLUDE_SUBDIR kamping/v2)
-        set(KASSERT_PREFIX KAMPING_V2_ASSERT)
-        FetchContent_Declare(
-            kamping_v2_kassert
-            GIT_REPOSITORY https://github.com/kamping-site/kassert
-            GIT_TAG v1.0.0
-        )
-        FetchContent_MakeAvailable(kamping_v2_kassert)
-    endblock()
-endif ()
-
-if (NOT TARGET kamping::types)
-    FetchContent_Declare(
-        pfr
-        GIT_REPOSITORY https://github.com/boostorg/pfr
-        GIT_TAG 2.2.0
-        SYSTEM FIND_PACKAGE_ARGS 2.2.0
-    )
-    FetchContent_Declare(
-        kamping_types
-        GIT_REPOSITORY https://github.com/kamping-site/kamping
-        GIT_TAG main
-        SOURCE_SUBDIR kamping-types
-    )
-    FetchContent_MakeAvailable(kamping_types)
-endif ()
+include(${CMAKE_CURRENT_LIST_DIR}/../cmake/kamping-v2-setup.cmake)
 
 add_library(mpi_core INTERFACE)
-target_include_directories(mpi_core INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+add_library(mpi::core ALIAS mpi_core)
 target_compile_features(mpi_core INTERFACE cxx_std_20)
+target_sources(
+    mpi_core
+    INTERFACE FILE_SET
+              HEADERS
+              BASE_DIRS
+              include
+              FILES
+              include/mpi/arrays.hpp
+              include/mpi/attribute.hpp
+              include/mpi/buffer.hpp
+              include/mpi/cache.hpp
+              include/mpi/collectives/allgather.hpp
+              include/mpi/collectives/allgatherv.hpp
+              include/mpi/collectives/allreduce.hpp
+              include/mpi/collectives/alltoall.hpp
+              include/mpi/collectives/alltoallv.hpp
+              include/mpi/collectives/barrier.hpp
+              include/mpi/collectives/bcast.hpp
+              include/mpi/collectives/exscan.hpp
+              include/mpi/collectives/gather.hpp
+              include/mpi/collectives/gatherv.hpp
+              include/mpi/collectives/ibarrier.hpp
+              include/mpi/collectives/reduce.hpp
+              include/mpi/collectives/scan.hpp
+              include/mpi/collectives/scatter.hpp
+              include/mpi/collectives/scatterv.hpp
+              include/mpi/comm.hpp
+              include/mpi/completion/wait.hpp
+              include/mpi/completion/waitall.hpp
+              include/mpi/completion/waitany.hpp
+              include/mpi/completion/waitsome.hpp
+              include/mpi/detail/handle_iterator.hpp
+              include/mpi/environment.hpp
+              include/mpi/error.hpp
+              include/mpi/group.hpp
+              include/mpi/handle.hpp
+              include/mpi/info.hpp
+              include/mpi/message.hpp
+              include/mpi/mpi_span.hpp
+              include/mpi/ops.hpp
+              include/mpi/p2p/improbe.hpp
+              include/mpi/p2p/imrecv.hpp
+              include/mpi/p2p/iprobe.hpp
+              include/mpi/p2p/irecv.hpp
+              include/mpi/p2p/isend.hpp
+              include/mpi/p2p/isendrecv.hpp
+              include/mpi/p2p/mprobe.hpp
+              include/mpi/p2p/mrecv.hpp
+              include/mpi/p2p/probe.hpp
+              include/mpi/p2p/recv.hpp
+              include/mpi/p2p/send.hpp
+              include/mpi/p2p/sendrecv.hpp
+              include/mpi/range_concepts.hpp
+              include/mpi/request.hpp
+              include/mpi/request_vector.hpp
+              include/mpi/sentinels.hpp
+              include/mpi/session.hpp
+              include/mpi/status.hpp
+              include/mpi/status_vector.hpp
+              include/mpi/thread_level.hpp
+              include/mpi/win.hpp
+)
+set_target_properties(mpi_core PROPERTIES EXPORT_NAME core)
 target_link_libraries(mpi_core INTERFACE MPI::MPI_CXX kamping_v2::kassert kamping::types)
 
-# Set a sensible default assertion level so kassert does not warn about a missing definition
-# when mpi-core is used without kamping-v1 (which sets its own level on the kamping target).
-# Debug → normal assertions (level 30, the level of a plain KAMPING_V2_ASSERT(...)); otherwise → exceptions only
-# (level 10). The Debug level must be at least 30, or every KAMPING_V2_ASSERT without an explicit level is
-# compiled out.
+# Default assertion levels, so kassert does not warn about a missing definition. Debug: normal assertions (level 30, the
+# level of a plain KAMPING_V2_ASSERT(...)); otherwise: exceptions only (level 10).
 target_compile_definitions(
-    mpi_core INTERFACE
-    $<IF:$<CONFIG:Debug>,KAMPING_V2_ASSERT_ASSERTION_LEVEL=30,KAMPING_V2_ASSERT_ASSERTION_LEVEL=10>
+    mpi_core INTERFACE $<IF:$<CONFIG:Debug>,KAMPING_V2_ASSERT_ASSERTION_LEVEL=30,KAMPING_V2_ASSERT_ASSERTION_LEVEL=10>
+)
+# kamping-types uses its own kassert instance (macro prefix KAMPING_ASSERT); set its level too.
+target_compile_definitions(
+    mpi_core INTERFACE $<IF:$<CONFIG:Debug>,KAMPING_ASSERT_ASSERTION_LEVEL=20,KAMPING_ASSERT_ASSERTION_LEVEL=10>
 )
 
-# kamping::types transitively includes the kamping-v1 kassert (macro prefix KAMPING_ASSERT) via
-# headers such as kamping/types/scoped_datatype.hpp. Set its level too, so including those headers
-# does not warn "Assertion level was not set explicitly". Mirrors the kamping_v2 default above.
-target_compile_definitions(
-    mpi_core INTERFACE
-    $<IF:$<CONFIG:Debug>,KAMPING_ASSERT_ASSERTION_LEVEL=20,KAMPING_ASSERT_ASSERTION_LEVEL=10>
-)
+if (KAMPING_V2_INSTALL)
+    install(
+        TARGETS mpi_core
+        EXPORT kamping-v2-core-targets
+        FILE_SET HEADERS
+    )
+    install(
+        EXPORT kamping-v2-core-targets
+        NAMESPACE mpi::
+        DESTINATION ${KAMPING_V2_INSTALL_CMAKEDIR}
+    )
+    install(FILES cmake/kamping-v2-core.cmake DESTINATION ${KAMPING_V2_INSTALL_CMAKEDIR})
+endif ()
 
-add_library(mpi::core ALIAS mpi_core)
+if (PROJECT_IS_TOP_LEVEL OR KAMPING_V2_BUILD_EXAMPLES_AND_TESTS)
+    add_subdirectory(tests)
+endif ()

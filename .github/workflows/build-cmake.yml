@@ -32,3 +32,33 @@ jobs:
       run: cmake --build --preset release --parallel
     - name: Test
       run: ctest --preset release --timeout 180
+
+  # Ecosystem adapters that run on a CPU-only runner: Kokkos (serial backend), with and without KokkosComm, and Cereal.
+  # Thrust and SYCL need a CUDA or oneAPI toolchain and are not built here.
+  ecosystem:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        kokkos_comm: ['OFF', 'ON']
+    steps:
+    - name: Configure hostname
+      run: echo 127.0.0.1 "$(hostname)" | sudo tee -a /etc/hosts > /dev/null
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: Setup MPI
+      uses: mpi4py/setup-mpi@v1
+      with:
+        mpi: openmpi
+    - name: Tweak MPI
+      run: awk 'NF' .ci/env.openmpi >> "$GITHUB_ENV"
+    - name: Configure CMake
+      run: >
+        cmake --preset release -DCMAKE_CXX_COMPILER=g++ -DKAMPING_V2_WARNINGS_ARE_ERRORS=ON
+        -DKAMPING_V2_ENABLE_KOKKOS=ON -DKAMPING_V2_ENABLE_KOKKOS_COMM=${{ matrix.kokkos_comm }}
+        -DKAMPING_V2_ENABLE_CEREAL=ON
+    - name: Build
+      run: cmake --build --preset release --parallel
+    - name: Test
+      run: ctest --preset release --timeout 180 -R 'kokkos|cereal|test_install'

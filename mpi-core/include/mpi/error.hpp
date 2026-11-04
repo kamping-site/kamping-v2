@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <exception>
 #include <optional>
 #include <string>
@@ -10,37 +11,48 @@
 #include <mpi.h>
 
 namespace mpi::experimental {
+/// Exception thrown by the MPI wrappers when an MPI call returns an error code other than `MPI_SUCCESS`.
+///
+/// Errors are only reported this way if the communicator's error handler returns them, e.g. `MPI_ERRORS_RETURN`;
+/// with the default `MPI_ERRORS_ARE_FATAL` MPI aborts before the wrapper sees the error.
 struct mpi_error : public std::exception {
 private:
-    int                                error_code_;
-    mutable std::optional<std::string> error_string_;
+    int                                _error_code;
+    mutable std::optional<std::string> _error_string;
 
 public:
+    /// Constructs an error with code `MPI_ERR_UNKNOWN`.
     mpi_error() : mpi_error(MPI_ERR_UNKNOWN) {}
-    mpi_error(int error_code) : error_code_(error_code) {}
 
+    /// Constructs an error from the error code returned by an MPI call.
+    explicit mpi_error(int error_code) : _error_code(error_code) {}
+
+    /// @return The MPI error code.
     [[nodiscard]] int error_code() const {
-        return error_code_;
+        return _error_code;
     }
 
+    /// @return The MPI error class of the error code (`MPI_Error_class`).
     [[nodiscard]] int error_class() const {
         int error_class = 0;
-        int err         = MPI_Error_class(error_code_, &error_class);
+        int err         = MPI_Error_class(_error_code, &error_class);
         if (err != MPI_SUCCESS) {
             throw mpi_error(err);
         }
         return error_class;
     }
 
+    /// @return An error whose code is the error class of this error.
     [[nodiscard]] mpi_error as_class_error() const {
         return mpi_error(this->error_class());
     }
 
+    /// @return The description of the error code (`MPI_Error_string`).
     [[nodiscard]] std::string error_string() const {
         std::string error_string;
         error_string.resize(MPI_MAX_ERROR_STRING);
         int error_string_len = 0;
-        int err              = MPI_Error_string(error_code_, error_string.data(), &error_string_len);
+        int err              = MPI_Error_string(_error_code, error_string.data(), &error_string_len);
         if (err != MPI_SUCCESS) {
             throw mpi_error(err);
         }
@@ -48,15 +60,16 @@ public:
         return error_string;
     }
 
+    /// @return The description of the error code, computed on first use.
     [[nodiscard]] char const* what() const noexcept final {
-        if (!error_string_) {
+        if (!_error_string) {
             try {
-                error_string_ = error_string();
+                _error_string = error_string();
             } catch (...) {
-                error_string_ = "<failed to get error string>";
+                _error_string = "<failed to get error string>";
             }
         }
-        return error_string_->data();
+        return _error_string->data();
     }
 };
 } // namespace mpi::experimental

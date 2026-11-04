@@ -7,10 +7,10 @@
 #include <gtest/gtest.h>
 #include <mpi.h>
 
+#include "kamping/v2/buffer.hpp"
 #include "kamping/v2/views/resize_view.hpp"
 #include "kamping/v2/views/view_interface.hpp"
 #include "kamping/v2/views/with_type_view.hpp"
-#include "mpi/buffer.hpp"
 
 // The resize contract: resize_for_receive(n) keeps the values of [0, min(old size, n)).
 
@@ -56,13 +56,13 @@ TEST(ResizeContractTest, ResizeViewGrowsBehindReceivedData) {
     auto             buf = data | views::resize;
 
     buf.set_recv_count(2);
-    int* first = mpi::experimental::ptr(buf);
+    int* first = kamping::v2::ptr(buf);
     first[0]   = 10;
     first[1]   = 11;
 
     buf.set_recv_count(5);
-    int* grown = mpi::experimental::ptr(buf);
-    EXPECT_EQ(mpi::experimental::count(buf), 5);
+    int* grown = kamping::v2::ptr(buf);
+    EXPECT_EQ(kamping::v2::count(buf), 5);
     ASSERT_EQ(data.size(), 5u);
     EXPECT_EQ(grown[0], 10);
     EXPECT_EQ(grown[1], 11);
@@ -74,7 +74,7 @@ TEST(ResizeContractTest, ResizeViewOverWrappedBufferKeepsPrefix) {
     auto             buf = data | views::with_type(MPI_INT) | views::resize;
 
     buf.set_recv_count(1);
-    mpi::experimental::ptr(buf)[0] = 42;
+    kamping::v2::ptr(buf)[0] = 42;
     buf.set_recv_count(3);
     kamping::v2::materialize(buf);
     ASSERT_EQ(data.size(), 3u);
@@ -87,7 +87,7 @@ TEST(ResizeContractTest, ResizeViewUsesCustomProtocol) {
     auto          buf = storage | views::resize;
 
     buf.set_recv_count(1);
-    mpi::experimental::ptr(buf)[0] = 7;
+    kamping::v2::ptr(buf)[0] = 7;
     buf.set_recv_count(4);
     kamping::v2::materialize(buf);
     EXPECT_EQ(storage.resizes, 2);

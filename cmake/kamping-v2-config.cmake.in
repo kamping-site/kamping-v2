@@ -1,0 +1,31 @@
+# CMake package configuration of kamping-v2.
+#
+#   find_package(kamping-v2 [<version>] [COMPONENTS <component>...])
+#
+# Components: core (mpi::core), v2 (kamping::v2), dstl (dstl::dstl), and the ecosystem adapters cereal, kokkos, thrust
+# and sycl (kamping::v2::<name>), as far as they were installed. Without COMPONENTS, all installed components are
+# loaded. Each component is loaded by its file kamping-v2-<component>.cmake, which first loads the components it
+# requires.
+
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+
+set(_kamping_v2_components ${kamping-v2_FIND_COMPONENTS})
+if (NOT _kamping_v2_components)
+    set(_kamping_v2_components core v2 dstl cereal kokkos thrust sycl)
+endif ()
+
+foreach (_kamping_v2_component IN LISTS _kamping_v2_components)
+    set(kamping-v2_${_kamping_v2_component}_FOUND FALSE)
+    if (EXISTS "${CMAKE_CURRENT_LIST_DIR}/kamping-v2-${_kamping_v2_component}.cmake")
+        include("${CMAKE_CURRENT_LIST_DIR}/kamping-v2-${_kamping_v2_component}.cmake")
+        # A failing find_dependency() sets kamping-v2_FOUND to FALSE.
+        if (DEFINED kamping-v2_FOUND AND NOT kamping-v2_FOUND)
+            return()
+        endif ()
+        set(kamping-v2_${_kamping_v2_component}_FOUND TRUE)
+    endif ()
+endforeach ()
+
+check_required_components(kamping-v2)

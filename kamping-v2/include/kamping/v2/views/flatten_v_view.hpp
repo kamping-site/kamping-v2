@@ -21,19 +21,20 @@
 
 namespace kamping::v2 {
 
-/// Dependent false for static_assert in if-constexpr chains (in C++20 the condition
-/// must depend on a template parameter, otherwise the assertion fires unconditionally).
+namespace detail {
+/// Dependent false for static_assert in if-constexpr chains.
 template <typename>
 inline constexpr bool always_false = false;
+} // namespace detail
 
-/// Flattens a range-of-ranges into a contiguous MPI buffer with per-rank counts
-/// and displacements.
+/// Flattens a structured send buffer (see copyable_send_buffer) into a contiguous MPI buffer
+/// with per-rank counts and displacements.
 ///
-/// The source range-of-ranges is lazily flattened (copied) into the flat buffer
-/// on first access to any MPI protocol method. Counts are derived from inner
-/// range sizes, displacements via exclusive scan.
+/// The source is lazily flattened (copied) into the flat buffer on first access to any MPI
+/// protocol method. Counts are derived from the message sizes, displacements via exclusive scan.
+/// Sparse sources need the communicator size, which infer() supplies via set_comm_size().
 ///
-/// mpi_type/mpi_count/mpi_ptr are forwarded from base() (= flat_buf_) via
+/// mpi_type/mpi_count/mpi_ptr are forwarded from base() (= _flat_buf) via
 /// view_interface. Calling base() triggers ensure_flattened(), so the flat buffer
 /// is always fully populated before any accessor reads it.
 ///
@@ -65,18 +66,18 @@ template <
              && (!resize_displs || has_resize<Displs> || has_mpi_resize_for_receive<Displs>)
 class flatten_v_view
     : public view_interface<flatten_v_view<Source, FlatBuf, Counts, Displs, resize_buf, resize_counts, resize_displs>> {
-    Source          source_;
-    mutable FlatBuf flat_buf_;
-    mutable Counts  counts_;
-    mutable Displs  displs_;
-    mutable bool    needs_flatten_ = true;
+    Source          _source;
+    mutable FlatBuf _flat_buf;
+    mutable Counts  _counts;
+    mutable Displs  _displs;
+    mutable bool    _needs_flatten = true;
     // Communicator size, supplied via set_comm_size() through the infer() protocol.
     // Required to lay out counts/displs for sparse sources (where the source does not
     // span all ranks); unused for dense nested_send_buffer sources.
-    mutable std::optional<int> comm_size_;
+    mutable std::optional<int> _comm_size;
 
     void ensure_flattened() const {
-        if (!needs_flatten_)
+        if (!_needs_flatten)
             return;
 
         // The counts/displs arrays span one entry per rank. For a dense nested buffer
@@ -85,24 +86,24 @@ class flatten_v_view
         // size must have been provided via set_comm_size().
         std::size_t num_ranks;
         if constexpr (nested_send_buffer<Source>) {
-            num_ranks = static_cast<std::size_t>(std::ranges::size(source_));
+            num_ranks = static_cast<std::size_t>(std::ranges::size(_source));
         } else {
             KAMPING_V2_ASSERT(
-                comm_size_.has_value(),
+                _comm_size.has_value(),
                 "set_comm_size() must be called before flattening a sparse send buffer"
             );
-            num_ranks = static_cast<std::size_t>(*comm_size_);
+            num_ranks = static_cast<std::size_t>(*_comm_size);
         }
 
         // Resize and fill counts
         if constexpr (resize_counts) {
-            kamping::v2::resize_for_receive(counts_, static_cast<std::ptrdiff_t>(num_ranks));
+            kamping::v2::resize_for_receive(_counts, static_cast<std::ptrdiff_t>(num_ranks));
         }
-        auto*          counts_ptr = std::ranges::data(counts_);
+        auto*          counts_ptr = std::ranges::data(_counts);
         std::ptrdiff_t total_size = 0;
         if constexpr (nested_send_buffer<Source>) {
             std::size_t idx = 0;
-            for (auto&& inner: source_) {
+            for (auto&& inner: _source) {
                 auto const s      = static_cast<int>(std::ranges::size(inner));
                 counts_ptr[idx++] = s;
                 total_size += s;
@@ -110,7 +111,7 @@ class flatten_v_view
         } else {
             // Ranks may be mentioned out of order, repeatedly, or not at all.
             std::ranges::fill(counts_ptr, counts_ptr + num_ranks, 0);
-            for (auto&& [first, second]: source_) {
+            for (auto&& [first, second]: _source) {
                 if constexpr (sparse_nested_send_buffer<Source>) {
                     auto const r = mpi::experimental::to_rank(first);
                     auto const s = static_cast<int>(std::ranges::size(second));
@@ -121,34 +122,34 @@ class flatten_v_view
                     counts_ptr[r] += 1;
                     total_size += 1;
                 } else {
-                    static_assert(always_false<Source>, "unhandled flattenable_send_buffer kind");
+                    static_assert(detail::always_false<Source>, "unhandled flattenable_send_buffer kind");
                 }
             }
         }
 
         // Resize and compute displacements
         if constexpr (resize_displs) {
-            kamping::v2::resize_for_receive(displs_, static_cast<std::ptrdiff_t>(num_ranks));
+            kamping::v2::resize_for_receive(_displs, static_cast<std::ptrdiff_t>(num_ranks));
         }
-        auto* displs_ptr = std::ranges::data(displs_);
+        auto* displs_ptr = std::ranges::data(_displs);
         std::exclusive_scan(counts_ptr, counts_ptr + num_ranks, displs_ptr, 0);
 
         // Resize and copy data into flat buffer
         if constexpr (resize_buf) {
-            kamping::v2::resize_for_receive(flat_buf_, total_size);
+            kamping::v2::resize_for_receive(_flat_buf, total_size);
         }
         using elem_t      = payload_element_t<Source>;
-        elem_t* flat_data = std::ranges::data(flat_buf_);
+        elem_t* flat_data = std::ranges::data(_flat_buf);
         if constexpr (nested_send_buffer<Source>) {
             elem_t* dest = flat_data;
-            for (auto&& inner: source_) {
+            for (auto&& inner: _source) {
                 dest = std::ranges::copy(inner, dest).out;
             }
         } else {
             // Scatter each pair into its destination rank's slice. The displacements
             // double as per-rank write cursors (handling out-of-order and repeated
             // ranks), avoiding a separate cursor allocation.
-            for (auto&& [first, second]: source_) {
+            for (auto&& [first, second]: _source) {
                 if constexpr (sparse_nested_send_buffer<Source>) {
                     auto const r = mpi::experimental::to_rank(first);
                     std::ranges::copy(second, flat_data + displs_ptr[r]);
@@ -157,17 +158,17 @@ class flatten_v_view
                     auto const r               = mpi::experimental::to_rank(second);
                     flat_data[displs_ptr[r]++] = first;
                 } else {
-                    static_assert(always_false<Source>, "unhandled flattenable_send_buffer kind");
+                    static_assert(detail::always_false<Source>, "unhandled flattenable_send_buffer kind");
                 }
             }
             // Each cursor now holds its rank's end offset (= the next rank's start), so
             // the exclusive-scan displacements are just the cursors shifted right by one,
             // with displs[0] = 0 (there is always at least one rank).
-            std::shift_right(std::ranges::begin(displs_), std::ranges::end(displs_), 1);
+            std::shift_right(std::ranges::begin(_displs), std::ranges::end(_displs), 1);
             displs_ptr[0] = 0;
         }
 
-        needs_flatten_ = false;
+        _needs_flatten = false;
     }
 
 public:
@@ -175,11 +176,11 @@ public:
     /// view_interface forwards mpi_count/mpi_ptr/mpi_type from here automatically.
     FlatBuf const& base() const& {
         ensure_flattened();
-        return flat_buf_;
+        return _flat_buf;
     }
     FlatBuf& base() & {
         ensure_flattened();
-        return flat_buf_;
+        return _flat_buf;
     }
 
     /// Reports the flattened buffer's element type. If Source carries a value_type()
@@ -190,49 +191,43 @@ public:
         requires kamping::v2::has_mpi_value_type<Source> || mpi::experimental::has_mpi_type<FlatBuf>
     {
         if constexpr (kamping::v2::has_mpi_value_type<Source>) {
-            return kamping::v2::value_type(source_);
+            return kamping::v2::value_type(_source);
         } else {
             return mpi::experimental::type(base());
         }
     }
 
-    /// Hides view_interface's generic mpi_value_type() forwarder (which would otherwise reach
-    /// into base(), i.e. FlatBuf, and re-derive a value-type-channel answer from it). A
-    /// flatten_v_view is architecturally a resolved, flat send_buffer -- mpi_type() above is the
-    /// only channel it should ever answer on. It is not "further wrapping" something upstream
-    /// that a with_value_type annotation should survive through (that's what the forwarder is
-    /// for, e.g. `... | with_value_type(dt) | resize`); it is the terminal consumer of that
-    /// annotation, already folded into mpi_type() above. Declaring (and deleting) the name here
-    /// hides the inherited template member regardless of signature, so
-    /// has_mpi_value_type<flatten_v_view<...>> is unconditionally false -- otherwise it would
-    /// silently re-derive via FlatBuf's own (possibly misleading, see already_flat_buffer above)
-    /// payload_element_t, e.g. for FlatBuf = std::vector<std::pair<VId, VId>>.
+    /// Hides view_interface's mpi_value_type() forwarder: a flatten_v_view is a flat buffer that
+    /// consumes the value-type annotation of its source (folded into mpi_type() above), so it
+    /// has no value-type channel of its own.
     void mpi_value_type() const = delete;
 
     template <typename S, typename F, typename C, typename D>
     flatten_v_view(S&& source, F&& flat_buf, C&& counts, D&& displs)
-        : source_(kamping::v2::all(std::forward<S>(source))),
-          flat_buf_(kamping::v2::all(std::forward<F>(flat_buf))),
-          counts_(kamping::v2::all(std::forward<C>(counts))),
-          displs_(kamping::v2::all(std::forward<D>(displs))) {}
+        : _source(kamping::v2::all(std::forward<S>(source))),
+          _flat_buf(kamping::v2::all(std::forward<F>(flat_buf))),
+          _counts(kamping::v2::all(std::forward<C>(counts))),
+          _displs(kamping::v2::all(std::forward<D>(displs))) {}
 
     /// Supplies the communicator size so that sparse sources can lay out their
     /// counts/displs/data over all ranks. Called by the infer() protocol (see
     /// deferred_send_buf_v) before any accessor is read. A no-op effect for dense
     /// nested sources, whose rank count is derived from the source size.
     void set_comm_size(int n) const {
-        comm_size_     = n;
-        needs_flatten_ = true;
+        _comm_size     = n;
+        _needs_flatten = true;
     }
 
+    /// @return The per-rank counts, flattening the source first if needed.
     std::span<int const> mpi_counts() const {
         ensure_flattened();
-        return {std::ranges::data(counts_), static_cast<std::size_t>(std::ranges::size(counts_))};
+        return {std::ranges::data(_counts), static_cast<std::size_t>(std::ranges::size(_counts))};
     }
 
+    /// @return The per-rank displacements, flattening the source first if needed.
     std::span<int const> mpi_displs() const {
         ensure_flattened();
-        return {std::ranges::data(displs_), static_cast<std::size_t>(std::ranges::size(displs_))};
+        return {std::ranges::data(_displs), static_cast<std::size_t>(std::ranges::size(_displs))};
     }
 
     /// Displacements are always computed via exclusive_scan — monotonically non-decreasing.
@@ -241,23 +236,23 @@ public:
     }
 
     constexpr Counts const& counts() const& {
-        return counts_;
+        return _counts;
     }
     constexpr Counts& counts() & {
-        return counts_;
+        return _counts;
     }
     constexpr Counts&& counts() && {
-        return std::move(counts_);
+        return std::move(_counts);
     }
 
     constexpr Displs const& displs() const& {
-        return displs_;
+        return _displs;
     }
     constexpr Displs& displs() & {
-        return displs_;
+        return _displs;
     }
     constexpr Displs&& displs() && {
-        return std::move(displs_);
+        return std::move(_displs);
     }
 };
 
@@ -269,14 +264,8 @@ template <typename Source, typename FlatBuf, typename Counts, typename Displs, b
 inline constexpr bool enable_borrowed_buffer<flatten_v_view<Source, FlatBuf, Counts, Displs, rb, rc, rd>> =
     enable_borrowed_buffer<FlatBuf> && enable_borrowed_buffer<Counts> && enable_borrowed_buffer<Displs>;
 
-/// A flatten_v_view is already flat and resolved: it must never again satisfy
-/// nested_send_buffer / sparse_nested_send_buffer / value_destination_pair_buffer, regardless of
-/// what its own (flattened) element type happens to look like structurally -- see
-/// already_flat_buffer's doc comment in payload.hpp. Without this, a flatten_v_view of e.g.
-/// std::pair<VId, VId> would itself satisfy value_destination_pair_buffer (coincidence: its
-/// second field is an integer, which is all the `rank` concept checks for), letting
-/// payload_element_t misresolve to just the pair's first field, and letting a flatten_v_view
-/// wrongly satisfy dstl::request_reply's `value_destination_pair_buffer Requests` constraint.
+/// A flatten_v_view is flat: it never satisfies a structure concept, whatever its element type
+/// looks like (see already_flat_buffer).
 template <typename Source, typename FlatBuf, typename Counts, typename Displs, bool rb, bool rc, bool rd>
 inline constexpr bool already_flat_buffer<flatten_v_view<Source, FlatBuf, Counts, Displs, rb, rc, rd>> = true;
 
@@ -284,7 +273,9 @@ inline constexpr bool already_flat_buffer<flatten_v_view<Source, FlatBuf, Counts
 
 namespace kamping::v2::views {
 
-/// 0-arg: allocate flat buffer, counts, and displs internally — all auto-resized.
+/// Flattens a structured send buffer: `per_rank | views::flatten_v()`.
+///
+/// The flat buffer, counts and displacements are allocated internally and resized as needed.
 /// FlatTemplate/CountsContainer/DisplsContainer select the internal container types:
 ///   flatten_v<std::deque>()                       — custom flat buffer container
 ///   flatten_v<std::vector, std::deque<int>>()     — custom counts container
@@ -308,7 +299,8 @@ constexpr auto flatten_v() {
                                 })>{}();
 }
 
-/// 1-arg (non-resize): user flat buffer, internal counts and displs (auto-resized).
+/// Flattens into the caller-provided `flat_buf`, which must already be large enough; counts and displacements are
+/// allocated internally.
 template <typename CountsContainer = std::vector<int>, typename DisplsContainer = std::vector<int>, typename Fb>
     requires(!std::same_as<std::remove_cvref_t<Fb>, kamping::v2::resize_t>)
 constexpr auto flatten_v(Fb&& flat_buf) {
@@ -326,7 +318,8 @@ constexpr auto flatten_v(Fb&& flat_buf) {
                                 })>{}(std::forward<Fb>(flat_buf));
 }
 
-/// 2-arg (non-resize): user flat buffer + user counts, internal displs (auto-resized).
+/// Flattens into the caller-provided `flat_buf` and `counts`, which must already be large enough; displacements are
+/// allocated internally.
 template <typename DisplsContainer = std::vector<int>, typename Fb, typename Ct>
     requires(!std::same_as<std::remove_cvref_t<Fb>, kamping::v2::resize_t>)
 constexpr auto flatten_v(Fb&& flat_buf, Ct&& counts) {
@@ -344,7 +337,7 @@ constexpr auto flatten_v(Fb&& flat_buf, Ct&& counts) {
                                 })>{}(std::forward<Fb>(flat_buf), std::forward<Ct>(counts));
 }
 
-/// 3-arg (non-resize): user flat buffer + user counts + user displs — no resize for any.
+/// Flattens into the caller-provided `flat_buf`, `counts` and `displs`, which must already be large enough.
 template <typename Fb, typename Ct, typename Dt>
     requires(!std::same_as<std::remove_cvref_t<Fb>, kamping::v2::resize_t>)
 constexpr auto flatten_v(Fb&& flat_buf, Ct&& counts, Dt&& displs) {
@@ -358,7 +351,8 @@ constexpr auto flatten_v(Fb&& flat_buf, Ct&& counts, Dt&& displs) {
                                 })>{}(std::forward<Fb>(flat_buf), std::forward<Ct>(counts), std::forward<Dt>(displs));
 }
 
-/// 1-arg (resize): user flat buffer with resize, internal counts and displs (auto-resized).
+/// Flattens into the caller-provided `flat_buf`, resizing it as needed; counts and displacements are allocated
+/// internally.
 template <typename CountsContainer = std::vector<int>, typename DisplsContainer = std::vector<int>, typename Fb>
 constexpr auto flatten_v(kamping::v2::resize_t, Fb&& flat_buf) {
     return kamping::v2::adaptor<1, decltype([](auto&& source, auto&& fb) {
@@ -375,7 +369,8 @@ constexpr auto flatten_v(kamping::v2::resize_t, Fb&& flat_buf) {
                                 })>{}(std::forward<Fb>(flat_buf));
 }
 
-/// 2-arg (resize): user flat buffer + user counts — both resized, internal displs (auto-resized).
+/// Flattens into the caller-provided `flat_buf` and `counts`, resizing them as needed; displacements are allocated
+/// internally.
 template <typename DisplsContainer = std::vector<int>, typename Fb, typename Ct>
 constexpr auto flatten_v(kamping::v2::resize_t, Fb&& flat_buf, Ct&& counts) {
     return kamping::v2::adaptor<2, decltype([](auto&& source, auto&& fb, auto&& c) {
@@ -392,7 +387,7 @@ constexpr auto flatten_v(kamping::v2::resize_t, Fb&& flat_buf, Ct&& counts) {
                                 })>{}(std::forward<Fb>(flat_buf), std::forward<Ct>(counts));
 }
 
-/// 3-arg (resize): user flat buffer + user counts + user displs — all resized.
+/// Flattens into the caller-provided `flat_buf`, `counts` and `displs`, resizing them as needed.
 template <typename Fb, typename Ct, typename Dt>
 constexpr auto flatten_v(kamping::v2::resize_t, Fb&& flat_buf, Ct&& counts, Dt&& displs) {
     return kamping::v2::adaptor<3, decltype([](auto&& source, auto&& fb, auto&& c, auto&& d) {

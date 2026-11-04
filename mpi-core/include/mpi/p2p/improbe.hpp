@@ -18,14 +18,21 @@ namespace mpi::experimental {
 /// @param status  Optional: filled with the status of the matched message. Defaults to `MPI_STATUS_IGNORE`.
 /// @return `true` if a message was matched.
 template <
-    rank                                       Source  = int,
-    tag                                        Tag     = int,
-    convertible_to_mpi_handle_ptr<MPI_Message> Message = MPI_Message*,
-    convertible_to_mpi_handle<MPI_Comm>        Comm    = MPI_Comm,
-    convertible_to_mpi_handle_ptr<MPI_Status>  Status  = MPI_Status*>
+    rank                                       Source,
+    tag                                        Tag,
+    convertible_to_mpi_handle_ptr<MPI_Message> Message,
+    convertible_to_mpi_handle<MPI_Comm>        Comm,
+    convertible_to_mpi_handle_ptr<MPI_Status>  Status = MPI_Status*>
 bool improbe(Source source, Tag tag, Comm const& comm, Message&& message, Status&& status = MPI_STATUS_IGNORE) {
     int flag = 0;
-    int err  = MPI_Improbe(to_rank(source), to_tag(tag), handle(comm), &flag, handle_ptr(message), handle_ptr(status));
+    int err  = MPI_Improbe(
+        mpi::experimental::to_rank(source),
+        mpi::experimental::to_tag(tag),
+        mpi::experimental::handle(comm),
+        &flag,
+        mpi::experimental::handle_ptr(message),
+        mpi::experimental::handle_ptr(status)
+    );
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);
     }

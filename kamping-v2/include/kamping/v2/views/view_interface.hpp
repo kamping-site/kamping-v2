@@ -18,8 +18,9 @@ namespace kamping::v2 {
 // View adaptor tags
 // ──────────────────────────────────────────────────────────────────────────────
 
-/// Tag used to request in-place resize of a counts or data buffer.
+/// Tag type selecting the resizing variant of a view factory, e.g. `views::auto_counts(resize, counts)`.
 struct resize_t {};
+/// The @ref resize_t tag.
 inline constexpr resize_t resize{};
 
 /// Tag for user-provided displacements that are known to be monotonically
@@ -27,14 +28,14 @@ inline constexpr resize_t resize{};
 /// tight-bound formula displs.back() + counts.back() in resize_v_view
 /// instead of the O(p) max(counts[i]+displs[i]) formula.
 struct monotonic_t {};
+/// The @ref monotonic_t tag.
 inline constexpr monotonic_t monotonic{};
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Resize helpers (from ranges/ranges.hpp)
+// Resize helpers
 // ──────────────────────────────────────────────────────────────────────────────
 
-// Tag base for all kamping views. Used to guard the std::ranges::size fallback
-// against ADL circularity (std::ranges::size → ADL mpi::experimental::size → std::ranges::sized_range).
+/// Tag base of all kamping views, used to recognize them (see @ref view and all()).
 struct view_interface_base {};
 
 /// A type that is a "view" in the kamping sense: either a std::ranges::view
@@ -67,6 +68,7 @@ void resize_for_receive(T& t, std::ptrdiff_t n) {
     t.mpi_resize_for_receive(n);
 }
 
+/// Resizes the standard container `t` to `n` elements before a receive; see the overload above for the contract.
 template <typename T>
     requires(!has_mpi_resize_for_receive<T>) && has_resize<T>
 void resize_for_receive(T& t, std::ptrdiff_t n) {
@@ -95,6 +97,12 @@ template <typename D>
 concept has_const_base = requires(D const& d) { d.base(); };
 } // namespace detail
 
+/// CRTP base of all kamping views.
+///
+/// `Derived` implements `base()`, returning the wrapped buffer. view_interface forwards the range interface and every
+/// member of the buffer protocol (`mpi_ptr()`, `mpi_count()`, `mpi_type()`, `mpi_counts()`, ...) and of the deferred
+/// buffer protocols (`set_recv_count()`, `set_comm_size()`, `commit_counts()`, `materialize()`) to it, so a view only
+/// implements the members it changes. A forwarder only exists if the wrapped buffer provides the member.
 template <typename Derived>
 struct view_interface : public view_interface_base, public std::ranges::view_interface<Derived> {
     constexpr Derived& derived() noexcept {
@@ -140,11 +148,9 @@ struct view_interface : public view_interface_base, public std::ranges::view_int
         return mpi::experimental::type(derived().base());
     }
 
-    /// Forwards the value-type channel (kamping::v2::value_type(), NOT mpi::experimental::type())
+    /// Forwards the value-type channel (kamping::v2::value_type(), not mpi::experimental::type())
     /// from base(), so a with_value_type annotation survives further wrapping
-    /// (e.g. `... | with_value_type(dt) | resize`). Without this forwarder an outer view would
-    /// shadow the channel and structured consumers (flatten_v_view, dstl::request_reply) would
-    /// silently fall back to builtin deduction instead of seeing the annotation.
+    /// (e.g. `... | with_value_type(dt) | resize`).
     template <typename Self = Derived>
     auto mpi_value_type() const
         requires kamping::v2::has_mpi_value_type<decltype(std::declval<Self const&>().base())>
@@ -211,17 +217,9 @@ struct view_interface : public view_interface_base, public std::ranges::view_int
         derived().base().commit_counts();
     }
 
-    /// Propagates eager realization to the wrapped base, so a deferred resizing view
-    /// (resize_view / resize_v_view) stays materializable when it is nested inside other
-    /// view layers (with_type, GPU/serialization adaptors, …). Without this, an outer
-    /// wrapper would forward mpi_ptr() — and thus the lazy resize — but silently swallow
-    /// an explicit kamping::v2::materialize(), diverging the two paths.
-    ///
-    /// Guarded on the base having a materialize() member and calling it directly, exactly
-    /// like the other forwarders (has_commit_counts / commit_counts, …). has_materialize
-    /// is itself forwarded this way, so it chains through any number of wrapping layers.
-    /// The deferred-buffer safety check lives solely in the free function kamping::v2::
-    /// materialize(), the public entry point that gates this whole cascade.
+    /// Forwards eager realization to the wrapped base, so a deferred resizing view (resize_view /
+    /// resize_v_view) can still be materialized when nested inside other view layers. Use the
+    /// free function kamping::v2::materialize() rather than calling this directly.
     template <typename Self = Derived>
     void materialize()
         requires kamping::v2::has_materialize<decltype(std::declval<Self&>().base())>
@@ -237,10 +235,7 @@ struct view_interface : public view_interface_base, public std::ranges::view_int
     }
 
     /// Forwards the single-count deferred protocol (set_recv_count) so a resize_view
-    /// nested inside other view layers stays a deferred_recv_buf. Mirrors the variadic
-    /// protocol forwarding above (set_comm_size / commit_counts); without it, a wrapper
-    /// would forward mpi_ptr()/mpi_count() but not the inferred-size hook, so infer()
-    /// could not resize the buffer and it would receive into a stale size.
+    /// nested inside other view layers stays a deferred_recv_buf.
     template <typename Self = Derived>
     void set_recv_count(std::ptrdiff_t n)
         requires kamping::v2::deferred_recv_buf<std::remove_cvref_t<decltype(std::declval<Self&>().base())>>
@@ -292,9 +287,9 @@ struct view_interface : public view_interface_base, public std::ranges::view_int
 };
 
 // Propagate supports_matched_probe through kamping view layers one step at a time via base().
-// Using base() rather than underlying() ensures intermediate views (e.g. device_ptr_view
+// Using base() rather than underlying() ensures intermediate views (e.g. thrust_view
 // with supports_matched_probe=false) are not skipped. Explicit per-type specializations
-// (e.g. device_ptr_view) take priority over this partial specialization.
+// (e.g. thrust_view) take priority over this partial specialization.
 template <typename T>
     requires std::derived_from<T, view_interface_base> && detail::has_base<T>
 inline constexpr bool supports_matched_probe<T> =

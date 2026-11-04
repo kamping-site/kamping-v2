@@ -17,27 +17,18 @@
 
 namespace kamping::v2 {
 
-/// Allreduce (blocking, two-buffer form).
+/// Reduces `sbuf` across all ranks with `op` and stores the result in `rbuf` on every rank (`MPI_Allreduce`).
 ///
-/// Combines elements from the send buffer of every process using the specified operation
-/// and distributes the result to all processes.
-///
-/// @tparam SBuf Send buffer type satisfying send_buffer
-/// @tparam RBuf Receive buffer type satisfying recv_buffer
-/// @tparam Op   Operation type satisfying valid_op<Op, SBuf, RBuf> (default: std::plus<>)
-/// @tparam Comm Communicator type (default: MPI_Comm)
-///
-/// @param sbuf Send buffer; pass kamping::v2::inplace to use rbuf for both send and recv.
-/// @param rbuf Receive buffer; may be a resizable view (views::resize).
-/// @param op   Reduction operation (MPI_Op or builtin operation, default: std::plus<>).
-/// @param comm MPI communicator (default: MPI_COMM_WORLD).
+/// Pass `inplace` as `sbuf` to use `rbuf` for both input and output. `rbuf` may be a deferred receive buffer (e.g.
+/// `views::resize`).
+/// @param op Reduction operation: an `MPI_Op`, a standard functor such as `std::plus<>`, or the result of `make_op`.
+/// @return The send and receive buffer (owned if passed as rvalue, borrowed otherwise).
 template <
     mpi::experimental::send_buffer                         SBuf,
     mpi::experimental::recv_buffer                         RBuf,
-    mpi::experimental::valid_op<SBuf, RBuf>                Op   = std::plus<>,
-    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
-auto allreduce(SBuf&& sbuf, RBuf&& rbuf, Op const& op = std::plus<>{}, Comm const& comm = MPI_COMM_WORLD)
-    -> result<SBuf, RBuf> {
+    mpi::experimental::valid_op<SBuf, RBuf>                Op,
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
+auto allreduce(SBuf&& sbuf, RBuf&& rbuf, Op const& op, Comm const& comm) -> result<SBuf, RBuf> {
     result<SBuf, RBuf> res{std::forward<SBuf>(sbuf), std::forward<RBuf>(rbuf)};
     infer(
         comm_op::allreduce{},
@@ -48,6 +39,16 @@ auto allreduce(SBuf&& sbuf, RBuf&& rbuf, Op const& op = std::plus<>{}, Comm cons
     );
     mpi::experimental::allreduce(res.send, res.recv, op, comm);
     return res;
+}
+
+/// Like the overload above, with `std::plus<>` as operation.
+template <
+    mpi::experimental::send_buffer                         SBuf,
+    mpi::experimental::recv_buffer                         RBuf,
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
+    requires mpi::experimental::valid_op<std::plus<>, SBuf, RBuf>
+auto allreduce(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm) -> result<SBuf, RBuf> {
+    return kamping::v2::allreduce(std::forward<SBuf>(sbuf), std::forward<RBuf>(rbuf), std::plus<>{}, comm);
 }
 
 } // namespace kamping::v2

@@ -15,9 +15,9 @@ namespace kamping::v2 {
 /// Non-owning view over a single element, modeled after std::views::single but
 /// capturing by lvalue reference instead of by value.
 ///
-/// Satisfies contiguous_range and sized_range (size is always 1). MPI buffer
-/// protocol (mpi_data, mpi_count, mpi_type) is handled automatically by the
-/// CPO dispatch in ranges.hpp for contiguous ranges of builtin MPI types.
+/// Satisfies contiguous_range and sized_range (size is always 1), so the buffer
+/// accessors (count, ptr, type) work through the standard range fallback for
+/// builtin MPI types.
 ///
 /// Typical usage:
 ///   int val = 42;
@@ -25,22 +25,22 @@ namespace kamping::v2 {
 template <typename T>
     requires std::is_object_v<T>
 class ref_single_view : public std::ranges::view_interface<ref_single_view<T>> {
-    T* ptr_;
+    T* _ptr;
 
 public:
-    constexpr explicit ref_single_view(T& val) noexcept : ptr_(std::addressof(val)) {}
+    constexpr explicit ref_single_view(T& val) noexcept : _ptr(std::addressof(val)) {}
 
     constexpr T* begin() noexcept {
-        return ptr_;
+        return _ptr;
     }
     constexpr T const* begin() const noexcept {
-        return ptr_;
+        return _ptr;
     }
     constexpr T* end() noexcept {
-        return ptr_ + 1;
+        return _ptr + 1;
     }
     constexpr T const* end() const noexcept {
-        return ptr_ + 1;
+        return _ptr + 1;
     }
 
     static constexpr bool empty() noexcept {
@@ -51,10 +51,10 @@ public:
     }
 
     constexpr T* data() noexcept {
-        return ptr_;
+        return _ptr;
     }
     constexpr T const* data() const noexcept {
-        return ptr_;
+        return _ptr;
     }
 };
 

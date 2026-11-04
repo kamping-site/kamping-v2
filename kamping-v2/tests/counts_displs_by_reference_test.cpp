@@ -8,6 +8,7 @@
 #include <gtest/gtest.h>
 #include <mpi.h>
 
+#include "kamping/v2/buffer.hpp"
 #include "kamping/v2/views/with_type_view.hpp"
 #include "mpi/buffer.hpp"
 
@@ -75,38 +76,38 @@ struct mpi::experimental::buffer_traits<TraitsBuf> {
 TEST(CountsDisplsByReferenceTest, MemberAccessorsReturnReferences) {
     MemberBuf buf{{}, {0, 0}, {0, 1}};
 
-    static_assert(std::same_as<decltype(mpi::experimental::counts(buf)), std::vector<int>&>);
-    static_assert(std::same_as<decltype(mpi::experimental::counts(std::as_const(buf))), std::vector<int> const&>);
-    static_assert(std::same_as<decltype(mpi::experimental::displs(buf)), std::vector<int> const&>);
-    static_assert(mpi::experimental::has_mpi_counts_mutable<MemberBuf>);
+    static_assert(std::same_as<decltype(kamping::v2::counts(buf)), std::vector<int>&>);
+    static_assert(std::same_as<decltype(kamping::v2::counts(std::as_const(buf))), std::vector<int> const&>);
+    static_assert(std::same_as<decltype(kamping::v2::displs(buf)), std::vector<int> const&>);
+    static_assert(kamping::v2::has_mpi_counts_mutable<MemberBuf>);
 
-    std::ranges::data(mpi::experimental::counts(buf))[1] = 42;
+    std::ranges::data(kamping::v2::counts(buf))[1] = 42;
     EXPECT_EQ(buf.counts[1], 42);
-    EXPECT_EQ(&mpi::experimental::displs(buf), &buf.displs);
+    EXPECT_EQ(&kamping::v2::displs(buf), &buf.displs);
 }
 
 TEST(CountsDisplsByReferenceTest, TraitsAccessorsReturnReferences) {
     TraitsBuf buf{{0, 0}, {0, 1}};
 
-    static_assert(std::same_as<decltype(mpi::experimental::counts(buf)), std::vector<int>&>);
-    static_assert(std::same_as<decltype(mpi::experimental::displs(buf)), std::vector<int>&>);
-    static_assert(std::same_as<decltype(mpi::experimental::displs(std::as_const(buf))), std::vector<int> const&>);
-    static_assert(mpi::experimental::has_mpi_counts_mutable<TraitsBuf>);
+    static_assert(std::same_as<decltype(kamping::v2::counts(buf)), std::vector<int>&>);
+    static_assert(std::same_as<decltype(kamping::v2::displs(buf)), std::vector<int>&>);
+    static_assert(std::same_as<decltype(kamping::v2::displs(std::as_const(buf))), std::vector<int> const&>);
+    static_assert(kamping::v2::has_mpi_counts_mutable<TraitsBuf>);
 
-    std::ranges::data(mpi::experimental::counts(buf))[0] = 7;
+    std::ranges::data(kamping::v2::counts(buf))[0] = 7;
     EXPECT_EQ(buf.counts[0], 7);
-    EXPECT_EQ(&mpi::experimental::displs(buf), &buf.displs);
+    EXPECT_EQ(&kamping::v2::displs(buf), &buf.displs);
 }
 
 TEST(CountsDisplsByReferenceTest, ViewForwardsReferences) {
     MemberBuf buf{{}, {0, 0}, {0, 1}};
     auto      view = buf | views::with_type(MPI_INT);
 
-    static_assert(std::same_as<decltype(mpi::experimental::counts(view)), std::vector<int>&>);
-    static_assert(std::same_as<decltype(mpi::experimental::displs(view)), std::vector<int> const&>);
-    static_assert(mpi::experimental::has_mpi_counts_mutable<decltype(view)>);
+    static_assert(std::same_as<decltype(kamping::v2::counts(view)), std::vector<int>&>);
+    static_assert(std::same_as<decltype(kamping::v2::displs(view)), std::vector<int> const&>);
+    static_assert(kamping::v2::has_mpi_counts_mutable<decltype(view)>);
 
-    std::ranges::data(mpi::experimental::counts(view))[1] = 5;
+    std::ranges::data(kamping::v2::counts(view))[1] = 5;
     EXPECT_EQ(buf.counts[1], 5);
-    EXPECT_EQ(&mpi::experimental::displs(view), &buf.displs);
+    EXPECT_EQ(&kamping::v2::displs(view), &buf.displs);
 }

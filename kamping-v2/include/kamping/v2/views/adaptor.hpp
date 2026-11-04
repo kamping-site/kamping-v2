@@ -68,6 +68,13 @@ struct adaptor_closure_base {};
 template <typename T>
 concept is_adaptor_closure = std::derived_from<std::remove_cvref_t<T>, adaptor_closure_base>;
 
+/// Tag base class of adaptor factories (see @ref adaptor_factory).
+struct adaptor_factory_base {};
+
+/// Checks whether T is an adaptor factory, which stands for the closure it returns when called without arguments.
+template <typename T>
+concept is_adaptor_factory = std::derived_from<std::remove_cvref_t<T>, adaptor_factory_base>;
+
 /// Detects external range adaptor closures (e.g. std::views::take(2)) by duck typing:
 /// they are not ranges themselves but are callable with a range argument and produce a range.
 /// Used to route std_closure | kamping_closure to composition rather than applying the
@@ -94,7 +101,7 @@ template <typename Derived>
 struct adaptor_closure : adaptor_closure_base {
     // val | closure  →  closure(val)
     template <typename T>
-        requires(!is_adaptor_closure<T>) && (!is_external_closure<T>)
+        requires(!is_adaptor_closure<T>) && (!is_external_closure<T>) && (!is_adaptor_factory<T>)
     friend constexpr auto operator|(T&& val, Derived const& self) {
         return self(std::forward<T>(val));
     }
@@ -103,7 +110,7 @@ struct adaptor_closure : adaptor_closure_base {
     // Moves stored arguments out of temporary closures so that views take ownership
     // rather than holding a dangling ref_view into the closure's storage.
     template <typename T>
-        requires(!is_adaptor_closure<T>) && (!is_external_closure<T>)
+        requires(!is_adaptor_closure<T>) && (!is_external_closure<T>) && (!is_adaptor_factory<T>)
     friend constexpr auto operator|(T&& val, Derived&& self) {
         return std::move(self)(std::forward<T>(val));
     }
@@ -113,6 +120,40 @@ struct adaptor_closure : adaptor_closure_base {
         requires is_adaptor_closure<Other> || is_external_closure<Other>
     friend constexpr auto operator|(Other other, Derived self) {
         return composed_closure<Other, Derived>(std::move(other), std::move(self));
+    }
+
+    // factory | closure  →  factory() | closure
+    template <typename Factory>
+        requires is_adaptor_factory<Factory>
+    friend constexpr auto operator|(Factory const& factory, Derived self) {
+        return factory() | std::move(self);
+    }
+};
+
+// ──────────────────────────────────────────────────────────────────────────────
+// adaptor_factory — an adaptor whose argument-less form can be used without ()
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// CRTP base of an adaptor that takes optional arguments, such as `views::auto_counts`: calling it returns a closure
+/// (`auto_counts()`, `auto_counts(counts)`), and the factory itself stands for its argument-less closure in a pipe,
+/// so `buf | auto_counts` is `buf | auto_counts()`. `Derived` must be callable without arguments.
+///
+/// A factory cannot simply be a closure applying itself to a buffer, since a one-argument call already means
+/// something else (e.g. `auto_counts(counts)` passes the counts storage).
+template <typename Derived>
+struct adaptor_factory : adaptor_factory_base {
+    // val | factory  →  val | factory()   (val may be a buffer or a closure)
+    template <typename T>
+        requires(!is_adaptor_factory<T>)
+    friend constexpr auto operator|(T&& val, Derived const& self) {
+        return std::forward<T>(val) | self();
+    }
+
+    // factory | factory  →  factory() | factory()
+    template <typename Other>
+        requires is_adaptor_factory<Other>
+    friend constexpr auto operator|(Other const& other, Derived const& self) {
+        return other() | self();
     }
 };
 
@@ -124,21 +165,21 @@ struct adaptor_closure : adaptor_closure_base {
 ///   (c1 | c2) | c3  →  composed_closure<composed_closure<C1,C2>, C3>
 template <typename First, typename Second>
 struct composed_closure : adaptor_closure<composed_closure<First, Second>> {
-    [[no_unique_address]] First  first_;
-    [[no_unique_address]] Second second_;
+    [[no_unique_address]] First  _first;
+    [[no_unique_address]] Second _second;
 
-    constexpr composed_closure(First first, Second second) : first_(std::move(first)), second_(std::move(second)) {}
+    constexpr composed_closure(First first, Second second) : _first(std::move(first)), _second(std::move(second)) {}
 
     template <typename T>
     constexpr auto operator()(T&& val) const& {
-        return second_(first_(std::forward<T>(val)));
+        return _second(_first(std::forward<T>(val)));
     }
 
     // Rvalue overload: moves stored closures so that bound arguments are transferred
     // into the resulting view rather than copied from the about-to-be-destroyed composition.
     template <typename T>
     constexpr auto operator()(T&& val) && {
-        return std::move(second_)(std::move(first_)(std::forward<T>(val)));
+        return std::move(_second)(std::move(_first)(std::forward<T>(val)));
     }
 };
 
@@ -156,8 +197,7 @@ template <typename Arg>
 constexpr decltype(auto) store_arg(Arg&& arg) {
     if constexpr (std::ranges::range<std::remove_cvref_t<Arg>>)
         return kamping::v2::all(std::forward<Arg>(arg));
-    else if constexpr (std::is_lvalue_reference_v<Arg>
-                       && !std::is_copy_constructible_v<std::remove_reference_t<Arg>>)
+    else if constexpr (std::is_lvalue_reference_v<Arg> && !std::is_copy_constructible_v<std::remove_reference_t<Arg>>)
         return std::ref(arg);
     else
         return std::decay_t<Arg>(std::forward<Arg>(arg));
@@ -165,27 +205,27 @@ constexpr decltype(auto) store_arg(Arg&& arg) {
 } // namespace detail
 
 /// A closure with pre-bound arguments. Created by calling an adaptor with only the extra arguments
-/// (partial application). When invoked (directly or via |), prepends the incoming value and calls fn_.
+/// (partial application). When invoked (directly or via |), prepends the incoming value and calls _fn.
 ///
-/// Example: with_type(MPI_INT) returns a partial_adaptor holding fn_ and MPI_INT in bound_.
-///          vec | that_closure  →  fn_(vec, MPI_INT)  →  with_type_view(vec, MPI_INT)
+/// Example: with_type(MPI_INT) returns a partial_adaptor holding _fn and MPI_INT in _bound.
+///          vec | that_closure  →  _fn(vec, MPI_INT)  →  with_type_view(vec, MPI_INT)
 template <typename Fn, typename... BoundArgs>
 struct partial_adaptor : adaptor_closure<partial_adaptor<Fn, BoundArgs...>> {
-    [[no_unique_address]] Fn fn_;
-    std::tuple<BoundArgs...> bound_;
+    [[no_unique_address]] Fn _fn;
+    std::tuple<BoundArgs...> _bound;
 
-    constexpr partial_adaptor(Fn fn, std::tuple<BoundArgs...> bound) : fn_(std::move(fn)), bound_(std::move(bound)) {}
+    constexpr partial_adaptor(Fn fn, std::tuple<BoundArgs...> bound) : _fn(std::move(fn)), _bound(std::move(bound)) {}
 
     template <typename T>
     constexpr auto operator()(T&& val) const& {
-        return std::apply([&](auto const&... args) { return fn_(std::forward<T>(val), args...); }, bound_);
+        return std::apply([&](auto const&... args) { return _fn(std::forward<T>(val), args...); }, _bound);
     }
 
     // Rvalue overload: moves stored arguments out so the resulting view takes ownership
     // rather than holding a ref_view into this closure's (about-to-be-destroyed) storage.
     template <typename T>
     constexpr auto operator()(T&& val) && {
-        return std::apply([&](auto&&... args) { return fn_(std::forward<T>(val), std::move(args)...); }, bound_);
+        return std::apply([&](auto&&... args) { return _fn(std::forward<T>(val), std::move(args)...); }, _bound);
     }
 };
 
@@ -203,7 +243,7 @@ struct partial_adaptor : adaptor_closure<partial_adaptor<Fn, BoundArgs...>> {
 ///         with_type(vec, MPI_INT)        // full call
 template <std::size_t ExtraArgs, typename Fn>
 struct adaptor {
-    [[no_unique_address]] Fn fn_;
+    [[no_unique_address]] Fn _fn;
 
     /// Partial application: bind ExtraArgs arguments, return a pipeable closure.
     /// Range arguments are stored via all_t — lvalue ranges become ref_view (borrow the original),
@@ -212,16 +252,16 @@ struct adaptor {
         requires(sizeof...(Args) == ExtraArgs)
     constexpr auto operator()(Args&&... args) const {
         return partial_adaptor<Fn, decltype(detail::store_arg(std::forward<Args>(args)))...>(
-            fn_,
+            _fn,
             std::tuple{detail::store_arg(std::forward<Args>(args))...}
         );
     }
 
-    /// Full call: first argument is the value, remaining ExtraArgs are forwarded to fn_.
+    /// Full call: first argument is the value, remaining ExtraArgs are forwarded to _fn.
     template <typename T, typename... Args>
         requires(sizeof...(Args) == ExtraArgs)
     constexpr auto operator()(T&& val, Args&&... args) const {
-        return fn_(std::forward<T>(val), std::forward<Args>(args)...);
+        return _fn(std::forward<T>(val), std::forward<Args>(args)...);
     }
 };
 

@@ -28,10 +28,12 @@ concept has_commit_counts = requires(T& t) { t.commit_counts(); };
 
 /// Recv buffer whose size is not known upfront and is determined by infer().
 /// The collective calls set_recv_count(n) after inferring n; the view then
-/// lazily resizes on first mpi_data() access.
+/// lazily resizes on first mpi_ptr() access.
 template <typename T>
 concept deferred_recv_buf = requires(T& t, std::ptrdiff_t n) { t.set_recv_count(n); };
 
+/// A type that participates in the set_comm_size() protocol: infer() tells it the communicator size before the
+/// per-rank counts are exchanged.
 template <typename T>
 concept has_set_comm_size = requires(T& t, int n) { t.set_comm_size(n); };
 
@@ -96,26 +98,24 @@ constexpr void materialize(T&& buf) {
 template <typename T>
 concept deferred_send_buf_v = mpi::experimental::send_buffer_v<T> && has_set_comm_size<T>;
 
-// ──────────────────────────────────────────────────────────────────────────────
-// enable_borrowed_buffer — opt-in trait for non-owning buffer types.
-//
-// A "borrowed" buffer does not own its data: the underlying memory is managed
-// externally and will outlive the buffer object. This mirrors std::ranges::
-// enable_borrowed_range. The default covers any std::ranges::borrowed_range
-// (e.g. std::span, std::string_view). Kamping views specialize this in their
-// own headers to propagate borrowedness from their Base type.
-//
-// To opt in a custom non-owning buffer type:
-//   template <>
-//   inline constexpr bool kamping::v2::enable_borrowed_buffer<MyView> = true;
-// ──────────────────────────────────────────────────────────────────────────────
+/// Opt-in trait for non-owning buffer types, mirroring std::ranges::enable_borrowed_range.
+///
+/// A "borrowed" buffer does not own its data: the underlying memory is managed externally and outlives the buffer
+/// object. Non-blocking operations use this to decide whether the buffer has to be handed back on completion (see
+/// iresult). The default covers any std::ranges::borrowed_range (e.g. std::span); kamping views propagate
+/// borrowedness from their base.
+///
+/// @code
+/// template <>
+/// inline constexpr bool kamping::v2::enable_borrowed_buffer<MyView> = true;
+/// @endcode
 template <typename T>
 inline constexpr bool enable_borrowed_buffer = std::ranges::borrowed_range<T>;
 
+/// A buffer that does not own its data; see @ref enable_borrowed_buffer.
 template <typename T>
 concept borrowed_buffer = enable_borrowed_buffer<std::remove_cvref_t<T>>;
 
-// ── supports_matched_probe ─────────────────────────────────────────────────────────
 /// Trait controlling whether infer() uses matched probing (MPI_Mprobe / MPI_Mrecv)
 /// for a deferred recv buffer.  Defaults to `true`.  Set to `false` for buffer
 /// types whose MPI implementation does not support GPU-aware matched receives

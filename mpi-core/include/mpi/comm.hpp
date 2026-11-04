@@ -19,11 +19,8 @@ namespace mpi::experimental {
 
 class comm;
 
-// ── CRTP mixin ──────────────────────────────────────────────────────────────
-// Provides read-only accessors and collective operations for any communicator
-// wrapper: `.rank()`, `.size()`, `.group()`, `.dup()`, `.split()`.
-// Derived must implement `mpi_handle() const → MPI_Comm`.
-
+/// CRTP mixin providing read-only accessors and collective operations for any communicator wrapper: `.rank()`,
+/// `.size()`, `.group()`, `.dup()`, `.split()`. `Derived` must implement `MPI_Comm mpi_handle() const`.
 template <typename Derived>
 class comm_accessors {
     [[nodiscard]] MPI_Comm underlying() const noexcept {
@@ -163,7 +160,13 @@ public:
         std::string tmp_storage;
         char const* tag_cstr = (tag.data()[tag.size()] == '\0') ? tag.data() : (tmp_storage = tag, tmp_storage.c_str());
         MPI_Comm    c        = MPI_COMM_NULL;
-        int         err      = MPI_Comm_create_from_group(handle(g), tag_cstr, handle(info), MPI_ERRORS_RETURN, &c);
+        int         err      = MPI_Comm_create_from_group(
+            mpi::experimental::handle(g),
+            tag_cstr,
+            mpi::experimental::handle(info),
+            MPI_ERRORS_RETURN,
+            &c
+        );
         if (err != MPI_SUCCESS) {
             throw mpi_error(err);
         }
@@ -253,7 +256,7 @@ template <
     convertible_to_mpi_handle<MPI_Comm>     Comm    = MPI_Comm,
     convertible_to_mpi_handle_ptr<MPI_Comm> NewComm = MPI_Comm*>
 void dup(Comm const& c, NewComm& new_comm) {
-    int err = MPI_Comm_dup(handle(c), handle_ptr(new_comm));
+    int err = MPI_Comm_dup(mpi::experimental::handle(c), mpi::experimental::handle_ptr(new_comm));
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);
     }
@@ -274,7 +277,7 @@ template <
     convertible_to_mpi_handle<MPI_Comm>     Comm    = MPI_Comm,
     convertible_to_mpi_handle_ptr<MPI_Comm> NewComm = MPI_Comm*>
 void split(Comm const& c, int color, int key, NewComm& new_comm) {
-    int err = MPI_Comm_split(handle(c), color, key, handle_ptr(new_comm));
+    int err = MPI_Comm_split(mpi::experimental::handle(c), color, key, mpi::experimental::handle_ptr(new_comm));
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);
     }

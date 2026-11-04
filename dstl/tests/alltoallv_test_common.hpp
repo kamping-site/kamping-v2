@@ -56,7 +56,11 @@ inline std::vector<int>
 standard_alltoallv(std::vector<int> const& data, std::vector<int> const& counts, std::vector<int> const& displs) {
     namespace views = kamping::v2::views;
     std::vector<int> recv;
-    kamping::v2::alltoallv(data | views::with_counts(counts) | views::with_displs(displs), recv | views::auto_recv_v);
+    kamping::v2::alltoallv(
+        data | views::with_counts(counts) | views::with_displs(displs),
+        recv | views::auto_recv_v,
+        MPI_COMM_WORLD
+    );
     return recv;
 }
 

@@ -1,21 +1,20 @@
 // Copyright (c) 2026 Karlsruhe Institute of Technology
 // SPDX-License-Identifier: BSL-1.0
 
-#include <gtest/gtest.h>
-#include <mpi.h>
-
-#include <Kokkos_Core.hpp>
 #include <cstddef>
 #include <vector>
 
-#include "kamping/ecosystem/kokkos_view.hpp"
+#include <Kokkos_Core.hpp>
+#include <gtest/gtest.h>
+#include <mpi.h>
+
 #include "kamping/v2/collectives/alltoallv.hpp"
+#include "kamping/v2/ecosystem/kokkos.hpp"
 #include "kamping/v2/p2p/recv.hpp"
 #include "kamping/v2/p2p/send.hpp"
 #include "kamping/v2/views/auto_counts_view.hpp"
 #include "kamping/v2/views/auto_displs_view.hpp"
 #include "kamping/v2/views/with_counts_view.hpp"
-
 
 TEST(KokkosView, SendRecv) {
     int rank, size;
@@ -32,19 +31,19 @@ TEST(KokkosView, SendRecv) {
 
     if (rank == 0) {
         matrix_t matrix("send_matrix", 4, 5);
-        auto host_matrix = Kokkos::create_mirror_view(matrix);
+        auto     host_matrix = Kokkos::create_mirror_view(matrix);
         for (int i = 0; i < 4; ++i)
             for (int j = 0; j < 5; ++j)
                 host_matrix(i, j) = 100 + 10 * i + j;
         Kokkos::deep_copy(matrix, host_matrix);
 
         auto row = Kokkos::subview(matrix, 1, Kokkos::ALL());
-        kamping::v2::send(row | kamping::v2::views::kokkos, 1, 0);
+        kamping::v2::send(row | kamping::v2::views::kokkos, 1, 0, MPI_COMM_WORLD);
 
     } else if (rank == 1) {
         matrix_t matrix("recv_matrix", 4, 5);
-        auto    row = Kokkos::subview(matrix, 2, Kokkos::ALL());
-        auto    received = kamping::v2::recv(row | kamping::v2::views::kokkos, 0, 0);
+        auto     row      = Kokkos::subview(matrix, 2, Kokkos::ALL());
+        auto     received = kamping::v2::recv(row | kamping::v2::views::kokkos, 0, 0, MPI_COMM_WORLD);
         received.unwrap();
         Kokkos::fence();
 
@@ -56,7 +55,6 @@ TEST(KokkosView, SendRecv) {
 }
 
 TEST(KokkosView, SendRecvAutoView) {
-
     int rank, size;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
@@ -69,14 +67,14 @@ TEST(KokkosView, SendRecvAutoView) {
 
     if (rank == 0) {
         Kokkos::View<int*, Kokkos::LayoutRight> v("send_auto", 6);
-        auto host_v = Kokkos::create_mirror_view(v);
+        auto                                    host_v = Kokkos::create_mirror_view(v);
         for (int i = 0; i < 6; ++i)
             host_v(i) = 200 + i;
         Kokkos::deep_copy(v, host_v);
-        kamping::v2::send(v | kamping::v2::views::kokkos, 1, 1);
+        kamping::v2::send(v | kamping::v2::views::kokkos, 1, 1, MPI_COMM_WORLD);
 
     } else if (rank == 1) {
-        auto  received = kamping::v2::recv(kamping::v2::views::auto_kokkos_view<int>(), 0, 1);
+        auto  received = kamping::v2::recv(kamping::v2::views::auto_kokkos_view<int>(), 0, 1, MPI_COMM_WORLD);
         auto& data     = *received.underlying();
         auto  host     = Kokkos::create_mirror_view_and_copy(Kokkos::HostSpace{}, data);
 
@@ -105,17 +103,14 @@ TEST(KokkosView, Alltoallv) {
     for (int dst = 0; dst < size; ++dst)
         send_counts[static_cast<std::size_t>(dst)] = dst + 1;
 
-    matrix_t recv_matrix(
-        "recv_matrix",
-        static_cast<std::size_t>(size),
-        static_cast<std::size_t>(rank + 1)
-    );
+    matrix_t recv_matrix("recv_matrix", static_cast<std::size_t>(size), static_cast<std::size_t>(rank + 1));
 
     auto result = kamping::v2::alltoallv(
         send_matrix | kamping::v2::views::kokkos | kamping::v2::views::with_counts(send_counts)
             | kamping::v2::views::auto_displs(),
         recv_matrix | kamping::v2::views::kokkos | kamping::v2::views::auto_counts()
-            | kamping::v2::views::auto_displs()
+            | kamping::v2::views::auto_displs(),
+        MPI_COMM_WORLD
     );
 
     auto& rbuf = result.get<1>();

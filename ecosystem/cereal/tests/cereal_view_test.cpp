@@ -11,12 +11,12 @@
 #include <gtest/gtest.h>
 #include <mpi.h>
 
-#include "kamping/ecosystem/cereal_view.hpp"
+#include "kamping/v2/buffer.hpp"
 #include "kamping/v2/collectives/bcast.hpp"
+#include "kamping/v2/ecosystem/cereal.hpp"
 #include "kamping/v2/p2p/recv.hpp"
 #include "kamping/v2/p2p/send.hpp"
 #include "kamping/v2/views/concepts.hpp"
-#include "mpi/buffer.hpp"
 
 using Map = std::map<std::string, int>;
 
@@ -30,9 +30,9 @@ TEST(CerealView, SendRecv) {
     Map const data{{"one", 1}, {"two", 2}, {"forty-two", 42}};
 
     if (rank == 0) {
-        kamping::v2::send(data | kamping::v2::views::serialize, 1, 0);
+        kamping::v2::send(data | kamping::v2::views::serialize, 1, 0, MPI_COMM_WORLD);
     } else if (rank == 1) {
-        auto result = kamping::v2::recv(kamping::v2::views::deserialize<Map>(), 0, 0);
+        auto result = kamping::v2::recv(kamping::v2::views::deserialize<Map>(), 0, 0, MPI_COMM_WORLD);
         EXPECT_EQ(*result, data);
     }
 }
@@ -45,8 +45,8 @@ TEST(CerealView, MaterializeRealizesRecvBuffer) {
 
     // Capture the serialized byte stream (what MPI would deliver).
     auto              sview = original | kamping::v2::views::serialize;
-    auto const        n     = static_cast<std::size_t>(mpi::experimental::count(sview));
-    auto const*       src   = static_cast<char const*>(mpi::experimental::ptr(std::as_const(sview)));
+    auto const        n     = static_cast<std::size_t>(kamping::v2::count(sview));
+    auto const*       src   = static_cast<char const*>(kamping::v2::ptr(std::as_const(sview)));
     std::vector<char> bytes(src, src + n);
 
     // Recv side: a view over a target object.
@@ -56,9 +56,9 @@ TEST(CerealView, MaterializeRealizesRecvBuffer) {
     static_assert(kamping::v2::has_materialize<decltype(rview)>);
 
     rview.set_recv_count(static_cast<std::ptrdiff_t>(n));
-    kamping::v2::materialize(rview);                             // realizes the byte buffer
-    std::memcpy(mpi::experimental::ptr(rview), bytes.data(), n); // MPI writes the payload
-    rview.unwrap();                                              // deserialize into target
+    kamping::v2::materialize(rview);                       // realizes the byte buffer
+    std::memcpy(kamping::v2::ptr(rview), bytes.data(), n); // MPI writes the payload
+    rview.unwrap();                                        // deserialize into target
 
     EXPECT_EQ(target, original);
 }
@@ -75,7 +75,7 @@ TEST(CerealView, Bcast) {
         data = {{"one", 1}, {"two", 2}, {"forty-two", 42}};
 
     auto view = data | kamping::v2::views::serialize;
-    kamping::v2::bcast(view, 0);
+    kamping::v2::bcast(view, 0, MPI_COMM_WORLD);
     view.unwrap(); // deserializes into data on non-root; no-op on root
 
     EXPECT_EQ(data, (Map{{"one", 1}, {"two", 2}, {"forty-two", 42}}));

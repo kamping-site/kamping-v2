@@ -11,25 +11,29 @@
 #include "mpi/handle.hpp"
 
 namespace mpi::experimental {
-template <send_buffer SBuf, recv_buffer RBuf, rank Root, convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+/// Distributes equal shares of `sbuf` on `root` to all ranks, receiving into `rbuf` (`MPI_Scatter`).
+///
+/// On root, the per-rank send count is `count(sbuf) / comm_size`; `sbuf` is ignored on the other ranks.
+template <send_buffer SBuf, recv_buffer RBuf, rank Root, convertible_to_mpi_handle<MPI_Comm> Comm>
 void scatter(SBuf&& sbuf, RBuf&& rbuf, Root root, Comm const& comm) {
     int comm_size = 0;
     int comm_rank = 0;
-    MPI_Comm_size(handle(comm), &comm_size);
-    MPI_Comm_rank(handle(comm), &comm_rank);
+    MPI_Comm_size(mpi::experimental::handle(comm), &comm_size);
+    MPI_Comm_rank(mpi::experimental::handle(comm), &comm_rank);
     KAMPING_V2_ASSERT(
-        to_rank(root) != comm_rank || static_cast<int>(count(sbuf)) % comm_size == 0,
+        mpi::experimental::to_rank(root) != comm_rank
+            || static_cast<int>(mpi::experimental::count(sbuf)) % comm_size == 0,
         "on root: send buffer size must be divisible by comm size"
     );
     int err = MPI_Scatter(
-        ptr(sbuf),
-        static_cast<int>(count(sbuf)) / comm_size,
-        type(sbuf),
-        ptr(rbuf),
-        static_cast<int>(count(rbuf)),
-        type(rbuf),
-        to_rank(root),
-        handle(comm)
+        mpi::experimental::ptr(sbuf),
+        static_cast<int>(mpi::experimental::count(sbuf)) / comm_size,
+        mpi::experimental::type(sbuf),
+        mpi::experimental::ptr(rbuf),
+        static_cast<int>(mpi::experimental::count(rbuf)),
+        mpi::experimental::type(rbuf),
+        mpi::experimental::to_rank(root),
+        mpi::experimental::handle(comm)
     );
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);

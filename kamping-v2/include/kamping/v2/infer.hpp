@@ -27,16 +27,17 @@
 
 /// @file
 /// infer() is a customization point that transfers metadata from the sending to the receiving
-/// side before an MPI operation is issued. The default behavior sets the recv count on resizable
-/// recv buffers. Users can provide their own overloads via ADL for custom buffer types or to
-/// transfer additional metadata alongside the count.
+/// side before an MPI operation is issued. The default overloads below size deferred receive
+/// buffers (see deferred_recv_buf / deferred_recv_buf_v) and are no-ops for all other buffers.
+/// Users can provide their own overloads via ADL for custom buffer types or to transfer
+/// additional metadata alongside the count.
 ///
 /// Dispatch is on operation tag types (comm_op::recv, comm_op::allgather, ...) rather than an enum, so
 /// users can add new tags without modifying this header.
 
-namespace kamping {
+namespace kamping::v2 {
 
-namespace v2::detail {
+namespace detail {
 /// Returns the probed element count, or terminates if the message is not a whole number of elements of the receive
 /// buffer's datatype (MPI_Get_count yields MPI_UNDEFINED).
 ///
@@ -55,10 +56,13 @@ inline std::ptrdiff_t checked_recv_count(std::optional<int> count) noexcept {
     }
     return static_cast<std::ptrdiff_t>(*count);
 }
-} // namespace v2::detail
+} // namespace detail
 
 // ---- Default infer() overloads ----------------------------------------------
 
+/// recv / irecv: probes the message (`MPI_Mprobe`, or `MPI_Probe` if the buffer does not support matched probes) to
+/// size a deferred receive buffer. Returns the matched `MPI_Message`, or the resolved `{source, tag}` after a plain
+/// probe, which the caller then receives.
 template <mpi::experimental::recv_buffer RBuf>
 auto infer(comm_op::recv, RBuf& rbuf, int source, int tag, MPI_Comm comm) {
     if constexpr (kamping::v2::deferred_recv_buf<RBuf>) {
@@ -79,7 +83,7 @@ auto infer(comm_op::recv, RBuf& rbuf, int source, int tag, MPI_Comm comm) {
     }
 }
 
-/// Matched receive: the message has already been probed, so a deferred recv buffer is sized from the probed count.
+/// mrecv / imrecv: the message has already been probed, so a deferred receive buffer is sized from the probed count.
 template <mpi::experimental::recv_buffer RBuf>
 void infer(comm_op::mrecv, RBuf& rbuf, v2::probe_result const& probe) {
     if constexpr (kamping::v2::deferred_recv_buf<RBuf>) {
@@ -87,6 +91,7 @@ void infer(comm_op::mrecv, RBuf& rbuf, v2::probe_result const& probe) {
     }
 }
 
+/// bcast: broadcasts root's count to size a deferred buffer on the other ranks.
 template <mpi::experimental::send_recv_buffer SRBuf>
 auto infer(comm_op::bcast, SRBuf& srbuf, int root, MPI_Comm comm) {
     if constexpr (kamping::v2::deferred_recv_buf<SRBuf>) {
@@ -99,6 +104,7 @@ auto infer(comm_op::bcast, SRBuf& srbuf, int root, MPI_Comm comm) {
     }
 }
 
+/// allgather: sizes a deferred receive buffer to `comm_size * count(sbuf)`.
 template <mpi::experimental::send_buffer SBuf, mpi::experimental::recv_buffer RBuf>
 void infer(comm_op::allgather, SBuf const& sbuf, RBuf& rbuf, MPI_Comm comm) {
     if constexpr (kamping::v2::deferred_recv_buf<RBuf>) {
@@ -107,6 +113,7 @@ void infer(comm_op::allgather, SBuf const& sbuf, RBuf& rbuf, MPI_Comm comm) {
     }
 }
 
+/// allgatherv: allgathers the send counts into the deferred counts of the receive buffer.
 template <mpi::experimental::send_buffer SBuf, mpi::experimental::recv_buffer_v RBuf>
 void infer(comm_op::allgatherv, SBuf const& sbuf, RBuf& rbuf, MPI_Comm comm) {
     if constexpr (kamping::v2::deferred_recv_buf_v<RBuf>) {
@@ -118,6 +125,7 @@ void infer(comm_op::allgatherv, SBuf const& sbuf, RBuf& rbuf, MPI_Comm comm) {
     }
 }
 
+/// alltoall: sizes a deferred receive buffer to `count(sbuf)`.
 template <mpi::experimental::send_buffer SBuf, mpi::experimental::recv_buffer RBuf>
 void infer(comm_op::alltoall, SBuf const& sbuf, RBuf& rbuf, MPI_Comm /* comm */) {
     if constexpr (kamping::v2::deferred_recv_buf<RBuf>) {
@@ -125,9 +133,8 @@ void infer(comm_op::alltoall, SBuf const& sbuf, RBuf& rbuf, MPI_Comm /* comm */)
     }
 }
 
-// Deferred send buffers (e.g. flatten_v_view wrapped in with_type_view) must be laid out
-// via set_comm_size() before their counts can be read, so sbuf cannot be const here.
-// Non-deferred send buffers are also accepted (the constraint check is a no-op for them).
+/// alltoallv: tells a deferred send buffer (e.g. flatten_v_view) the communicator size so it can lay out its counts,
+/// then alltoalls the send counts into the deferred counts of the receive buffer. `sbuf` is non-const for the former.
 template <mpi::experimental::send_buffer_v SBuf, mpi::experimental::recv_buffer_v RBuf>
 void infer(comm_op::alltoallv, SBuf& sbuf, RBuf& rbuf, MPI_Comm comm) {
     if constexpr (kamping::v2::deferred_send_buf_v<SBuf> || kamping::v2::deferred_recv_buf_v<RBuf>) {
@@ -143,6 +150,7 @@ void infer(comm_op::alltoallv, SBuf& sbuf, RBuf& rbuf, MPI_Comm comm) {
     }
 }
 
+/// sendrecv / isendrecv: exchanges the send counts to size a deferred receive buffer.
 template <mpi::experimental::send_buffer SBuf, mpi::experimental::recv_buffer RBuf>
 void infer(
     comm_op::sendrecv, SBuf const& sbuf, RBuf& rbuf, int dest, int send_tag, int source, int recv_tag, MPI_Comm comm
@@ -164,6 +172,7 @@ void infer(
     }
 }
 
+/// reduce: sizes a deferred receive buffer on root to `count(sbuf)`.
 template <mpi::experimental::send_buffer SBuf, mpi::experimental::recv_buffer RBuf>
 void infer(comm_op::reduce, SBuf const& sbuf, RBuf& rbuf, MPI_Op, int root, MPI_Comm comm) {
     if constexpr (kamping::v2::deferred_recv_buf<RBuf>) {
@@ -173,6 +182,7 @@ void infer(comm_op::reduce, SBuf const& sbuf, RBuf& rbuf, MPI_Op, int root, MPI_
     }
 }
 
+/// allreduce: sizes a deferred receive buffer to `count(sbuf)`.
 template <mpi::experimental::send_buffer SBuf, mpi::experimental::recv_buffer RBuf>
 void infer(comm_op::allreduce, SBuf const& sbuf, RBuf& rbuf, MPI_Op, MPI_Comm) {
     if constexpr (kamping::v2::deferred_recv_buf<RBuf>) {
@@ -182,6 +192,7 @@ void infer(comm_op::allreduce, SBuf const& sbuf, RBuf& rbuf, MPI_Op, MPI_Comm) {
     }
 }
 
+/// gather: sizes a deferred receive buffer on root to `comm_size * count(sbuf)`.
 template <mpi::experimental::send_buffer SBuf, mpi::experimental::recv_buffer RBuf>
 void infer(comm_op::gather, SBuf const& sbuf, RBuf& rbuf, int root, MPI_Comm comm) {
     if constexpr (kamping::v2::deferred_recv_buf<RBuf>) {
@@ -192,6 +203,7 @@ void infer(comm_op::gather, SBuf const& sbuf, RBuf& rbuf, int root, MPI_Comm com
     }
 }
 
+/// gatherv: gathers the send counts into the deferred counts of the receive buffer on root.
 template <mpi::experimental::send_buffer SBuf, mpi::experimental::recv_buffer_v RBuf>
 void infer(comm_op::gatherv, SBuf const& sbuf, RBuf& rbuf, int root, MPI_Comm comm) {
     if constexpr (kamping::v2::deferred_recv_buf_v<RBuf>) {
@@ -207,6 +219,7 @@ void infer(comm_op::gatherv, SBuf const& sbuf, RBuf& rbuf, int root, MPI_Comm co
     }
 }
 
+/// scatter: broadcasts root's per-rank count to size a deferred receive buffer.
 template <mpi::experimental::send_buffer SBuf, mpi::experimental::recv_buffer RBuf>
 void infer(comm_op::scatter, SBuf const& sbuf, RBuf& rbuf, int root, MPI_Comm comm) {
     if constexpr (kamping::v2::deferred_recv_buf<RBuf>) {
@@ -217,10 +230,8 @@ void infer(comm_op::scatter, SBuf const& sbuf, RBuf& rbuf, int root, MPI_Comm co
     }
 }
 
-// Deferred send buffers (e.g. flatten_v_view wrapped in with_type_view) must be laid out
-// via set_comm_size() before their counts can be read, so sbuf cannot be const here.
-// Non-deferred send buffers are also accepted (the constraint check is a no-op for them).
-// Only root holds a meaningful variadic send buffer; non-root passes null_buf_v.
+/// scatterv: tells a deferred send buffer on root the communicator size, then scatters root's send counts to size a
+/// deferred receive buffer. `sbuf` is non-const for the former; non-root ranks pass `null_buf_v`.
 template <mpi::experimental::send_buffer_v SBuf, mpi::experimental::recv_buffer RBuf>
 void infer(comm_op::scatterv, SBuf& sbuf, RBuf& rbuf, int root, MPI_Comm comm) {
     if constexpr (kamping::v2::deferred_send_buf_v<SBuf>) {
@@ -236,6 +247,7 @@ void infer(comm_op::scatterv, SBuf& sbuf, RBuf& rbuf, int root, MPI_Comm comm) {
     }
 }
 
+/// scan: sizes a deferred receive buffer to `count(sbuf)`.
 template <mpi::experimental::send_buffer SBuf, mpi::experimental::recv_buffer RBuf>
 void infer(comm_op::scan, SBuf const& sbuf, RBuf& rbuf, MPI_Op, MPI_Comm) {
     if constexpr (kamping::v2::deferred_recv_buf<RBuf>) {
@@ -245,6 +257,7 @@ void infer(comm_op::scan, SBuf const& sbuf, RBuf& rbuf, MPI_Op, MPI_Comm) {
     }
 }
 
+/// exscan: sizes a deferred receive buffer to `count(sbuf)`.
 template <mpi::experimental::send_buffer SBuf, mpi::experimental::recv_buffer RBuf>
 void infer(comm_op::exscan, SBuf const& sbuf, RBuf& rbuf, MPI_Op, MPI_Comm) {
     if constexpr (kamping::v2::deferred_recv_buf<RBuf>) {
@@ -254,4 +267,4 @@ void infer(comm_op::exscan, SBuf const& sbuf, RBuf& rbuf, MPI_Op, MPI_Comm) {
     }
 }
 
-} // namespace kamping
+} // namespace kamping::v2
