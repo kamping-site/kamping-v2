@@ -101,8 +101,7 @@ if (NOT TARGET kamping::types)
     FetchContent_Declare(
         kamping_types
         GIT_REPOSITORY https://github.com/kamping-site/kamping
-        # v0.3.0 plus kamping#808 (ScopedFunctorOp must not require T to be assignable); use the next tag once released.
-        GIT_TAG 001f21510a7edef33248a9d4063073a7b05b5696
+        GIT_TAG v0.3.1
         SOURCE_SUBDIR kamping-types
     )
     FetchContent_MakeAvailable(kamping_types)
