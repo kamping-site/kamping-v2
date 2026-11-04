@@ -33,5 +33,6 @@ using mpi::experimental::commutativity_tag;
 using mpi::experimental::make_op;
 using mpi::experimental::non_commutative;
 using mpi::experimental::non_commutative_tag;
+using mpi::experimental::valid_op;
 
 } // namespace kamping::v2

@@ -65,20 +65,20 @@ struct rsx_t {};
 inline constexpr rsx_t rsx{};
 } // namespace sparse_alltoall_algorithm
 
-/// @brief One of the tags in @ref sparse_alltoall_algorithm.
+/// @brief One of the tags in `sparse_alltoall_algorithm`.
 template <typename T>
 concept is_sparse_alltoall_algorithm =
     std::same_as<T, sparse_alltoall_algorithm::nbx_t> || std::same_as<T, sparse_alltoall_algorithm::pcx_t>
     || std::same_as<T, sparse_alltoall_algorithm::rsx_t>;
 
-/// @brief Input of @ref sparse_alltoall, in one of two forms:
+/// @brief Input of `sparse_alltoall`, in one of two forms:
 /// - **sparse**: a range of `(destination, message)` pairs (`kamping::v2::sparse_nested_send_buffer`), or
 /// - **dense**: a range of messages whose index is the destination (`kamping::v2::nested_send_buffer`).
 ///
 /// Messages are sent in place, so they must be accessible through the buffer protocol
 /// (`kamping::v2::buffer_message`: a pointer and a count). Contiguous ranges qualify, as do custom buffers adapted via
-/// `buffer_traits` or `mpi_ptr()` / `mpi_count()`. Messages need no datatype of their own: it comes from the
-/// value-type channel (`kamping::v2::value_type`), one datatype for all messages.
+/// `buffer_traits` or `mpi_ptr()` / `mpi_count()`. Messages need no datatype of their own: all messages share the
+/// payload datatype of `sbuf` (see `views::with_value_type`).
 template <typename SBuf>
 concept sparse_alltoall_send_buffer =
     (kamping::v2::nested_send_buffer<SBuf> || kamping::v2::sparse_nested_send_buffer<SBuf>)
@@ -206,9 +206,8 @@ void receive_counted(
 
 /// @brief Reusable RSX counter windows, one per communicator.
 ///
-/// Pass one to the RSX overload of @ref sparse_alltoall to allocate the counter window only on the first exchange on
-/// each communicator, instead of on every exchange. Destroying the cache frees the windows (collective). See
-/// `docs/attribute_caching.md`.
+/// Pass one to the RSX overload of `sparse_alltoall` to allocate the counter window only on the first exchange on
+/// each communicator, instead of on every exchange. Destroying the cache frees the windows (collective).
 using rsx_window_cache = kamping::v2::cache<kamping::v2::attribute::comm, detail::rsx_counter>;
 
 /// @brief Sparse personalized all-to-all with the NBX protocol.
@@ -217,12 +216,12 @@ using rsx_window_cache = kamping::v2::cache<kamping::v2::attribute::comm, detail
 /// Only processes that exchange messages communicate point-to-point; completion is detected with a nonblocking
 /// barrier, so there is no collective on the message counts.
 ///
-/// **Input** (see @ref sparse_alltoall_send_buffer). `sbuf` is either a range of `(destination, message)` pairs, in
+/// **Input** (see `sparse_alltoall_send_buffer`). `sbuf` is either a range of `(destination, message)` pairs, in
 /// which a destination may appear more than once, or a range of messages indexed by destination (at most one entry
-/// per process). Each message is a buffer-protocol message (e.g. a contiguous range), sent in place; empty messages
-/// are not sent, so only processes that exchange
-/// data communicate. The MPI datatype of the elements is taken from the value-type channel: attach it with
-/// `views::with_value_type(dt)` or `views::with_value_pool(pool)`, or rely on the builtin fallback. The dense form
+/// per process). Each message is a buffer (e.g. a contiguous range), sent in place; empty messages are not sent, so
+/// only processes that exchange data communicate. The MPI datatype of the elements is the payload datatype of `sbuf`:
+/// attach it with `views::with_value_type(dt)` or `views::with_value_pool(pool)`, or rely on the builtin datatype of
+/// the element type. The dense form
 /// takes O(p) local time to scan; the sparse form only touches the messages actually sent.
 ///
 /// **Callback.** `on_message` must start receiving the message (`kamping::v2::mrecv` / `imrecv`) before it returns,
@@ -372,18 +371,18 @@ void sparse_alltoall(SBuf&& sbuf, OnMessage&& on_message, Tag tag, Comm const& c
 
 // ── Layer 2: receive into one buffer ─────────────────────────────────────────
 
-/// @brief A recv buffer for the recv-buffer overloads of @ref sparse_alltoall: any `recv_buffer`, presized or deferred
-/// (e.g. `views::resize`), that cannot be mistaken for a Layer 1 callback.
+/// @brief A recv buffer for the recv-buffer overloads of `sparse_alltoall`: any `recv_buffer`, presized or deferred
+/// (e.g. `views::resize`), that cannot be mistaken for a callback.
 template <typename RBuf>
 concept sparse_alltoall_recv_buffer =
     kamping::v2::recv_buffer<RBuf> && !std::invocable<RBuf, kamping::v2::probe_result>;
 
 /// @brief Sparse personalized all-to-all receiving all messages into `rbuf`, one after the other in arrival order.
 ///
-/// A Layer 1 call (any protocol) whose callback receives each message at the next free position of `rbuf`, in the
-/// datatype of `rbuf`. `args` are the arguments following the callback in the Layer 1 overloads: the tag, optionally
-/// the communicator and, for RSX, optionally the cached counter windows. A flat variadic buffer becomes an input via
-/// `views::chunked`:
+/// Like the callback overloads (with any protocol), but each message is received at the next free position of
+/// `rbuf`, in the datatype of `rbuf`. `args` are the arguments that follow the callback in the callback overloads:
+/// the tag, optionally the communicator and, for RSX, optionally the cached counter windows. A flat variadic buffer
+/// becomes an input via `views::chunked`:
 /// @code
 /// auto received = dstl::sparse_alltoall(
 ///     nbx, data | views::with_counts(counts) | views::auto_displs() | views::chunked, out | views::resize, tag, comm);

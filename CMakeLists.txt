@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.25)
 include(cmake/kamping-v2-version.cmake)
 project(
     kamping-v2
-    DESCRIPTION "KaMPIng v2: concept-based C++20 MPI bindings"
+    DESCRIPTION "KaMPIng-v2: concept-based C++20 MPI bindings"
     LANGUAGES CXX
     VERSION ${KAMPING_V2_VERSION}
 )
@@ -36,6 +36,10 @@ add_subdirectory(mpi-core)
 add_subdirectory(kamping-v2)
 add_subdirectory(dstl)
 add_subdirectory(ecosystem)
+
+if (KAMPING_V2_BUILD_DOCS)
+    add_subdirectory(docs)
+endif ()
 
 if (PROJECT_IS_TOP_LEVEL
     AND BUILD_TESTING

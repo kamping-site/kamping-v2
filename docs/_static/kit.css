@@ -1,0 +1,41 @@
+/* KIT corporate colours for the Furo theme. The brand and link colours are set in conf.py (html_theme_options);
+ * this file maps the admonitions onto the KIT palette:
+ *   green #009682, blue #4664AA, may green #8CB63C, yellow #FCE500, orange #DF9B1B, red #A22223, lilac #A3107C,
+ *   cyan #23A1E0. */
+body {
+    --color-admonition-title--note: #4664aa;
+    --color-admonition-title-background--note: rgba(70, 100, 170, 0.15);
+    --color-admonition-title--seealso: #4664aa;
+    --color-admonition-title-background--seealso: rgba(70, 100, 170, 0.15);
+    --color-admonition-title--important: #009682;
+    --color-admonition-title-background--important: rgba(0, 150, 130, 0.15);
+    --color-admonition-title--tip: #8cb63c;
+    --color-admonition-title-background--tip: rgba(140, 182, 60, 0.15);
+    --color-admonition-title--hint: #8cb63c;
+    --color-admonition-title-background--hint: rgba(140, 182, 60, 0.15);
+    --color-admonition-title--warning: #df9b1b;
+    --color-admonition-title-background--warning: rgba(223, 155, 27, 0.15);
+    --color-admonition-title--caution: #df9b1b;
+    --color-admonition-title-background--caution: rgba(223, 155, 27, 0.15);
+    --color-admonition-title--attention: #a22223;
+    --color-admonition-title-background--attention: rgba(162, 34, 35, 0.15);
+    --color-admonition-title--danger: #a22223;
+    --color-admonition-title-background--danger: rgba(162, 34, 35, 0.15);
+    --color-admonition-title--error: #a22223;
+    --color-admonition-title-background--error: rgba(162, 34, 35, 0.15);
+    --color-admonition-title: #009682; /* generic admonitions, e.g. preconditions */
+    --color-admonition-title-background: rgba(0, 150, 130, 0.15);
+}
+
+/* Overload numbers at the top right of each signature, as on cppreference. */
+.sig:has(> .overload-number) {
+    position: relative;
+    padding-right: 3em;
+}
+.sig > .overload-number {
+    position: absolute;
+    top: 0.25em;
+    right: 0.5em;
+    color: var(--color-foreground-secondary);
+    font-weight: normal;
+}

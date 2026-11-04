@@ -78,6 +78,10 @@ namespace kamping::v2::views {
 
 /// Pipe adaptor: redirects mpi_ptr() to the raw Thrust device pointer, so CUDA-aware MPI reads and writes device
 /// memory directly: `d_vec | kamping::v2::views::thrust`.
+///
+/// @code{.signature}
+/// template <typename Buf> auto thrust(Buf&& buf);
+/// @endcode
 inline constexpr struct thrust_fn : kamping::v2::adaptor_closure<thrust_fn> {
     template <typename R>
     constexpr auto operator()(R&& r) const {

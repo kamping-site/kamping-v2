@@ -18,10 +18,10 @@ namespace mpi::experimental {
 /// Non-owning wrapper around an MPI_Request*.
 ///
 /// Satisfies convertible_to_mpi_handle_ptr<MPI_Request> so it can be passed to
-/// any mpi::experimental:: non-blocking operation as the request output parameter.
+/// any non-blocking operation as its request argument.
 /// Does not complete or free the request on destruction — use request or iresult for RAII.
 ///
-/// wait() and test() are shorthands for the free functions in mpi/completion/wait.hpp and
+/// wait() and test() are shorthands for the free functions `wait()` and `test()` and
 /// follow the same semantics as iresult: wait() blocks until
 /// the operation completes; test() polls and returns true when done. Both accept
 /// an optional status out-parameter via convertible_to_mpi_handle_ptr<MPI_Status>
@@ -78,11 +78,13 @@ namespace detail {
 /// Owning, move-only wrapper around an MPI_Request.
 ///
 /// Satisfies convertible_to_mpi_handle_ptr<MPI_Request>, so it can be passed directly to any
-/// mpi::experimental:: non-blocking operation as the request output parameter:
+/// non-blocking operation as its request argument:
 ///
-///   request r;
-///   isend(buf, dest, tag, comm, r);
-///   r.wait();
+/// @code
+/// kamping::v2::request r;
+/// kamping::v2::isend(r, buf, dest, comm);
+/// r.wait();
+/// @endcode
 ///
 /// The request must be completed explicitly — with wait(), a successful test(), or the free completion functions —
 /// or handed off with release(); the library never completes a request implicitly. Destroying or move-assigning over
@@ -140,13 +142,13 @@ public:
         return request_view{_req};
     }
 
-    /// Shorthand for mpi::experimental::wait(*this, status).
+    /// Shorthand for `wait(*this, status)`.
     template <convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>
     void wait(Status&& status = MPI_STATUS_IGNORE) {
         mpi::experimental::wait(_req, std::forward<Status>(status));
     }
 
-    /// Shorthand for mpi::experimental::test(*this, status).
+    /// Shorthand for `test(*this, status)`.
     template <convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>
     bool test(Status&& status = MPI_STATUS_IGNORE) {
         return mpi::experimental::test(_req, std::forward<Status>(status));

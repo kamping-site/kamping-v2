@@ -88,9 +88,16 @@ inline constexpr bool enable_borrowed_buffer<resize_view<Base>> = enable_borrowe
 
 namespace kamping::v2::views {
 
-/// Wraps a resizable buffer so the collective can call set_recv_count(n) to infer its size.
-/// Always outermost in a pipe chain: vec | with_type(t) | resize
-/// Does not take extra arguments — use as: val | views::resize  or  views::resize(val)
+/// Resizes the wrapped container to fit the incoming data before receiving: `buf | views::resize`.
+///
+/// The operation determines the receive count (for point-to-point receives by probing the message) and passes it
+/// to `set_recv_count(n)`; the container is resized on first access to its data. Existing elements are kept. Takes
+/// no arguments, so it is applied without parentheses. Place it last in a pipeline: `buf | views::with_type(t) |
+/// views::resize`.
+///
+/// @code{.signature}
+/// template <typename Buf> auto resize(Buf&& buf);
+/// @endcode
 inline constexpr struct resize_fn : kamping::v2::adaptor_closure<resize_fn> {
     template <typename R>
     constexpr auto operator()(R&& r) const {

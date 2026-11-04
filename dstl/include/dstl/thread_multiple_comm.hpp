@@ -46,20 +46,20 @@ namespace dstl {
 #endif
 }
 
-/// (Flat) communicator for the thread_multiple model: it owns
-/// `t = flat_max_threads()` duplicated communicators so that `t` concurrent MPI_Alltoallv calls can
-/// run, one per thread.
+/// A communicator for @ref alltoallv with concurrent communication from several threads: it owns `t` duplicates of
+/// the global communicator, one per thread. Its accessors (`rank()`, `size()`, …) refer to the global communicator.
 class thread_multiple_comm : public kamping::v2::comm_accessors<thread_multiple_comm> {
 public:
     using execution_policy_type = execution_policy::par_comm;
 
-    /// Borrow `global` and duplicate `t` communicators (collective). Asserts that the runtime
-    /// provides MPI_THREAD_MULTIPLE.
+    /// Duplicates `global` once per thread (collective); `global` itself is borrowed. Asserts that MPI was
+    /// initialized with `MPI_THREAD_MULTIPLE`.
     ///
-    /// `t` must be identical on every rank: both MPI_Comm_dup here and the per-thread MPI_Alltoallv
-    /// later are collective, so thread `t` on every rank has to participate. `flat_max_threads()`
-    /// (i.e. `omp_get_max_threads()`) can legitimately differ across ranks under CPU affinity or
-    /// oversubscription, so we agree on the maximum via an MPI_Allreduce before duplicating.
+    /// The number of threads `t` is the maximum of `flat_max_threads()` over all processes, since it can differ
+    /// between them, e.g. with CPU affinity.
+    //
+    // `t` must be identical on every rank: both MPI_Comm_dup here and the per-thread MPI_Alltoallv later are
+    // collective, so thread `t` on every rank has to participate; hence the MPI_Allreduce before duplicating.
     explicit thread_multiple_comm(kamping::v2::comm_view global) : _global(global) {
         KAMPING_ASSERT(
             kamping::v2::environment::thread_level() >= kamping::v2::ThreadLevel::multiple,

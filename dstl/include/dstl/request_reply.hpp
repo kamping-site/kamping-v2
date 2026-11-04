@@ -27,8 +27,8 @@
 /// @file
 /// dstl::request_reply — a round-trip collective over a plain MPI_Comm in the style of a std::ranges
 /// algorithm: given a buffer of `(value, destination)` request pairs and an output buffer, it ships each
-/// request to its destination rank, answers it locally and 1:1 via `make_reply`, and writes the reply for
-/// the i-th request into `result[i]`. Built on the reversible `dstl::exchange` (forward + transpose
+/// request to its destination rank, answers it locally and 1:1 via `make_reply`, and writes the replies into
+/// `result`, grouped by responder rank. Built on the reversible `dstl::exchange` (forward + transpose
 /// reverse, no reply-direction count negotiation — DSTL-Request-Reply-Design R1/R2). Execution policy
 /// `seq` (default) / `par` is a trailing tag that only governs the local loops; the MPI exchange is
 /// single-threaded either way. See DSTL-Request-Reply-Flat-Plan.md.
@@ -157,42 +157,35 @@ packed_buffer<T> counting_sort_pack(chunking const& chunks, int nbuckets, std::p
 
 } // namespace detail
 
-/// Round-trip collective: ship each request to its destination rank, answer it locally and 1:1 via
-/// `make_reply`, and deposit the replies grouped by responder rank into `result`.
+/// Sends each request to its destination, answers it there with `make_reply`, and returns the replies.
 ///
-/// The output mirrors the grid alltoallv's recv-ordering model and reuses the same tags. On the flat path
-/// the reverse exchange deposits replies already grouped by responder rank (displacements equal to this
-/// rank's forward send displacements), so both tags describe the same data layout and differ only in what
-/// `result` exposes:
-///   * `layout::unordered` (default) — `result` is a plain `recv_buffer`: the replies, grouped by
-///     responder, with no per-rank metadata.
-///   * `layout::ordered_by_source` — `result` is a variadic `recv_buffer_v` (e.g. `views::auto_recv_v`):
-///     the same replies, with the per-responder counts (== this rank's forward send counts) filled in, so
-///     the caller can tell which block came from which responder.
+/// `requests` is a range of `(value, destination)` pairs. Every process applies `make_reply` to each request it
+/// receives, and the replies travel back to the requesting process, where they are written to `result`, grouped by
+/// the rank that answered them and, within a group, in the order of the requests:
 ///
-/// @param requests  A `value_destination_pair_buffer` that is additionally a sized `random_access_range`:
-///                   a range of `(value, destination)` pairs indexed directly (and twice) by the bucketing
-///                   pack, so a forward-only range must be materialized by the caller first. `value` is the
-///                   request payload shipped to `destination` (a rank, plain `int` or a strongly-typed
-///                   wrapper); the payload type must be trivially copyable.
-/// @param result    The output recv buffer (a contiguous range). For `unordered` any `recv_buffer`
-///                   (a plain `std::vector<Reply>` or `vec | views::resize`); for `ordered_by_source` a
-///                   `recv_buffer_v` (e.g. `views::auto_recv_v`). Deferred/resizable buffers are sized
-///                   automatically; a fixed buffer must already hold this rank's total reply count.
-/// @param make_reply  Element-wise `Reply(Value const&)`. The reply must be trivially copyable — it rides
-///                    MPI back.
-/// @param comm        A plain `MPI_Comm` (or anything convertible to one).
-/// @tparam Exec       `execution_policy::seq` (default) or `::par`. `par` OpenMP-parallelizes only the local
-///                    loops (bucketing pack, `make_reply`); the MPI exchange is single-threaded in both.
-///                    `par_comm` is rejected.
-/// @tparam Order      `layout::unordered` (default) or `layout::ordered_by_source` (see above).
-/// @return The `result` buffer, forwarded (an lvalue is returned by reference, an rvalue by value).
+/// @code
+/// std::vector<std::pair<int, int>> requests = ...;   // (key, owner rank)
+/// std::vector<double> values;
+/// dstl::request_reply(requests, values | views::resize, [&](int key) { return lookup(key); }, comm);
+/// @endcode
 ///
-/// The request datatype is resolved from `requests` itself via `kamping::v2::value_type()`, not a separate
-/// positional argument: the pair-range input carries no datatype on its own, so a non-builtin (custom)
-/// request value must attach one on the buffer — `requests | kamping::v2::views::with_value_type(dt)` or
-/// `| kamping::v2::views::with_auto_value_pool(pool)` — before calling. A builtin request value (e.g. `int`)
-/// needs no annotation; `value_type()`'s own builtin fallback covers it.
+/// The replies to the requests for rank `r` follow those for rank `r - 1`. With `layout::ordered_by_source`,
+/// `result` must be a variable-size receive buffer (e.g. `views::auto_recv_v`), which then also receives the number
+/// of replies per rank.
+///
+/// Requests and replies must be trivially copyable. The datatype of the requests is the payload datatype of
+/// `requests`: for builtin types it is found automatically; otherwise attach it with
+/// `requests | views::with_value_type(dt)` or `requests | views::with_auto_value_pool(pool)`.
+///
+/// @param requests    A sized random-access range of `(value, destination)` pairs; the destination is a rank.
+/// @param result      The receive buffer for the replies, a contiguous range. With `views::resize` (or
+///                    `views::auto_recv_v`) it is sized automatically; otherwise it must already hold all replies.
+/// @param make_reply  Computes the reply to a request: `Reply(Value const&)`.
+/// @param comm        The communicator.
+/// @tparam Exec       `execution_policy::seq` (default) or `execution_policy::par`, which computes the replies and
+///                    sorts the requests with OpenMP. The communication is single-threaded in both cases.
+/// @tparam Order      `layout::unordered` (default) or `layout::ordered_by_source`.
+/// @return The `result` buffer: by reference if passed as an lvalue, by value if passed as an rvalue.
 template <
     kamping::v2::value_destination_pair_buffer Requests,
     typename RBuf,
@@ -251,7 +244,7 @@ auto request_reply(
         recv_requests | views::with_type(request_type) | views::auto_recv_v,
         c
     );
-    exchange_layout const layout{fwd.send, fwd.recv};
+    detail::exchange_layout const layout{fwd.send, fwd.recv};
 
     // Answer each received request locally, 1:1, in forward recv order.
     std::span<Value const> const recv{recv_requests.data(), recv_requests.size()};
@@ -261,10 +254,10 @@ auto request_reply(
     // groups the replies as the forward recv layout, so they land grouped by responder rank (displs ==
     // forward send_displs). The reply MPI datatype is taken from the output buffer (the recv buffer carries
     // its own type) and attached to the reply send data.
-    exchange_layout const rev        = reverse_layout(layout);
-    MPI_Datatype const    reply_dt   = kamping::v2::type(result);
-    auto                  reply_send = replies | views::with_type(reply_dt) | views::with_counts(rev.send_counts)
-                                       | views::with_displs(rev.send_displs);
+    detail::exchange_layout const rev      = detail::reverse_layout(layout);
+    MPI_Datatype const            reply_dt = kamping::v2::type(result);
+    auto reply_send                        = replies | views::with_type(reply_dt) | views::with_counts(rev.send_counts)
+                                             | views::with_displs(rev.send_displs);
     if constexpr (ordered) {
         // result is a managed recv_buffer_v: kamping::v2::alltoallv fills its per-responder counts (== this
         // rank's forward send counts) and sizes it. Borrow result here (it is returned below).

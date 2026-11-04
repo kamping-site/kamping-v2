@@ -10,14 +10,14 @@
 #include "kamping/v2/buffer.hpp"
 
 /// @file
-/// dstl::exchange_layout / dstl::reverse_layout — the retained per-rank routing of an all-to-all-v, and its
-/// transpose. After a forward `kamping::v2::alltoallv` into an auto-managed variadic recv buffer, both
-/// buffers carry the negotiated per-rank counts and displacements; `exchange_layout` snapshots them so the
-/// exchange can be replayed in reverse with NO further count negotiation (DSTL-Request-Reply-Design R1/R2).
-/// `reverse_layout` transposes a layout (send <-> recv); feeding its counts/displs into a second
-/// `kamping::v2::alltoallv` ships a 1:1 reply set back along the inverse route.
+/// dstl::detail::exchange_layout / dstl::detail::reverse_layout (internal to dstl::request_reply) — the retained
+/// per-rank routing of an all-to-all-v, and its transpose. After a forward `kamping::v2::alltoallv` into an
+/// auto-managed variadic recv buffer, both buffers carry the negotiated per-rank counts and displacements;
+/// `exchange_layout` snapshots them so the exchange can be replayed in reverse with NO further count negotiation
+/// (DSTL-Request-Reply-Design R1/R2). `reverse_layout` transposes a layout (send <-> recv); feeding its counts/displs
+/// into a second `kamping::v2::alltoallv` ships a 1:1 reply set back along the inverse route.
 
-namespace dstl {
+namespace dstl::detail {
 
 /// The per-rank send and recv counts and displacements of an all-to-all-v, in element units (one entry per
 /// rank). `send_*` describe this rank's send (per destination), `recv_*` its recv (per source).
@@ -57,9 +57,9 @@ private:
     }
 };
 
-/// The transpose of a layout: the reverse exchange's send layout is the forward recv layout and vice versa.
-/// Attaching the result's counts/displs to the buffers of a second `kamping::v2::alltoallv` replays the
-/// exchange backward — with both layouts already known, no count negotiation is needed (R1/R2).
+/// The transpose of a layout: the send layout of the reverse exchange is the receive layout of the forward one, and
+/// vice versa. Attaching its counts and displacements to the buffers of a second `kamping::v2::alltoallv` sends the
+/// data back the way it came, without exchanging counts again.
 [[nodiscard]] inline exchange_layout reverse_layout(exchange_layout const& layout) {
     exchange_layout reversed;
     reversed.send_counts = layout.recv_counts;
@@ -69,4 +69,4 @@ private:
     return reversed;
 }
 
-} // namespace dstl
+} // namespace dstl::detail

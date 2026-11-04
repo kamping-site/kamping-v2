@@ -59,18 +59,18 @@ inline void for_each_thread([[maybe_unused]] int nthreads, F&& body) {
 
 } // namespace detail
 
-/// Drop-in flat all-to-all-v dispatched on a `dstl::thread_multiple_comm`. The call site matches the flat
-/// KaMPIng v2 alltoallv; only the communicator changes from a flat comm to a `thread_multiple_comm`. The send
-/// buffer is a standard variadic `send_buffer_v` (`data | with_counts | with_displs`); the recv
-/// buffer is any resizable contiguous range (e.g. a plain `std::vector<T>`).
+/// All-to-all-v that uses several threads for the communication itself, on a `dstl::thread_multiple_comm`.
 ///
-/// Implements the MultiThreadedAlltoAll algorithm over the duplicated communicators owned by the
-/// `thread_multiple_comm`: each destination block is split across the `T` threads and `T` concurrent
-/// count+data `MPI_Alltoallv` calls run, one per duplicated communicator. The local bookkeeping is
-/// O(T*p) and cheap, so it is left serial.
+/// The call looks like `kamping::v2::alltoallv`, with a `thread_multiple_comm` instead of a communicator. The data
+/// for each destination is split among the `t` threads of the communicator, and `t` `MPI_Alltoallv`s run
+/// concurrently, one per thread, on their own duplicated communicators. The result is identical to a single
+/// `alltoallv`. Requires `MPI_THREAD_MULTIPLE`.
 ///
-/// Unlike the grid wrapper there is no recv-ordering tag: the per-thread recv displacements already
-/// reassemble each source's block in rank order, so the result is always flat-identical.
+/// @code
+/// dstl::thread_multiple_comm tmc{comm};
+/// auto [_, recv] = dstl::alltoallv(data | views::with_counts(counts) | views::auto_displs,
+///                                  kamping::v2::auto_recv_v<int>(), tmc);
+/// @endcode
 template <kamping::v2::send_buffer_v SBuf, kamping::v2::recv_buffer_v RBuf>
 auto alltoallv(SBuf&& sbuf, RBuf&& rbuf, thread_multiple_comm const& fc) -> kamping::v2::result<SBuf, RBuf> {
     namespace views = kamping::v2::views;

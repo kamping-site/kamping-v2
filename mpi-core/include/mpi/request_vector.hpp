@@ -27,9 +27,11 @@ namespace mpi::experimental {
 ///
 /// Typical use is to hand a fresh slot straight to a non-blocking operation:
 ///
-///   request_vector requests;
-///   isend(buf, dest, tag, comm, requests.emplace_back());
-///   waitall(requests);
+/// @code
+/// kamping::v2::request_vector requests;
+/// kamping::v2::isend(requests.emplace_back(), buf, dest, comm);
+/// kamping::v2::waitall(requests);
+/// @endcode
 ///
 /// Ownership: move-only. Like `request`, the vector never completes a request implicitly: every request must be
 /// completed explicitly (e.g. `waitall(requests)`) or handed off with `release()`/`extract()` before it is dropped.

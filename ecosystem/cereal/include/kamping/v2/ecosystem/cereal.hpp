@@ -21,7 +21,7 @@ namespace kamping::v2 {
 ///                 views, or a value type for owning views.
 /// @tparam Alloc   Allocator for the internal byte buffer (default: `std::allocator<char>`).
 ///
-/// Construct via `obj | kamping::views::serialize` (non-owning, lvalue) or
+/// Construct via `obj | kamping::v2::views::serialize` (non-owning, lvalue) or
 /// `kamping::v2::views::deserialize<T>()` (owning, default-constructed recv target).
 ///
 /// **Send path** — `mpi_count()` / `mpi_ptr() const` lazily serialize the wrapped object
@@ -205,8 +205,12 @@ serialization_view(T&&) -> serialization_view<T>;
 
 namespace kamping::v2::views {
 /// Range adaptor that wraps any object in a `serialization_view` for MPI transport.
-/// Pipe an lvalue or rvalue through it: `obj | kamping::views::serialize`.
+/// Pipe an lvalue or rvalue through it: `obj | kamping::v2::views::serialize`.
 /// Lvalues produce a non-owning view; rvalues produce an owning view.
+///
+/// @code{.signature}
+/// template <typename T> auto serialize(T&& obj);
+/// @endcode
 inline constexpr struct serialize_fn : kamping::v2::adaptor_closure<serialize_fn> {
     template <typename R>
     constexpr auto operator()(R&& r) const {
@@ -214,10 +218,15 @@ inline constexpr struct serialize_fn : kamping::v2::adaptor_closure<serialize_fn
     }
 } serialize{};
 
-/// Returns an owning serialization_view<T> with a default-constructed T.
-/// Use as a recv buffer when the object does not exist yet:
-///   auto view = comm.recv(kamping::v2::views::deserialize<MyType>(), 0);
-///   MyType& result = *view;
+/// Makes a receive buffer that deserializes into a new, default-constructed `T`.
+///
+/// The buffer sizes itself to the incoming message, like `views::resize`; the object is deserialized on first access
+/// through `operator*`:
+///
+/// @code
+/// auto received = kamping::v2::recv(kamping::v2::views::deserialize<MyType>(), source, comm);
+/// MyType& result = *received;
+/// @endcode
 template <typename T>
     requires std::default_initializable<T>
 auto deserialize() {

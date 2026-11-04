@@ -68,7 +68,7 @@ auto reduce(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm) -> result<SBuf, RBuf> {
     return kamping::v2::reduce(std::forward<SBuf>(sbuf), std::forward<RBuf>(rbuf), std::plus<>{}, 0, comm);
 }
 
-/// Non-root shorthand of @ref reduce: contributes `sbuf` to the reduction with `op` on `root`, without a receive
+/// Non-root shorthand of `reduce`: contributes `sbuf` to the reduction with `op` on `root`, without a receive
 /// buffer.
 /// @return The send buffer.
 template <
@@ -80,7 +80,7 @@ auto reduce(SBuf&& sbuf, Op const& op, Root root, Comm const& comm) -> SBuf {
     return kamping::v2::reduce(std::forward<SBuf>(sbuf), null_buf_t{}, op, std::move(root), comm).send;
 }
 
-/// Non-root shorthand of @ref reduce: contributes `sbuf` to the reduction with `op` on rank 0.
+/// Non-root shorthand of `reduce`: contributes `sbuf` to the reduction with `op` on rank 0.
 /// @return The send buffer.
 template <
     mpi::experimental::send_buffer                         SBuf,
@@ -90,7 +90,7 @@ auto reduce(SBuf&& sbuf, Op const& op, Comm const& comm) -> SBuf {
     return kamping::v2::reduce(std::forward<SBuf>(sbuf), null_buf_t{}, op, 0, comm).send;
 }
 
-/// Non-root shorthand of @ref reduce: contributes `sbuf` to the sum on rank 0.
+/// Non-root shorthand of `reduce`: contributes `sbuf` to the sum on rank 0.
 /// @return The send buffer.
 template <mpi::experimental::send_buffer SBuf, mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
     requires mpi::experimental::valid_op<std::plus<>, SBuf, null_buf_t>

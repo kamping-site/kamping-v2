@@ -96,10 +96,16 @@ inline constexpr bool enable_borrowed_buffer<resize_v_view<Base>> = enable_borro
 
 namespace kamping::v2::views {
 
-/// Wraps a base buffer (which must already provide mpi_counts() and mpi_displs(),
-/// e.g. via auto_counts | auto_displs or with_counts | with_displs) so the
-/// underlying data buffer is resized to the correct total size on mpi_ptr().
-/// Use as: buf | auto_counts() | auto_displs() | resize_v
+/// Resizes a variable-size receive buffer to fit its counts and displacements before receiving:
+/// `buf | views::auto_counts | views::auto_displs | views::resize_v`.
+///
+/// The buffer must already provide per-rank counts and displacements, e.g. via `auto_counts | auto_displs` or
+/// `with_counts | with_displs`. The container is resized on first access to its data, once the counts are known;
+/// with monotonic displacements in O(1). Takes no arguments, so it is applied without parentheses.
+///
+/// @code{.signature}
+/// template <typename Buf> auto resize_v(Buf&& buf);
+/// @endcode
 inline constexpr struct resize_v_fn : kamping::v2::adaptor_closure<resize_v_fn> {
     template <typename R>
     constexpr auto operator()(R&& r) const {

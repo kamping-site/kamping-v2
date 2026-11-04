@@ -23,8 +23,8 @@
 
 namespace dstl {
 
-/// Balanced factors via MPI_Dims_create; k = `levels` (default 2-level grid).
-/// MPI guarantees the returned factors multiply to p and are as balanced as possible.
+/// A balanced grid with `levels` dimensions (default 2), computed with `MPI_Dims_create`: the dimensions multiply to
+/// the number of processes and are as close to each other as possible.
 struct dims_create {
     std::size_t levels = 2;
 
@@ -37,9 +37,9 @@ struct dims_create {
     }
 };
 
-/// One dimension per hardware tier. First cut: a 2-level intra-/inter-node split,
-/// derived from MPI_Comm_split_type(MPI_COMM_TYPE_SHARED). Falls back to dims_create{2}
-/// when the node decomposition is ragged (heterogeneous node sizes).
+/// One dimension per hardware level: a two-dimensional grid of nodes × processes per node, derived from
+/// `MPI_Comm_split_type(MPI_COMM_TYPE_SHARED)`. Falls back to `dims_create{2}` if the nodes have different numbers of
+/// processes.
 struct topology_aware {
     std::vector<std::size_t> operator()(kamping::v2::comm_view global) const {
         auto     p      = static_cast<std::size_t>(global.size());
@@ -74,7 +74,7 @@ struct topology_aware {
     }
 };
 
-/// Caller-provided factor vector, used verbatim (product must equal p — checked by grid_comm).
+/// Dimensions given by the caller, used as they are; their product must equal the number of processes.
 struct explicit_dims {
     std::vector<std::size_t> dims;
 
@@ -83,7 +83,7 @@ struct explicit_dims {
     }
 };
 
-/// Concept: a callable mapping a comm_view to a factor vector.
+/// A factoring strategy: a callable that maps the global communicator to the grid dimensions, e.g. `dims_create`.
 template <typename T>
 concept factoring = requires(T const& strategy, kamping::v2::comm_view global) {
     { strategy(global) } -> std::convertible_to<std::vector<std::size_t>>;

@@ -19,7 +19,7 @@ inline constexpr sync_t     sync{};     ///< Synchronous mode (`MPI_Ssend`).
 inline constexpr ready_t    ready{};    ///< Ready mode (`MPI_Rsend`).
 } // namespace send_mode
 
-/// One of the @ref send_mode tags.
+/// One of the `send_mode` tags.
 template <typename T>
 concept is_send_mode = std::same_as<std::remove_cvref_t<T>, send_mode::standard_t>
                        || std::same_as<std::remove_cvref_t<T>, send_mode::buffered_t>

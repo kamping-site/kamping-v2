@@ -95,7 +95,7 @@ struct type {
 
 } // namespace attribute
 
-/// @brief A kind tag from @ref attribute: names a handle type and its attribute functions.
+/// @brief A kind tag from `attribute`: names a handle type and its attribute functions.
 template <typename Kind>
 concept attribute_kind =
     builtin_handle<typename Kind::handle_type>

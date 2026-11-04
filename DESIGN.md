@@ -1,12 +1,12 @@
-# KaMPIng v2 Design Guide
+# KaMPIng-v2 Design Guide
 
-This document describes the design patterns and layering in KaMPIng v2. It's meant as a reference for implementing new features and understanding the existing code without reading every header.
+This document describes the design patterns and layering in KaMPIng-v2. It's meant as a reference for implementing new features and understanding the existing code without reading every header.
 
 ## Architecture Overview
 
-KaMPIng v2 uses a **layered architecture** with a clear separation of concerns:
+KaMPIng-v2 uses a **layered architecture** with a clear separation of concerns:
 
-```
+```text
 ┌─────────────────────────────────────────────────┐
 │  v2 Wrappers (kamping/v2/)                      │
 │  - infer() protocol (deferred sizing, metadata) │
@@ -40,7 +40,7 @@ The key principle: **core layer is views-free**. All view machinery, ownership f
 
 All MPI operations work with buffers satisfying one of these concepts:
 
-```cpp
+```text
 // Single-buffer operations (send, recv, allgather, broadcast, etc.)
 concept send_buffer {
     count(t) → std::integral                    // element count

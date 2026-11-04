@@ -63,17 +63,14 @@ template <typename T>
 concept grid_element = std::default_initializable<T> && std::indirectly_copyable<T const*, T*>;
 } // namespace detail
 
-/// Send buffer accepted by the grid alltoallv: a standard variadic send buffer (`send_buffer_v` — data +
-/// type + per-destination counts + displacements) that is additionally a `contiguous_range`. The range
-/// requirement is what makes the element type extractable: the buffer protocol only guarantees `ptr()` is
-/// convertible to `void const*`, so the element type cannot be read off the pointer — we recover it via
-/// `std::ranges::range_value_t`. Contiguity (not just `range`) is the honest contract: the body does
-/// pointer arithmetic on `ptr()` and stages whole elements, and a contiguous `T` array whose stride equals
-/// the datatype's extent is exactly what makes a *gapped* MPI datatype behave correctly. The element type
-/// must satisfy `detail::grid_element` (default-initializable + copyable via `std::ranges::copy_n` for the
-/// internal staging). (A `send_buffer_v` that is not a contiguous range — e.g. a raw `mpi_span_v` — has no
-/// knowable element type and so cannot drive the local block copies the routing performs; it is correctly
-/// rejected.)
+/// A send buffer for `grid_alltoallv`: a variable-size send buffer that is also a contiguous range, e.g.
+/// `data | views::with_counts(counts) | views::auto_displs`. Its elements must be default-initializable and copyable.
+//
+// Why a contiguous range: the routing copies whole elements through staging buffers, so it needs the element type,
+// which the buffer protocol alone does not give (`ptr()` is only convertible to `void const*`); it is recovered as
+// `std::ranges::range_value_t`. Contiguity, not just `range`, is the honest contract: the body does pointer
+// arithmetic on `ptr()`, and a contiguous `T` array whose stride equals the datatype's extent is what makes a gapped
+// MPI datatype behave correctly. A raw `mpi_span_v` has no knowable element type and is rejected.
 template <typename SBuf>
 concept grid_send_buffer = kamping::v2::send_buffer_v<SBuf> && std::ranges::contiguous_range<SBuf>
                            && detail::grid_element<std::ranges::range_value_t<SBuf>>;
@@ -84,19 +81,18 @@ template <typename T>
 concept grid_compatible_output_layout =
     std::is_same_v<T, layout::unordered> || std::is_same_v<T, layout::ordered_by_source>;
 
-/// Recv buffer accepted by the grid alltoallv, constrained by the recv ordering. In `ordered_by_source`
-/// mode the result is a genuine alltoallv with well-defined per-source counts, so the recv buffer must be
-/// a *variadic* recv buffer (`recv_buffer_v`) able to carry them (e.g. `views::auto_recv_v`); in
-/// `unordered` mode only the multiset is defined, so an ordinary `recv_buffer` (e.g. a plain
-/// `std::vector<T>` or `views::resize`) suffices. In both cases the buffer must be a `contiguous_range`, so
-/// its element type is extractable via `std::ranges::range_value_t` (see `grid_send_buffer`) and must
-/// satisfy `detail::grid_element`. The send and recv element types need NOT be identical:
-///   * `unordered` fills `rbuf` directly via MPI, so different send/recv datatypes are allowed exactly like
-///     a plain `MPI_Alltoallv` (matched by type *signature*, not extent) — no host-side relation required;
-///   * `ordered_by_source` regroups with a local counting-sort copy, so the function additionally requires
-///     `std::indirectly_copyable<iterator_t<SBuf>, iterator_t<RBuf>>`.
-/// Sizing — and, for `ordered_by_source`, the per-source counts — are handled through the kamping v2
-/// machinery in the body (see `ensure_recv_capacity` / `size_from_source_counts`).
+/// A receive buffer for `grid_alltoallv` with receive layout `Order`, a contiguous range of default-initializable,
+/// copyable elements. With `layout::ordered_by_source` it must be a variable-size receive buffer, which receives the
+/// per-source counts (e.g. `views::auto_recv_v`); with `layout::unordered` any receive buffer will do (e.g. a presized
+/// `std::vector<T>` or `views::resize`).
+///
+/// Send and receive element types may differ. With `layout::unordered`, as for a plain `MPI_Alltoallv`, only their
+/// datatype signatures have to match; with `layout::ordered_by_source`, the send elements must also be copyable to
+/// the receive elements.
+//
+// ordered_by_source regroups the routed elements into rbuf with a local counting-sort copy, hence the copy
+// requirement; unordered fills rbuf directly via MPI. Sizing, and for ordered_by_source the per-source counts, are
+// handled in the body (ensure_recv_capacity / size_from_source_counts).
 template <typename RBuf, typename Order>
 concept grid_recv_buffer = std::ranges::contiguous_range<RBuf>
                            && ((std::is_same_v<Order, layout::ordered_by_source> && kamping::v2::recv_buffer_v<RBuf>)
@@ -460,14 +456,28 @@ void route_phase(
 
 } // namespace detail
 
-/// Drop-in grid all-to-all-v (D1). The call site matches the flat KaMPIng v2 alltoallv; only the
-/// function name and communicator change — a `grid_comm` instead of a flat comm. The send buffer is a standard variadic
-/// `send_buffer_v` (`data | with_counts | with_displs`). The recv buffer constraint depends on the
-/// ordering (see `grid_recv_buffer`): `ordered_by_source` needs a variadic recv buffer (`recv_buffer_v`,
-/// e.g. `views::auto_recv_v`) to carry the per-source counts; `unordered` accepts any `recv_buffer`
-/// (e.g. a plain `std::vector<T>` or `views::resize`).
+/// All-to-all-v that routes the data through a grid of processes, combining messages on the way.
 ///
-/// @tparam Order Recv ordering tag: `unordered` (default) or `ordered_by_source`.
+/// A flat `alltoallv` sends up to p−1 messages per process. On a `grid_comm` with dimensions s_0 × … × s_{k−1}, the
+/// data is instead exchanged in k phases, one per dimension, with up to s_i messages each: Σ s_i messages per
+/// process, about 2√p on a two-dimensional grid. This pays off for many small messages on many processes, at the
+/// cost of forwarding each element up to k times.
+///
+/// The call looks like `kamping::v2::alltoallv`, with a `grid_comm` instead of a communicator:
+///
+/// @code
+/// dstl::grid_comm grid{comm};
+/// std::vector<int> recv;
+/// dstl::grid_alltoallv(data | views::with_counts(counts) | views::auto_displs, recv | views::resize, grid);
+/// @endcode
+///
+/// With the default `layout::unordered`, `rbuf` receives the right elements, but grouped by routing path rather
+/// than by source rank. With `layout::ordered_by_source`, the result is identical to a flat `alltoallv`, including
+/// the per-source counts, which needs a variable-size receive buffer (see `grid_recv_buffer`) and some extra
+/// local work.
+///
+/// @param order `layout::unordered` (default) or `layout::ordered_by_source`.
+/// @return The send and receive buffer, as from `kamping::v2::alltoallv`.
 template <
     grid_send_buffer SBuf,
     typename RBuf,

@@ -21,24 +21,21 @@ namespace dstl {
 
 namespace execution_policy {
 
-/// Sequential policy: a single thread performs the re-bin and issues all MPI, with one communicator
-/// per dimension. Safe at any MPI threading level (needs no more than MPI_THREAD_SINGLE).
+/// Sequential: one thread regroups the elements between phases and issues all MPI calls. Works with any MPI thread
+/// level.
 struct seq {};
 
-/// Parallel-compute policy: the re-bin is OpenMP-parallel, but MPI is still issued from a single
-/// thread (one communicator per dimension). Requires MPI initialized with at least
-/// MPI_THREAD_FUNNELED. Falls back to a serial re-bin when the translation unit is compiled without
-/// OpenMP.
+/// Parallel computation (the default): the elements are regrouped between phases with OpenMP, but MPI is called from
+/// a single thread. Requires at least `MPI_THREAD_FUNNELED`. Without OpenMP, the regrouping is sequential.
 struct par {};
 
-/// Parallel-compute-and-communicate policy: like `par` for the re-bin, but MPI is additionally
-/// issued concurrently from several threads (one duplicated communicator per thread, as the flat
-/// thread_multiple exchange does). Requires — and asserts — MPI initialized with MPI_THREAD_MULTIPLE.
+/// Parallel computation and communication: like `par`, but MPI is also called concurrently from several threads,
+/// each on its own duplicated communicator. Requires `MPI_THREAD_MULTIPLE` (asserted).
 struct par_comm {};
 
 } // namespace execution_policy
 
-/// Concept: one of the execution policy tags above.
+/// One of the execution policies `seq`, `par` and `par_comm`.
 template <typename T>
 concept is_execution_policy = std::is_same_v<T, execution_policy::seq> || std::is_same_v<T, execution_policy::par>
                               || std::is_same_v<T, execution_policy::par_comm>;
@@ -47,20 +44,19 @@ concept is_execution_policy = std::is_same_v<T, execution_policy::seq> || std::i
 
 namespace layout {
 
-/// Default: the recv buffer holds the correct *multiset*, grouped by routing path.
-/// This is where the speedup lives — restoring global-source order is extra work.
+/// The receive buffer holds the received elements grouped by routing path, not by source rank (the default). Restoring
+/// the order of a flat `alltoallv` is extra work, so prefer this if the order does not matter.
 struct unordered {};
 
-/// Opt-in: recv layout identical to a flat MPI_Alltoallv (per-source recv_counts,
-/// elements grouped by increasing global source rank). Carries source labels through
-/// every hop and performs a final local stable sort.
+/// The receive buffer holds the received elements as a flat `alltoallv` would: grouped by increasing source rank,
+/// with per-source counts. The source of each element is carried along and the elements are sorted locally at the
+/// end.
 struct ordered_by_source {};
 
 } // namespace layout
 
-/// Concept: a recv-ordering tag — `layout::unordered` or `layout::ordered_by_source`. Shared by the grid
-/// alltoallv (`grid_compatible_output_layout`) and the request_reply output (which reuses the same two
-/// tags: `unordered` → a plain `recv_buffer`, `ordered_by_source` → a variadic `recv_buffer_v`).
+/// A receive layout: `layout::unordered` or `layout::ordered_by_source`. Used by `grid_alltoallv` and
+/// `request_reply`.
 template <typename T>
 concept is_output_layout = std::is_same_v<T, layout::unordered> || std::is_same_v<T, layout::ordered_by_source>;
 

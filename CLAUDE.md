@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-KaMPIng v2 is a **header-only C++20 MPI wrapper library** built on a concept-based buffer protocol with composable range adaptors. It replaces the named-parameter / template-metaprogramming approach of v1 with a clean layered architecture and `std::ranges`-style view pipelines.
+KaMPIng-v2 is a **header-only C++20 MPI wrapper library** built on a concept-based buffer protocol with composable range adaptors. It replaces the named-parameter / template-metaprogramming approach of v1 with a clean layered architecture and `std::ranges`-style view pipelines.
 
 ## Build Commands
 
@@ -65,6 +65,31 @@ cmake --build build/debug --target check-cmake-format   # validate CMake formatt
 - CMake: `cmake-format` with `.cmake-format.py` — 120 column limit
 
 Run formatters before committing.
+
+## Documentation
+
+The docs site (`docs/`) is built with Sphinx (MyST Markdown pages, Furo theme) from the Doxygen XML of the headers:
+
+```bash
+pip install -r docs/requirements.txt          # Sphinx and its extensions
+cmake -B build/docs -DKAMPING_V2_BUILD_DOCS=ON  # needs Doxygen >= 1.10 (>= 1.13 for concept definitions)
+cmake --build build/docs --target docs         # site in build/docs/docs/html
+```
+
+- `docs/guide/` is the user guide, `docs/reference/` the `kamping::v2` reference, `docs/dstl/` the dstl docs. The
+  reference documents the v2-facing API only; mpi-core has no reference of its own. Code shown in the guide comes
+  from compiled examples (`literalinclude` between `// [docs:...]` markers) where possible.
+- Reference pages pull entities from the XML with the directives in `docs/_ext/kamping_doxygen.py`:
+  `doxygenclass`/`doxygenstruct` (`:members:` for documented public members), `doxygenoverloads` (all overloads of
+  a function, numbered in one block as on cppreference), `doxygenconcept`, `doxygenvariable`, `doxygentypedef`, and
+  `doxygenview` for the view adaptor objects. Name re-exported core entities by their `kamping::v2::` name; the
+  extension shows them under it.
+- Doc comments of public API are written for users. Implementation notes go in plain `//` comments. Members that
+  are public only for the library's own use get `/// @internal` (left out of the docs). `mpi_*` protocol members
+  are left out automatically.
+- A view adaptor object (`inline constexpr ... views::foo`) declares the signatures shown in the docs in a
+  `@code{.signature}` block in its comment, one declaration per line.
+- CI (`.github/workflows/docs.yml`) builds with warnings as errors and deploys `main` to GitHub Pages.
 
 ## Architecture
 

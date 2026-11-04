@@ -377,7 +377,7 @@ public:
 /// borrowed from the MPI implementation, or anywhere lifetimes are managed externally.
 ///
 /// Satisfies `convertible_to_mpi_handle<MPI_Info>` so it can be passed directly
-/// to any `mpi::experimental::` operation that accepts an info argument.
+/// to any operation that accepts an info argument.
 class info_view : public info_accessors<info_view> {
 public:
     /// @brief Wrap @p info without taking ownership.  The handle must outlive this view.
@@ -400,7 +400,7 @@ private:
 /// Move-only: if you need an independent copy, call `dup()` explicitly.
 ///
 /// Satisfies `convertible_to_mpi_handle<MPI_Info>` so it can be passed directly
-/// to any `mpi::experimental::` operation that accepts an info argument.
+/// to any operation that accepts an info argument.
 class info : public info_accessors<info> {
 public:
     /// @brief Create a new empty info object via `MPI_Info_create`.

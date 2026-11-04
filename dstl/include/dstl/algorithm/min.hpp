@@ -68,18 +68,16 @@ concept has_builtin_min = std::same_as<Comp, std::ranges::less> && std::same_as<
 ///
 /// R must be a forward_range with a deducible MPI element type, and its value type T must be
 /// copy-constructible (`std::copy_constructible<T>`). Notably T need not be assignable, so this
-/// works directly on e.g. `std::pair<const K, V>` (the value type of iterating a std::map) --
-/// see detail::min_combine's comment for why this is not additionally gated on
-/// std::is_trivially_copyable_v<T>.
+/// works directly on e.g. `std::pair<const K, V>` (the value type of iterating a std::map).
 ///
 /// @param sentinel Value contributed on behalf of a rank whose local range is empty; must
 ///   compare not-less than every real element under comp/proj. Defaults to
 ///   std::numeric_limits<T>::max() when std::numeric_limits<T> is specialized; for other T an
-///   explicit sentinel must be supplied (see the overload below).
+///   explicit sentinel must be supplied.
 ///
 /// @pre sentinel must be an upper bound for every element under comp/proj.
-/// @pre If every rank's range is empty (so every contribution is `sentinel`), the result is
-///   `sentinel` rather than the undefined behavior std::ranges::min has on an empty range.
+/// @note If every rank's range is empty, the result is `sentinel`, unlike `std::ranges::min`, whose behavior on
+///   an empty range is undefined.
 template <
     std::ranges::forward_range R,
     class Proj                                                                             = std::identity,

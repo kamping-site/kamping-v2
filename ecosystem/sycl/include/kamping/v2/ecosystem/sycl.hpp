@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Karlsruhe Institute of Technology
 // SPDX-License-Identifier: BSL-1.0
 
-/// SYCL ecosystem adapter for KaMPIng v2.
+/// SYCL ecosystem adapter for KaMPIng-v2.
 ///
 /// Exposes SYCL accessors as MPI buffers via `sycl_view` and the `views::sycl` pipe adaptor.
 ///
@@ -203,6 +203,12 @@ namespace kamping::v2::views {
 /// @code
 /// sycl::host_accessor hacc{buf, sycl::read_only};
 /// kamping::v2::send(hacc | kamping::v2::views::sycl, 1, 0, world);
+/// @endcode
+///
+/// @code{.signature}
+/// template <sycl_accessor Accessor> auto sycl(Accessor&& acc);
+/// auto sycl(::sycl::interop_handle const& ih);
+/// template <sycl_accessor Accessor> auto sycl(Accessor&& acc, ::sycl::interop_handle const& ih);
 /// @endcode
 inline constexpr struct sycl_fn : kamping::v2::adaptor_closure<sycl_fn> {
     /// Host accessor path: wraps the accessor directly.

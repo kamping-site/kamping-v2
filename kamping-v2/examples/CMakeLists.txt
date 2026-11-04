@@ -5,3 +5,7 @@ target_compile_features(example_v2_send_recv PRIVATE cxx_std_20)
 add_executable(example_v2_collectives collectives_example.cpp)
 target_link_libraries(example_v2_collectives PRIVATE kamping::v2 kamping_v2_warnings)
 target_compile_features(example_v2_collectives PRIVATE cxx_std_20)
+
+add_executable(example_v2_getting_started getting_started_example.cpp)
+target_link_libraries(example_v2_getting_started PRIVATE kamping::v2 kamping_v2_warnings)
+target_compile_features(example_v2_getting_started PRIVATE cxx_std_20)
