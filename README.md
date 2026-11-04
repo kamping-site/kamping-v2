@@ -2,20 +2,21 @@
   <img src="docs/icon.svg" alt="KaMPIng logo" width="140">
 </p>
 
-<h1 align="center">KaMPIng v2</h1>
+<h1 align="center">KaMPIng-v2</h1>
 
 <p align="center">
   <em>Modern C++ MPI bindings: pass your containers, compose what you need.</em>
 </p>
 
 <p align="center">
+  <a href="https://kamping-site.github.io/kamping-v2/"><img src="https://img.shields.io/badge/docs-online-009682" alt="Documentation"></a>
   <img src="https://img.shields.io/github/license/kamping-site/kamping-v2" alt="License">
 </p>
 
 ---
 
 Calling MPI from C++ means passing raw pointers, element counts, datatypes and displacement arrays by hand, and
-getting one of them wrong usually crashes or hangs. **KaMPIng v2** lets you pass the objects you already have,
+getting one of them wrong usually crashes or hangs. **KaMPIng-v2** lets you pass the objects you already have,
 such as a `std::vector`, a `std::span` or a Kokkos view, and works out the pointer, count and datatype for you.
 When you need more, you add it with a `|` pipe in the style of `std::ranges` views: a receive buffer that resizes
 itself, per-rank counts that are exchanged for you, or a custom datatype.
@@ -38,8 +39,11 @@ v2::alltoallv(sdata | views::with_counts(scounts) | views::auto_displs, v2::auto
 v2::send(kokkos_view | views::kokkos, dest, comm);
 ```
 
-KaMPIng v2 is header-only and requires C++20. It is the successor of [KaMPIng](https://github.com/kamping-site/kamping)
+KaMPIng-v2 is header-only and requires C++20. It is the successor of [KaMPIng](https://github.com/kamping-site/kamping)
 and is described in our [EuroMPI 2026 paper](#publications) ([preprint](https://arxiv.org/abs/2606.09102)).
+
+**Documentation:** the [user guide and API reference](https://kamping-site.github.io/kamping-v2/) cover everything
+below in more depth.
 
 ## Highlights
 
@@ -49,7 +53,7 @@ and is described in our [EuroMPI 2026 paper](#publications) ([preprint](https://
 - **Composable views.** `with_type`, `with_counts`, `auto_displs`, `resize`, `flatten_v`, … attach exactly the MPI
   metadata you need, compose with each other and with `std::views`, and compute lazily.
 - **You only pay for what you use.** Convenience is opt-in at the call site: a receive buffer only probes or
-  exchanges counts if you pipe it through `views::resize` or ask for `auto_recv_v`. KaMPIng v2 never performs
+  exchanges counts if you pipe it through `views::resize` or ask for `auto_recv_v`. KaMPIng-v2 never performs
   communication you did not ask for.
 - **Memory-safe non-blocking operations.** `isend`/`irecv` return an `iresult` that keeps an owned buffer out of
   reach until the operation has completed, and catches requests that are never completed.
@@ -60,24 +64,24 @@ and is described in our [EuroMPI 2026 paper](#publications) ([preprint](https://
 
 ## mpi-core: the foundation
 
-KaMPIng v2 consists of two layers, plus the ecosystem adapters:
+KaMPIng-v2 consists of two layers, plus the ecosystem adapters:
 
 | Layer | Namespace | Role |
 |-------|-----------|------|
 | **mpi-core** (`mpi-core/`) | `mpi::experimental` | The C++ core interface: MPI's own abstractions (data buffers, object handles, procedures) as C++20 concepts. One MPI call per function, MPI semantics unchanged, no hidden allocation or communication. |
-| **KaMPIng v2** (`kamping-v2/`) | `kamping::v2` | Convenience and safety on top: buffer views, receive buffers that size themselves, ownership-aware results and `iresult`, and defaults for omitted arguments. |
+| **KaMPIng-v2** (`kamping-v2/`) | `kamping::v2` | Convenience and safety on top: buffer views, receive buffers that size themselves, ownership-aware results and `iresult`, and defaults for omitted arguments. |
 | **Ecosystem adapters** (`ecosystem/`) | `kamping::v2::views` | Kokkos, Thrust, SYCL and Cereal, as buffers usable with both layers. |
 
 mpi-core is deliberately minimal. It mirrors the MPI standard closely, so that it can serve as a reference for
 standardized C++ bindings, and it is the extension point for everything above it: a type that works with mpi-core
-works with KaMPIng v2 and with all views. Use it directly when you want exact MPI semantics, are building your own
+works with KaMPIng-v2 and with all views. Use it directly when you want exact MPI semantics, are building your own
 abstractions, or adopt C++ bindings incrementally in an existing MPI code base. It also accepts native MPI handles
 and your existing wrapper types.
 
 ```cpp
 std::vector<double> v = ...;
 mpi::experimental::send(v, dest, tag, MPI_COMM_WORLD);                         // mpi-core: explicit, one MPI call
-kamping::v2::recv(buf | kamping::v2::views::resize, source, comm);             // KaMPIng v2: probes, then resizes
+kamping::v2::recv(buf | kamping::v2::views::resize, source, comm);             // KaMPIng-v2: probes, then resizes
 ```
 
 ### Buffers and customization
@@ -143,7 +147,7 @@ kamping::v2::send(points | views::with_auto_pool(pool), dest, comm);
 
 ## Receive buffers that size themselves
 
-Before each operation, KaMPIng v2 calls the `infer()` customization point, which exchanges metadata between the
+Before each operation, KaMPIng-v2 calls the `infer()` customization point, which exchanges metadata between the
 send and receive sides where you asked for it. `views::resize` defers a single receive count: point-to-point
 receives probe the message, and collectives derive the count locally where it is already known (e.g.
 `allreduce`). `views::auto_counts` defers the per-rank counts of a collective, which are then obtained with one
@@ -167,7 +171,7 @@ a diagnostic and calls `std::terminate()` instead of freeing a buffer MPI may st
 
 ## Calling conventions
 
-In KaMPIng v2 the communicator always comes last, and arguments with an obvious default can be left out in front
+In KaMPIng-v2 the communicator always comes last, and arguments with an obvious default can be left out in front
 of it:
 
 ```cpp
@@ -208,7 +212,10 @@ Tested with MPICH, Open MPI and Intel MPI, using GCC and Clang.
 
 ## Getting started
 
-KaMPIng v2 needs CMake 3.25+, a C++20 compiler, and an MPI installation. Include `<kamping/v2.hpp>` for
+See also [Getting started](https://kamping-site.github.io/kamping-v2/guide/getting-started.html) in the
+documentation.
+
+KaMPIng-v2 needs CMake 3.25+, a C++20 compiler, and an MPI installation. Include `<kamping/v2.hpp>` for
 everything, or individual headers such as `<kamping/v2/collectives/alltoallv.hpp>` to keep compile times down.
 
 ### With FetchContent
@@ -272,7 +279,7 @@ ctest --preset debug
 
 ## Publications
 
-KaMPIng v2 and its core interface are described in
+KaMPIng-v2 and its core interface are described in
 
 > T. N. Uhl, M. Schimek, D. Brommer. **Concepts in Practice: C++ MPI Bindings for the HPC Ecosystem — From a
 > Standardizable Core to a Composable Interface.** In *Recent Advances in the Message Passing Interface (EuroMPI
@@ -286,7 +293,7 @@ which realizes the design principles of
 > [doi:10.1007/978-3-032-07194-1_10](https://doi.org/10.1007/978-3-032-07194-1_10) ·
 > preprint: [arXiv:2506.14610](https://arxiv.org/abs/2506.14610)
 
-If you use KaMPIng v2, please cite the first paper:
+If you use KaMPIng-v2, please cite the first paper:
 
 ```bibtex
 @inproceedings{UhlSB26,
@@ -307,4 +314,4 @@ If you use KaMPIng v2, please cite the first paper:
 
 ## License
 
-KaMPIng v2 is released under the [Boost Software License 1.0](LICENSE).
+KaMPIng-v2 is released under the [Boost Software License 1.0](LICENSE).

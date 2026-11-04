@@ -66,6 +66,11 @@ inline constexpr bool enable_borrowed_buffer<with_counts_view<Base, Counts>> =
 namespace kamping::v2::views {
 
 /// Attaches per-rank counts: `buf | views::with_counts(counts)`. The counts are borrowed if passed as lvalue.
+///
+/// @code{.signature}
+/// template <mpi::experimental::count_range Counts> auto with_counts(Counts&& counts);
+/// template <typename Buf, mpi::experimental::count_range Counts> auto with_counts(Buf&& buf, Counts&& counts);
+/// @endcode
 inline constexpr kamping::v2::adaptor<1, decltype([](auto&& r, auto&& counts) {
                                           return kamping::v2::with_counts_view(
                                               std::forward<decltype(r)>(r),

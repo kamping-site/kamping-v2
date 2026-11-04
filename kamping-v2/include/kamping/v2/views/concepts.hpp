@@ -112,7 +112,7 @@ concept deferred_send_buf_v = mpi::experimental::send_buffer_v<T> && has_set_com
 template <typename T>
 inline constexpr bool enable_borrowed_buffer = std::ranges::borrowed_range<T>;
 
-/// A buffer that does not own its data; see @ref enable_borrowed_buffer.
+/// A buffer that does not own its data; see `enable_borrowed_buffer`.
 template <typename T>
 concept borrowed_buffer = enable_borrowed_buffer<std::remove_cvref_t<T>>;
 

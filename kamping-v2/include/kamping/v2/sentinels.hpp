@@ -21,19 +21,11 @@ using mpi::experimental::null_buf_v_t;
 using mpi::experimental::statuses_ignore;
 using mpi::experimental::statuses_ignore_t;
 
-/// Deferred variadic null recv buffer for non-root ranks in gather-family collectives.
-///
-/// Satisfies both `recv_buffer_v` (accepted by core gatherv/scatterv) and
-/// `deferred_recv_buf_v` (triggers the count-gathering phase in infer()).
-/// All deferred-protocol methods (`set_comm_size`, `commit_counts`) are no-ops;
-/// `mpi_counts()` returns a null-data span that MPI ignores on non-root.
-///
-/// Use `auto_null_recv_v()` (the factory function) rather than storing an instance,
-/// so the object is always a non-const rvalue — required for `deferred_recv_buf_v`
-/// which needs mutable access to `mpi_counts()`:
-///
-///   v2::gatherv(local_data, v2::auto_null_recv_v(), root, comm);   // non-root
-///   v2::gatherv(local_data, v2::auto_recv_v<int>(), root, comm);   // root
+/// Type of the buffer returned by @ref auto_null_recv_v.
+//
+// Satisfies both `recv_buffer_v` (accepted by core gatherv) and `deferred_recv_buf_v` (so infer() runs the count
+// exchange). The deferred-protocol members are no-ops; `mpi_counts()` returns a null span that MPI ignores on
+// non-root ranks.
 struct auto_null_recv_v_t {
     static void* mpi_ptr() noexcept {
         return nullptr;
@@ -54,9 +46,18 @@ struct auto_null_recv_v_t {
     static void commit_counts() noexcept {}
 };
 
-/// Factory function returning a fresh `auto_null_recv_v_t` rvalue.
-/// Always call as `auto_null_recv_v()` — never store the result in a `const` variable,
-/// as `deferred_recv_buf_v` requires mutable access to `mpi_counts()`.
+/// An empty receive buffer for `gatherv` on non-root ranks, if the root's receive buffer obtains its counts from the
+/// others, e.g. `auto_recv_v`: the non-root ranks then still take part in the count exchange.
+///
+/// @code
+/// if (comm.rank() == root) {
+///     auto [_, all] = v2::gatherv(local_data, v2::auto_recv_v<int>(), root, comm);
+/// } else {
+///     v2::gatherv(local_data, v2::auto_null_recv_v(), root, comm);
+/// }
+/// @endcode
+///
+/// Pass the result directly, as here; it cannot be used through a `const` variable.
 inline auto_null_recv_v_t auto_null_recv_v() noexcept {
     return {};
 }

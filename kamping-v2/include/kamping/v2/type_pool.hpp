@@ -129,7 +129,7 @@ public:
 
 /// @brief Concept matching any type that exposes a `pool()` method returning a `type_pool&`.
 ///
-/// Satisfied by @ref comm_view_with_pool, enabling `views::with_auto_pool(env)` and
+/// Satisfied by `comm_view_with_pool`, enabling `views::with_auto_pool(env)` and
 /// `views::with_pool(env)` to accept a pooled communicator directly.
 template <typename T>
 concept has_pool = requires(T& t) {
@@ -238,58 +238,82 @@ struct with_auto_value_pool_fn {
 };
 } // namespace detail
 
-/// @brief Pipe adaptor that attaches an MPI datatype from a pre-populated @ref type_pool.
+/// @brief Attaches the MPI datatype of the buffer's element type from a `type_pool`: `buf | views::with_pool(pool)`.
 ///
-/// The element type is resolved via @ref kamping::v2::mpi_element_type_t: standard ranges use
-/// `range_value_t`; custom buffer wrappers (e.g. kokkos_view, sycl_view) are supported via
-/// a public `value_type` member.  The type must have been registered via
-/// `pool.register_type<T>()` before piping; an assertion fires at runtime otherwise.
-/// Use @ref with_auto_pool to register lazily instead.
+/// The element type is the range's value type, or the `value_type` member of a buffer that is not a range (e.g. a
+/// Kokkos view). It must have been registered with `pool.register_type<T>()` before; an assertion fires otherwise.
+/// Use `with_auto_pool` to register it on first use instead. Instead of a pool, a communicator that carries one
+/// (`comm_view_with_pool`) can be passed.
 ///
 /// @code
 /// pool.register_type<MyStruct>();
 /// kamping::v2::bcast(v | kamping::v2::views::with_pool(pool), 0, comm);
 /// kamping::v2::send(kokkos_buf | kamping::v2::views::with_pool(pool), 1, comm);
 /// @endcode
+///
+/// @code{.signature}
+/// auto with_pool(type_pool const& pool);
+/// template <typename Buf> auto with_pool(Buf&& buf, type_pool const& pool);
+/// template <has_pool Env> auto with_pool(Env&& env);
+/// template <typename Buf, has_pool Env> auto with_pool(Buf&& buf, Env&& env);
+/// @endcode
 inline constexpr kamping::v2::adaptor<1, detail::with_pool_fn> with_pool{};
 
-/// @brief Pipe adaptor that attaches an MPI datatype from a @ref type_pool, registering on first use.
+/// @brief Attaches the MPI datatype of the buffer's element type from a `type_pool`, registering it on first use:
+/// `buf | views::with_auto_pool(pool)`.
 ///
-/// The element type is resolved via @ref kamping::v2::mpi_element_type_t: standard ranges use
-/// `range_value_t`; custom buffer wrappers (e.g. kokkos_view, sycl_view) are supported via
-/// a public `value_type` member.  Unlike @ref with_pool, the type need not be registered in
-/// advance — the pool commits it the first time this adaptor is applied.
+/// Like `with_pool`, but the type need not be registered in advance: the pool commits its datatype the first time
+/// it is needed. This requires a `kamping::types::mpi_type_traits<T>` specialization describing the type.
 ///
 /// @code
 /// kamping::v2::bcast(v | kamping::v2::views::with_auto_pool(pool), 0, comm);
 /// kamping::v2::send(kokkos_buf | kamping::v2::views::with_auto_pool(pool), 1, comm);
 /// @endcode
+///
+/// @code{.signature}
+/// auto with_auto_pool(type_pool& pool);
+/// template <typename Buf> auto with_auto_pool(Buf&& buf, type_pool& pool);
+/// template <has_pool Env> auto with_auto_pool(Env&& env);
+/// template <typename Buf, has_pool Env> auto with_auto_pool(Buf&& buf, Env&& env);
+/// @endcode
 inline constexpr kamping::v2::adaptor<1, detail::with_auto_pool_fn> with_auto_pool{};
 
-/// @brief Pipe adaptor that attaches an MPI datatype to the value-type channel
-/// (`kamping::v2::value_type()`, NOT `mpi::experimental::type()`) from a pre-populated
-/// @ref type_pool — the payload-channel counterpart of @ref with_pool.
+/// @brief Attaches the MPI datatype of the payload of a structured buffer from a `type_pool`:
+/// `per_rank | views::with_value_pool(pool)`.
 ///
-/// The payload type is resolved via @ref kamping::v2::payload_element_t: for structured send
-/// buffers (value_destination_pair, sparse/nested) this is the payload element, distinct
-/// from the buffer's own element type; for a plain range it is the same as with_pool.
-/// The type must have been registered via `pool.register_type<T>()` (trait-based) or
-/// `pool.register_type<T>(dt)` (one-shot, no trait required) before piping; an assertion fires
-/// at runtime otherwise. Use @ref with_auto_value_pool to register lazily instead.
+/// Structured send buffers, such as a range of per-rank ranges or of `(value, rank)` pairs, are consumed by
+/// `views::flatten_v` and the dstl algorithms; their payload is the type of the values sent, not the range's own
+/// element type. The payload type must have been registered with `pool.register_type<T>()` or
+/// `pool.register_type<T>(dt)` before; use `with_auto_value_pool` to register it on first use instead.
 ///
 /// @code
 /// pool.register_type<MyStruct>();
 /// kamping::v2::alltoallv(per_rank | views::with_value_pool(pool) | views::flatten_v(), rbuf, comm);
 /// @endcode
+///
+/// @code{.signature}
+/// auto with_value_pool(type_pool const& pool);
+/// template <typename Buf> auto with_value_pool(Buf&& buf, type_pool const& pool);
+/// template <has_pool Env> auto with_value_pool(Env&& env);
+/// template <typename Buf, has_pool Env> auto with_value_pool(Buf&& buf, Env&& env);
+/// @endcode
 inline constexpr kamping::v2::adaptor<1, detail::with_value_pool_fn> with_value_pool{};
 
-/// @brief Pipe adaptor that attaches an MPI datatype to the value-type channel from a
-/// @ref type_pool, registering on first use — the payload-channel counterpart of
-/// @ref with_auto_pool. Only covers payload types with a `mpi_type_traits<T>` specialization;
-/// see @ref with_auto_value_pool_fn.
+/// @brief Attaches the MPI datatype of the payload of a structured buffer from a `type_pool`, registering it on
+/// first use: `per_rank | views::with_auto_value_pool(pool)`.
+///
+/// Like `with_value_pool`, but the payload type need not be registered in advance. This requires a
+/// `kamping::types::mpi_type_traits<T>` specialization describing the type.
 ///
 /// @code
 /// kamping::v2::alltoallv(per_rank | views::with_auto_value_pool(pool) | views::flatten_v(), rbuf, comm);
+/// @endcode
+///
+/// @code{.signature}
+/// auto with_auto_value_pool(type_pool& pool);
+/// template <typename Buf> auto with_auto_value_pool(Buf&& buf, type_pool& pool);
+/// template <has_pool Env> auto with_auto_value_pool(Env&& env);
+/// template <typename Buf, has_pool Env> auto with_auto_value_pool(Buf&& buf, Env&& env);
 /// @endcode
 inline constexpr kamping::v2::adaptor<1, detail::with_auto_value_pool_fn> with_auto_value_pool{};
 } // namespace views

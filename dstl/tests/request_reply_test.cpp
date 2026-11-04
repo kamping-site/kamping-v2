@@ -105,7 +105,7 @@ TEST(RequestReplyExchange, ReverseLayoutRoundTrip) {
         recv_requests | views::auto_recv_v,
         MPI_COMM_WORLD
     );
-    dstl::exchange_layout layout{fwd.send, fwd.recv};
+    dstl::detail::exchange_layout layout{fwd.send, fwd.recv};
 
     std::vector<int> replies(recv_requests.size());
     for (std::size_t j = 0; j < recv_requests.size(); ++j) {
@@ -113,8 +113,8 @@ TEST(RequestReplyExchange, ReverseLayoutRoundTrip) {
     }
 
     // Reverse: feed the reversed layout into a second alltoallv (no re-negotiation).
-    dstl::exchange_layout const rev = dstl::reverse_layout(layout);
-    std::vector<int>            back(static_cast<std::size_t>(rev.recv_total()));
+    dstl::detail::exchange_layout const rev = dstl::detail::reverse_layout(layout);
+    std::vector<int>                    back(static_cast<std::size_t>(rev.recv_total()));
     kamping::v2::alltoallv(
         replies | views::with_counts(rev.send_counts) | views::with_displs(rev.send_displs),
         back | views::with_counts(rev.recv_counts) | views::with_displs(rev.recv_displs),

@@ -21,8 +21,7 @@ namespace kamping::v2 {
 ///
 /// Provides the status accessors (`source()`, `tag()`, `count()`) directly and satisfies
 /// `convertible_to_mpi_handle_ptr<MPI_Message>`, so it can be passed to `mrecv()` / `imrecv()` to receive the message.
-/// Move-only: like `mpi::experimental::message`, it terminates if destroyed while the matched message has not been
-/// received or released.
+/// Move-only: it terminates the program if destroyed while the matched message has not been received or released.
 class probe_result : public status_accessors<probe_result> {
 public:
     /// @return A read-only view of the status of the matched message.
@@ -45,7 +44,7 @@ public:
         return _message.mpi_handle_ptr();
     }
 
-    /// Gives up responsibility for the matched message and returns it; see mpi::experimental::message::release().
+    /// Gives up responsibility for the matched message and returns it; the caller must then receive it.
     [[nodiscard]] MPI_Message release() noexcept {
         return _message.release();
     }

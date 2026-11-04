@@ -292,13 +292,13 @@ constexpr int to_tag(T t) {
     return static_cast<int>(t);
 }
 
-/// A type usable as an MPI rank: `int`, a scoped enum, or a type adapted via @ref rank_traits.
+/// A type usable as an MPI rank: `int`, a scoped enum, or a type adapted via `rank_traits`.
 template <typename T>
 concept rank = requires(T const& t) {
     { mpi::experimental::to_rank(t) } -> std::same_as<int>;
 };
 
-/// A type usable as an MPI tag: `int`, a scoped enum, or a type adapted via @ref tag_traits.
+/// A type usable as an MPI tag: `int`, a scoped enum, or a type adapted via `tag_traits`.
 template <typename T>
 concept tag = requires(T const& t) {
     { mpi::experimental::to_tag(t) } -> std::same_as<int>;

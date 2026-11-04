@@ -62,7 +62,7 @@ public:
 /// @brief Non-owning view over an existing `MPI_Status`.
 ///
 /// Satisfies `convertible_to_mpi_handle_ptr<MPI_Status>` so it can be
-/// passed directly to `` operations that accept a status out-parameter.
+/// passed directly to operations that accept a status out-parameter.
 class status_view : public status_accessors<status_view> {
 public:
     /// @brief Construct from a pointer to an existing MPI_Status. Must not be null.

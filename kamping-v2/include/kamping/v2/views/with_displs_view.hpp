@@ -89,6 +89,17 @@ namespace kamping::v2::views {
 
 /// Attaches per-rank displacements: `buf | views::with_displs(displs)`, or `buf | views::with_displs(monotonic,
 /// displs)` to declare them monotonically non-decreasing. The displacements are borrowed if passed as lvalue.
+///
+/// Monotonic displacements let `views::resize_v` size the receive buffer in O(1), from the last displacement and
+/// count, instead of scanning all of them.
+///
+/// @code{.signature}
+/// template <mpi::experimental::count_range Displs> auto with_displs(Displs&& displs);
+/// template <typename Buf, mpi::experimental::count_range Displs> auto with_displs(Buf&& buf, Displs&& displs);
+/// template <mpi::experimental::count_range Displs> auto with_displs(monotonic_t, Displs&& displs);
+/// template <typename Buf, mpi::experimental::count_range Displs>
+///     auto with_displs(monotonic_t, Buf&& buf, Displs&& displs);
+/// @endcode
 inline constexpr struct with_displs_fn {
     // Partial / full (non-monotonic): with_displs(displs)  or  with_displs(r, displs)
     template <typename... Args>

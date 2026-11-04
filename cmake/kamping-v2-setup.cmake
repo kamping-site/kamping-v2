@@ -14,7 +14,10 @@ include(GNUInstallDirs)
 # ── Options ───────────────────────────────────────────────────────────────────────────────────────────────────────────
 
 option(KAMPING_V2_BUILD_EXAMPLES_AND_TESTS "Build the tests and examples of all components." OFF)
-option(KAMPING_V2_WARNINGS_ARE_ERRORS "Treat compiler warnings as errors in tests and examples." OFF)
+option(KAMPING_V2_BUILD_DOCS "Add the docs target, which builds the documentation with Doxygen and Sphinx." OFF)
+option(KAMPING_V2_WARNINGS_ARE_ERRORS
+       "Treat compiler warnings as errors in tests and examples, and Sphinx warnings in the docs." OFF
+)
 option(KAMPING_V2_INSTALL "Generate install rules for the kamping-v2 CMake package." ${PROJECT_IS_TOP_LEVEL})
 option(KAMPING_V2_ENABLE_REFLECTION "Derive MPI datatypes for plain structs via Boost.PFR (in kamping-types)." ON)
 option(KAMPING_V2_REFLECTION_USE_SYSTEM_BOOST_FOR_PFR

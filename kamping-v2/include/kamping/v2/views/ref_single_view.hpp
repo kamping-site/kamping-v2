@@ -68,10 +68,13 @@ inline constexpr bool std::ranges::enable_borrowed_range<kamping::v2::ref_single
 
 namespace kamping::v2::views {
 
-/// Wraps a single lvalue element as a size-1 view, capturing by reference.
-///   int val = 42;
-///   auto buf = ref_single(val);                  // ref_single_view<int>
-///   auto buf = ref_single(std::as_const(val));   // ref_single_view<int const>
+/// Makes a single value a buffer of one element, referring to it: `views::ref_single(value)`.
+///
+/// @code
+/// int sum = local;
+/// kamping::v2::allreduce(kamping::v2::inplace, views::ref_single(sum), comm);  // received into sum
+/// kamping::v2::send(views::ref_single(std::as_const(sum)), 0, comm);         // send-only buffer
+/// @endcode
 template <typename T>
 constexpr auto ref_single(T& val) noexcept {
     return kamping::v2::ref_single_view<T>(val);

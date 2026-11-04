@@ -43,7 +43,7 @@ auto gather(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm) -> result<SBuf, RBuf> {
     return kamping::v2::gather(std::forward<SBuf>(sbuf), std::forward<RBuf>(rbuf), 0, comm);
 }
 
-/// Non-root shorthand of @ref gather: contributes `sbuf` to the gather on `root`, without a receive buffer.
+/// Non-root shorthand of `gather`: contributes `sbuf` to the gather on `root`, without a receive buffer.
 /// @return The send buffer.
 template <
     mpi::experimental::send_buffer                         SBuf,
@@ -53,7 +53,7 @@ auto gather(SBuf&& sbuf, Root root, Comm const& comm) -> SBuf {
     return kamping::v2::gather(std::forward<SBuf>(sbuf), null_buf_t{}, std::move(root), comm).send;
 }
 
-/// Non-root shorthand of @ref gather: contributes `sbuf` to the gather on rank 0, without a receive buffer.
+/// Non-root shorthand of `gather`: contributes `sbuf` to the gather on rank 0, without a receive buffer.
 /// @return The send buffer.
 template <mpi::experimental::send_buffer SBuf, mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
 auto gather(SBuf&& sbuf, Comm const& comm) -> SBuf {

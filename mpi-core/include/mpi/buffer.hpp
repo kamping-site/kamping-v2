@@ -138,19 +138,21 @@ concept traits_has_displs = requires(T const& t) {
 template <typename T>
 constexpr auto count(T&&) = delete;
 
-/// @return The number of elements of the buffer `t`.
+/// @return The number of elements of the buffer `t`, obtained via `buffer_traits<T>::count(t)`.
 template <typename T>
     requires detail::traits_has_count<std::remove_cvref_t<T>>
 constexpr auto count(T&& t) {
     return buffer_traits<std::remove_cvref_t<T>>::count(t);
 }
 
+/// @return The number of elements of the buffer `t`, obtained via `t.mpi_count()`.
 template <typename T>
     requires(!detail::traits_has_count<std::remove_cvref_t<T>>) && detail::has_count_member<T>
 constexpr auto count(T&& t) {
     return t.mpi_count();
 }
 
+/// @return The number of elements of the sized range `t`, `std::ranges::size(t)`.
 template <typename T>
     requires(!detail::traits_has_count<std::remove_cvref_t<T>>) && (!detail::has_count_member<T>)
             && std::ranges::sized_range<T>
@@ -165,13 +167,15 @@ constexpr auto count(T&& t) {
 // a const overload (send) and a non-const overload (recv).
 // ──────────────────────────────────────────────────────────────────────────────
 
-/// @return The data pointer of the buffer `t`; points to const for a buffer only usable for sending.
+/// @return The data pointer of the buffer `t`, obtained via `buffer_traits<T>::ptr(t)`; points to const for a
+/// buffer only usable for sending.
 template <typename T>
     requires(detail::traits_has_const_ptr<std::remove_cvref_t<T>> || detail::traits_has_ptr<std::remove_cvref_t<T>>)
 constexpr auto ptr(T&& t) {
     return buffer_traits<std::remove_cvref_t<T>>::ptr(std::forward<T>(t));
 }
 
+/// @return The data pointer of the buffer `t`, obtained via `t.mpi_ptr()`.
 template <typename T>
     requires(!detail::traits_has_const_ptr<std::remove_cvref_t<T>>) && (!detail::traits_has_ptr<std::remove_cvref_t<T>>)
             && detail::has_ptr_member<T>
@@ -179,6 +183,7 @@ constexpr auto ptr(T&& t) {
     return t.mpi_ptr();
 }
 
+/// @return The data pointer of the contiguous range `t`, `std::ranges::data(t)`.
 template <typename T>
     requires(!detail::traits_has_const_ptr<std::remove_cvref_t<T>>) && (!detail::traits_has_ptr<std::remove_cvref_t<T>>)
             && (!detail::has_ptr_member<T>) && std::ranges::contiguous_range<T>
@@ -190,19 +195,21 @@ constexpr auto ptr(T&& t) {
 // type() — priority: buffer_traits > mpi_type() > builtin type deduction
 // ──────────────────────────────────────────────────────────────────────────────
 
-/// @return The MPI datatype of the elements of the buffer `t`.
+/// @return The MPI datatype of the elements of the buffer `t`, obtained via `buffer_traits<T>::type(t)`.
 template <typename T>
     requires detail::traits_has_type<std::remove_cvref_t<T>>
 constexpr auto type(T&& t) {
     return buffer_traits<std::remove_cvref_t<T>>::type(t);
 }
 
+/// @return The MPI datatype of the elements of the buffer `t`, obtained via `t.mpi_type()`.
 template <typename T>
     requires(!detail::traits_has_type<std::remove_cvref_t<T>>) && detail::has_type_member<T>
 constexpr auto type(T&& t) {
     return t.mpi_type();
 }
 
+/// @return The builtin MPI datatype of the element type of the range `t`, e.g. `MPI_INT` for `int`.
 template <typename T>
     requires(!detail::traits_has_type<std::remove_cvref_t<T>>) && (!detail::has_type_member<T>)
             && detail::range_of_builtin_mpi_type<T>
@@ -222,26 +229,28 @@ constexpr auto type(T&& /* t */) {
 // so writes through counts() (e.g. by infer()) would land in a temporary and be lost.
 // ──────────────────────────────────────────────────────────────────────────────
 
-/// @return The per-rank counts of the variadic buffer `t`.
+/// @return The per-rank counts of the variadic buffer `t`, obtained via `buffer_traits<T>::counts(t)`.
 template <typename T>
     requires detail::traits_has_counts<std::remove_cvref_t<T>>
 constexpr decltype(auto) counts(T&& t) {
     return buffer_traits<std::remove_cvref_t<T>>::counts(std::forward<T>(t));
 }
 
+/// @return The per-rank counts of the variadic buffer `t`, obtained via `t.mpi_counts()`.
 template <typename T>
     requires(!detail::traits_has_counts<std::remove_cvref_t<T>>) && detail::has_counts_member<T>
 constexpr decltype(auto) counts(T&& t) {
     return t.mpi_counts();
 }
 
-/// @return The per-rank displacements of the variadic buffer `t`.
+/// @return The per-rank displacements of the variadic buffer `t`, obtained via `buffer_traits<T>::displs(t)`.
 template <typename T>
     requires detail::traits_has_displs<std::remove_cvref_t<T>>
 constexpr decltype(auto) displs(T&& t) {
     return buffer_traits<std::remove_cvref_t<T>>::displs(std::forward<T>(t));
 }
 
+/// @return The per-rank displacements of the variadic buffer `t`, obtained via `t.mpi_displs()`.
 template <typename T>
     requires(!detail::traits_has_displs<std::remove_cvref_t<T>>) && detail::has_displs_member<T>
 constexpr decltype(auto) displs(T&& t) {
@@ -274,13 +283,13 @@ concept has_mpi_type = requires(T const& t) {
 template <typename T>
 concept data_buffer = has_mpi_count<T> && has_mpi_ptr<T> && has_mpi_type<T>;
 
-/// A @ref data_buffer that can be sent from: its data pointer converts to `void const*`.
+/// A `data_buffer` that can be sent from: its data pointer converts to `void const*`.
 template <typename T>
 concept send_buffer = data_buffer<T> && requires(T&& t) {
     { mpi::experimental::ptr(t) } -> std::convertible_to<void const*>;
 };
 
-/// A @ref data_buffer that can be received into: its data pointer converts to `void*`.
+/// A `data_buffer` that can be received into: its data pointer converts to `void*`.
 template <typename T>
 concept recv_buffer = data_buffer<T> && requires(T&& t) {
     { mpi::experimental::ptr(t) } -> std::convertible_to<void*>;
@@ -290,7 +299,7 @@ concept recv_buffer = data_buffer<T> && requires(T&& t) {
 template <typename T>
 concept send_recv_buffer = recv_buffer<T>;
 
-/// `counts()` is defined for `T` and yields a @ref count_range.
+/// `counts()` is defined for `T` and yields a `count_range`.
 template <typename T>
 concept has_mpi_counts = requires(T const& t) {
     { mpi::experimental::counts(t) } -> count_range;
@@ -305,7 +314,7 @@ concept has_mpi_counts_mutable = requires(T& t) {
     { std::ranges::data(mpi::experimental::counts(t)) } -> std::convertible_to<int*>;
 };
 
-/// `displs()` is defined for `T` and yields a @ref count_range.
+/// `displs()` is defined for `T` and yields a `count_range`.
 template <typename T>
 concept has_mpi_displs = requires(T const& t) {
     { mpi::experimental::displs(t) } -> count_range;
@@ -317,13 +326,13 @@ concept has_mpi_displs = requires(T const& t) {
 template <typename T>
 concept data_buffer_v = has_mpi_ptr<T> && has_mpi_type<T> && has_mpi_counts<T> && has_mpi_displs<T>;
 
-/// A @ref data_buffer_v that can be sent from.
+/// A `data_buffer_v` that can be sent from.
 template <typename T>
 concept send_buffer_v = data_buffer_v<T> && requires(T&& t) {
     { mpi::experimental::ptr(t) } -> std::convertible_to<void const*>;
 };
 
-/// A @ref data_buffer_v that can be received into.
+/// A `data_buffer_v` that can be received into.
 template <typename T>
 concept recv_buffer_v = data_buffer_v<T> && requires(T&& t) {
     { mpi::experimental::ptr(t) } -> std::convertible_to<void*>;

@@ -16,25 +16,22 @@
 
 namespace mpi::experimental {
 
-/// Sentinel buffer that passes `MPI_BOTTOM` as the data pointer.
-/// Used with derived datatypes that embed absolute addresses.
-/// Not a complete `data_buffer` on its own — compose with views::with_type
-/// and views::with_count before passing to an MPI operation.
-///
-///   v2::send(v2::bottom | views::with_type(my_abs_type) | views::with_count(1), dest, comm);
+/// Type of @ref bottom.
 struct bottom_t {
     static void* mpi_ptr() noexcept {
         return MPI_BOTTOM;
     }
 };
-/// The @ref bottom_t sentinel.
+/// A buffer at `MPI_BOTTOM`, for derived datatypes that contain absolute addresses.
+///
+/// Not a complete buffer on its own: add the datatype and the count with views.
+///
+/// @code
+/// v2::send(v2::bottom | views::with_type(absolute_type) | views::with_count(1), dest, comm);
+/// @endcode
 inline constexpr bottom_t bottom{};
 
-/// Sentinel buffer that passes `MPI_IN_PLACE` as the data pointer.
-/// Used for in-place collectives where each rank's data is already at the
-/// correct position in the receive buffer. Satisfies `send_buffer` and
-/// `recv_buffer`. The receive buffer must be pre-sized; deferred resize is
-/// not supported for in-place operations.
+/// Type of @ref inplace.
 struct inplace_t {
     static void* mpi_ptr() noexcept {
         return MPI_IN_PLACE;
@@ -46,18 +43,20 @@ struct inplace_t {
         return MPI_DATATYPE_NULL;
     }
 };
-/// The @ref inplace_t sentinel.
+/// `MPI_IN_PLACE`: passed as the send buffer of a collective, the receive buffer holds the input and receives the
+/// result.
+///
+/// The receive buffer must already have the right size; it cannot be resized for an in-place operation.
+///
+/// @code
+/// int sum = local;
+/// v2::allreduce(v2::inplace, views::ref_single(sum), comm);
+/// @endcode
 inline constexpr inplace_t inplace{};
 
-/// Sentinel buffer that passes `nullptr` as the data pointer.
-/// Used for optional root-only buffers in gather/scatter: non-root ranks
-/// pass `null_buf` for the receive/send buffer that MPI ignores on their
-/// side. Also usable as an empty message in point-to-point calls, which is why
-/// the datatype is `MPI_BYTE`: MPI rejects `MPI_DATATYPE_NULL` there even for
-/// count 0. Satisfies `send_buffer` and `recv_buffer`.
-///
-///   v2::gather(local_data, null_buf, root, comm);  // non-root
-///   v2::send(null_buf, dest, tag, comm);           // zero-byte signal
+/// Type of @ref null_buf.
+//
+// The datatype is `MPI_BYTE` because MPI rejects `MPI_DATATYPE_NULL` in point-to-point calls even for count 0.
 struct null_buf_t {
     static void* mpi_ptr() noexcept {
         return nullptr;
@@ -69,17 +68,17 @@ struct null_buf_t {
         return MPI_BYTE;
     }
 };
-/// The @ref null_buf_t sentinel.
+/// An empty buffer: for the buffer of a rooted collective that only the root uses, or as an empty message.
+///
+/// The non-root shorthands of `gather`, `scatter` and `reduce` pass it for you.
+///
+/// @code
+/// v2::gather(local_data, v2::null_buf, root, comm);  // on a non-root rank
+/// v2::send(v2::null_buf, dest, tag, comm);           // a message without data
+/// @endcode
 inline constexpr null_buf_t null_buf{};
 
-/// Variadic sentinel buffer that passes `nullptr` as the data pointer
-/// and empty spans for counts and displacements. Satisfies `send_buffer_v` and `recv_buffer_v`.
-/// Used for non-root ranks in variadic collectives (e.g. gatherv, scatterv)
-/// when explicit per-rank counts are already known and no deferred inference
-/// is needed. For inference-triggered resizing on root, use
-/// `kamping::v2::auto_null_recv_v` instead.
-///
-///   v2::gatherv(local_data, null_buf_v, root, comm);  // non-root, explicit counts on root
+/// Type of @ref null_buf_v.
 struct null_buf_v_t {
     static void* mpi_ptr() noexcept {
         return nullptr;
@@ -94,7 +93,13 @@ struct null_buf_v_t {
         return {};
     }
 };
-/// The @ref null_buf_v_t sentinel.
+/// An empty variable-size buffer, for the buffer of `gatherv` or `scatterv` that only the root uses, if the root
+/// provides its counts. If the root's receive buffer obtains its counts from the others (e.g. `auto_recv_v`), non-root
+/// ranks pass `auto_null_recv_v()` instead.
+///
+/// @code
+/// v2::gatherv(local_data, v2::null_buf_v, root, comm);  // on a non-root rank
+/// @endcode
 inline constexpr null_buf_v_t null_buf_v{};
 
 // ─── Output array sentinels ──────────────────────────────────────────────────

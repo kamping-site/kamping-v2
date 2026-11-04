@@ -20,15 +20,15 @@ namespace kamping::v2 {
 
 /// Tag type selecting the resizing variant of a view factory, e.g. `views::auto_counts(resize, counts)`.
 struct resize_t {};
-/// The @ref resize_t tag.
+/// Selects the resizing variant of a view factory: `views::auto_counts(resize, counts)` resizes the caller-provided
+/// `counts`, instead of requiring them to be large enough.
 inline constexpr resize_t resize{};
 
-/// Tag for user-provided displacements that are known to be monotonically
-/// non-decreasing (e.g. computed via exclusive_scan). Enables the O(1)
-/// tight-bound formula displs.back() + counts.back() in resize_v_view
-/// instead of the O(p) max(counts[i]+displs[i]) formula.
+/// Tag type for displacements that are monotonically non-decreasing; see @ref monotonic.
 struct monotonic_t {};
-/// The @ref monotonic_t tag.
+/// Declares caller-provided displacements as monotonically non-decreasing, e.g. computed by a prefix sum:
+/// `views::with_displs(monotonic, displs)`. Then `views::resize_v` sizes the receive buffer from the last
+/// displacement and count, in O(1), instead of scanning all of them.
 inline constexpr monotonic_t monotonic{};
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -46,7 +46,7 @@ template <typename T>
 concept view = std::ranges::view<T> || std::derived_from<T, view_interface_base>;
 
 /// Type implements the custom MPI resize protocol (preferred over plain resize()). Implementations must follow the
-/// contract of @ref resize_for_receive: keep the values of the first min(old size, n) elements.
+/// contract of `resize_for_receive`: keep the values of the first min(old size, n) elements.
 template <typename T>
 concept has_mpi_resize_for_receive = requires(T& t, std::ptrdiff_t n) { t.mpi_resize_for_receive(n); };
 
@@ -250,8 +250,17 @@ struct view_interface : public view_interface_base, public std::ranges::view_int
         return derived().base().displs_monotonic();
     }
 
-    /// Returns a reference to the innermost base that does not derive from
-    /// view_interface_base, peeling through all kamping view layers.
+    /// Returns the container (or other buffer) at the bottom of a chain of views, e.g. the `std::vector` in
+    /// `std::vector<int>{} | views::resize`.
+    ///
+    /// Use it to get your container back from the result of an operation. On an rvalue, the container is moved out;
+    /// on an lvalue, a reference to it is returned:
+    ///
+    /// @code
+    /// std::vector<int> data = kamping::v2::recv(std::vector<int>{} | views::resize, source, comm).underlying();
+    /// auto [_, recv] = kamping::v2::allgatherv(local, kamping::v2::auto_recv_v<int>(), comm);
+    /// std::vector<int>& all = recv.underlying();
+    /// @endcode
     constexpr auto& underlying() &
         requires detail::has_base<Derived>
     {
@@ -262,7 +271,7 @@ struct view_interface : public view_interface_base, public std::ranges::view_int
         }
     }
 
-    /// Const overload of underlying().
+    /// Like the overload above, for a `const` view.
     constexpr auto const& underlying() const&
         requires detail::has_const_base<Derived>
     {
@@ -273,8 +282,7 @@ struct view_interface : public view_interface_base, public std::ranges::view_int
         }
     }
 
-    /// Rvalue overload of underlying(): moves out of the innermost base, enabling
-    /// zero-copy extraction from temporaries (e.g. result.recv.underlying()).
+    /// Like the overload above, for an rvalue view: moves the container out, without copying it.
     constexpr auto underlying() &&
         requires detail::has_base<Derived>
     {

@@ -55,8 +55,17 @@ namespace dstl {
 // {0,1,2}/{3,4,5} (fixing c1). Because the layout is row-major, the global-rank order already equals
 // the count-tree's leaf order, so no top-level reorder is needed.
 //
-/// k-dimensional grid communicator. `k` (the number of dimensions) is a runtime value derived
-/// from the factoring strategy; the execution policy `Exec` is a compile-time tag (D2/D3).
+/// A communicator whose processes are arranged in a k-dimensional grid, for @ref grid_alltoallv.
+///
+/// The grid dimensions s_0 × … × s_{k−1} (their product is the number of processes) are chosen by a factoring
+/// strategy, by default a balanced two-dimensional grid (`dims_create`), or given explicitly. Each dimension has a
+/// subcommunicator connecting the processes that differ only in that coordinate. Ranks are numbered row-major: the
+/// last dimension groups consecutive ranks, e.g. the processes of a compute node. `Exec` selects how the grid
+/// alltoallv uses threads (see `execution_policy`). The communicator accessors (`rank()`, `size()`, …) refer to the
+/// global communicator.
+//
+// Row-major (c_0 most significant) makes the global-rank order coincide with the radix count-tree's leaf order, so
+// grid_alltoallv routes remote-first with no top-level reordering. See the design notes for the full rationale.
 template <is_execution_policy Exec = execution_policy::par>
 class grid_comm : public kamping::v2::comm_accessors<grid_comm<Exec>> {
 public:
@@ -156,8 +165,8 @@ public:
         return static_cast<int>(r);
     }
 
-    /// @return True if the grid is complete (product of dims == p). Always true in this first
-    /// cut, which rejects ragged grids at construction time.
+    /// @return Whether the product of the dimensions equals the number of processes. Always true: incomplete grids
+    /// are rejected at construction.
     [[nodiscard]] bool is_complete() const noexcept {
         return true;
     }

@@ -273,12 +273,20 @@ inline constexpr bool already_flat_buffer<flatten_v_view<Source, FlatBuf, Counts
 
 namespace kamping::v2::views {
 
-/// Flattens a structured send buffer: `per_rank | views::flatten_v()`.
+/// Flattens a structured send buffer into a variable-size send buffer: `per_rank | views::flatten_v()`.
 ///
-/// The flat buffer, counts and displacements are allocated internally and resized as needed.
-/// FlatTemplate/CountsContainer/DisplsContainer select the internal container types:
-///   flatten_v<std::deque>()                       — custom flat buffer container
-///   flatten_v<std::vector, std::deque<int>>()     — custom counts container
+/// A structured send buffer is a range of per-rank ranges (entry `i` is sent to rank `i`), a range of
+/// `(rank, message)` pairs, or a range of `(value, rank)` pairs. The result holds all elements contiguously, ordered
+/// by destination rank, with the matching counts and displacements, e.g. for `alltoallv`:
+///
+/// @code
+/// std::vector<std::vector<int>> per_rank = ...;  // per_rank[i] is sent to rank i
+/// auto [_, recv] = kamping::v2::alltoallv(per_rank | views::flatten_v(), kamping::v2::auto_recv_v<int>(), comm);
+/// @endcode
+///
+/// The flat buffer, counts and displacements are allocated internally. The template arguments select their
+/// container types, e.g. `flatten_v<std::deque>()` for the flat buffer or `flatten_v<std::vector, std::deque<int>>()`
+/// for the counts. The overloads below flatten into storage you provide instead.
 template <
     template <typename...> typename FlatTemplate = std::vector,
     typename CountsContainer                     = std::vector<int>,

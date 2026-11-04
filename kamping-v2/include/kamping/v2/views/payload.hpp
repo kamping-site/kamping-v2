@@ -159,7 +159,7 @@ concept value_destination_pair_buffer = !already_flat_buffer<std::remove_cvref_t
                                         && value_destination_pair<std::ranges::range_value_t<R>>;
 
 /// Any structured send buffer: nested, sparse or value-destination pairs. Purely structural;
-/// see @ref copyable_send_buffer for what flatten_v_view can actually copy.
+/// see `copyable_send_buffer` for what flatten_v_view can actually copy.
 template <typename R>
 concept flattenable_send_buffer =
     nested_send_buffer<R> || sparse_nested_send_buffer<R> || value_destination_pair_buffer<R>;

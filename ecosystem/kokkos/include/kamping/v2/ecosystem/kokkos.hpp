@@ -207,6 +207,15 @@ inline constexpr bool supports_matched_probe<kokkos_view<T>> = supports_matched_
 
 namespace kamping::v2::views {
 
+/// Makes a `Kokkos::View` a data buffer: `kv | views::kokkos`.
+///
+/// Contiguous views are passed to MPI directly, after fencing the execution space. Non-contiguous views are packed
+/// into a contiguous buffer with `Kokkos::deep_copy` on first access to their data, and unpacked after receiving.
+/// Rank-1 views can be resized for receiving: `kv | views::kokkos | views::resize`.
+///
+/// @code{.signature}
+/// template <typename View> auto kokkos(View&& view);
+/// @endcode
 inline constexpr struct kokkos_fn : kamping::v2::adaptor_closure<kokkos_fn> {
     template <typename R>
     constexpr auto operator()(R&& r) const {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BSL-1.0
 
 /// @file
-/// Includes the complete KaMPIng v2 API.
+/// Includes the complete KaMPIng-v2 API.
 
 #pragma once
 

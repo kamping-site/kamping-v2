@@ -50,6 +50,11 @@ inline constexpr bool enable_borrowed_buffer<with_type_view<Base>> = enable_borr
 namespace kamping::v2::views {
 
 /// Overrides the MPI datatype: `buf | views::with_type(dt)`.
+///
+/// @code{.signature}
+/// auto with_type(MPI_Datatype type);
+/// template <typename Buf> auto with_type(Buf&& buf, MPI_Datatype type);
+/// @endcode
 inline constexpr kamping::v2::adaptor<1, decltype([](auto&& r, MPI_Datatype type) {
                                           return kamping::v2::with_type_view(std::forward<decltype(r)>(r), type);
                                       })>

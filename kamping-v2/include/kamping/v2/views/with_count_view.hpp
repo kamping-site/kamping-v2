@@ -52,6 +52,11 @@ namespace kamping::v2::views {
 ///
 /// Useful for non-range objects that expose mpi_ptr() but no size — compose with with_type
 /// to build a complete data_buffer. For limiting the element count of a range, prefer std::views::take.
+///
+/// @code{.signature}
+/// auto with_count(std::ptrdiff_t count);
+/// template <typename Buf> auto with_count(Buf&& buf, std::ptrdiff_t count);
+/// @endcode
 inline constexpr kamping::v2::adaptor<1, decltype([](auto&& r, std::ptrdiff_t count) {
                                           return kamping::v2::with_count_view(std::forward<decltype(r)>(r), count);
                                       })>

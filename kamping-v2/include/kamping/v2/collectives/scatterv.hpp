@@ -43,7 +43,7 @@ auto scatterv(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm) -> result<SBuf, RBuf> 
     return kamping::v2::scatterv(std::forward<SBuf>(sbuf), std::forward<RBuf>(rbuf), 0, comm);
 }
 
-/// Non-root shorthand of @ref scatterv: receives this rank's part from `root` into `rbuf`, without a send buffer.
+/// Non-root shorthand of `scatterv`: receives this rank's part from `root` into `rbuf`, without a send buffer.
 /// @return The receive buffer.
 template <
     mpi::experimental::recv_buffer                         RBuf,
@@ -53,7 +53,7 @@ auto scatterv(RBuf&& rbuf, Root root, Comm const& comm) -> RBuf {
     return kamping::v2::scatterv(null_buf_v_t{}, std::forward<RBuf>(rbuf), std::move(root), comm).recv;
 }
 
-/// Non-root shorthand of @ref scatterv: receives this rank's part from rank 0 into `rbuf`, without a send buffer.
+/// Non-root shorthand of `scatterv`: receives this rank's part from rank 0 into `rbuf`, without a send buffer.
 /// @return The receive buffer.
 template <mpi::experimental::recv_buffer RBuf, mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
 auto scatterv(RBuf&& rbuf, Comm const& comm) -> RBuf {

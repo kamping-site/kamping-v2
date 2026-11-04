@@ -131,7 +131,7 @@ TEST(V2AllgathervTest, ExplicitCountsAutoDisplsNoResize) {
     EXPECT_EQ(recv_data, expected);
 }
 
-// The deferred variadic receive buffer written as in the KaMPIng v2 paper, without parentheses.
+// The deferred variadic receive buffer written as in the KaMPIng-v2 paper, without parentheses.
 TEST(V2AllgathervTest, DeferredRecvBufferWithoutParentheses) {
     namespace views = kamping::v2::views;
     int rank, size;

@@ -13,16 +13,15 @@
 
 namespace kamping::v2::views {
 
-/// Pipe adaptor combining auto_counts() | auto_displs() | resize_v in a single step.
+/// Makes a variable-size receive buffer that sizes itself: `buf | views::auto_recv_v` is shorthand for
+/// `buf | views::auto_counts | views::auto_displs | views::resize_v`.
 ///
-/// Attaches owned counts and displacement buffers to the base data buffer and marks it
-/// for automatic resize on receive. The full deferred protocol (set_comm_size / MPI writes
-/// into counts / commit_counts / lazy displ computation / resize on mpi_ptr) is provided
-/// by the composed views.
+/// The operation exchanges the per-rank counts, the displacements are computed from them, and the container is
+/// resized to fit before receiving. For a fresh, owned buffer use the factory `kamping::v2::auto_recv_v<T>()`.
 ///
-/// Usage:
-///   recv_buf | views::auto_recv_v                      // lvalue — borrows recv_buf
-///   v2::auto_recv_v<int>()                             // owned factory form
+/// @code{.signature}
+/// template <typename Buf> auto auto_recv_v(Buf&& buf);
+/// @endcode
 inline constexpr struct auto_recv_v_fn : kamping::v2::adaptor_closure<auto_recv_v_fn> {
     template <typename R>
     constexpr auto operator()(R&& r) const {

@@ -156,6 +156,10 @@ namespace kamping::v2::views {
 
 /// Splits a variadic buffer into its per-rank chunks: `buf | views::chunked` is a range of `std::span`s, chunk `i`
 /// holding the elements for rank `i`. The inverse of `views::flatten_v`.
+///
+/// @code{.signature}
+/// template <typename Buf> auto chunked(Buf&& buf);
+/// @endcode
 inline constexpr struct chunked_fn : kamping::v2::adaptor_closure<chunked_fn> {
     template <typename R>
     constexpr auto operator()(R&& r) const {

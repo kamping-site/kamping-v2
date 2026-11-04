@@ -53,6 +53,11 @@ inline constexpr bool enable_borrowed_buffer<with_value_type_view<Base>> = enabl
 namespace kamping::v2::views {
 
 /// Sets the MPI datatype of the payload of a structured buffer: `buf | views::with_value_type(dt)`.
+///
+/// @code{.signature}
+/// auto with_value_type(MPI_Datatype type);
+/// template <typename Buf> auto with_value_type(Buf&& buf, MPI_Datatype type);
+/// @endcode
 inline constexpr kamping::v2::adaptor<1, decltype([](auto&& r, MPI_Datatype value_type) {
                                           return kamping::v2::with_value_type_view(
                                               std::forward<decltype(r)>(r),

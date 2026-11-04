@@ -121,6 +121,15 @@ namespace kamping::v2::views {
 ///   be large enough;
 /// - `buf | auto_displs(resize, displs)` or `auto_displs(resize, buf, displs)`: in the caller-provided `displs`,
 ///   resized as needed.
+///
+/// @code{.signature}
+/// auto auto_displs();
+/// template <mpi::experimental::count_range Displs> auto auto_displs(Displs&& displs);
+/// template <typename Buf, mpi::experimental::count_range Displs> auto auto_displs(Buf&& buf, Displs&& displs);
+/// template <mpi::experimental::count_range Displs> auto auto_displs(resize_t, Displs&& displs);
+/// template <typename Buf, mpi::experimental::count_range Displs>
+///     auto auto_displs(resize_t, Buf&& buf, Displs&& displs);
+/// @endcode
 inline constexpr struct auto_displs_fn : kamping::v2::adaptor_factory<auto_displs_fn> {
     template <typename... Args>
         requires(

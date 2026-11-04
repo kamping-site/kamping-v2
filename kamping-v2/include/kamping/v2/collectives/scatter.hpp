@@ -44,7 +44,7 @@ auto scatter(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm) -> result<SBuf, RBuf> {
     return kamping::v2::scatter(std::forward<SBuf>(sbuf), std::forward<RBuf>(rbuf), 0, comm);
 }
 
-/// Non-root shorthand of @ref scatter: receives this rank's share from `root` into `rbuf`, without a send buffer.
+/// Non-root shorthand of `scatter`: receives this rank's share from `root` into `rbuf`, without a send buffer.
 /// @return The receive buffer.
 template <
     mpi::experimental::recv_buffer                         RBuf,
@@ -54,7 +54,7 @@ auto scatter(RBuf&& rbuf, Root root, Comm const& comm) -> RBuf {
     return kamping::v2::scatter(null_buf_t{}, std::forward<RBuf>(rbuf), std::move(root), comm).recv;
 }
 
-/// Non-root shorthand of @ref scatter: receives this rank's share from rank 0 into `rbuf`, without a send buffer.
+/// Non-root shorthand of `scatter`: receives this rank's share from rank 0 into `rbuf`, without a send buffer.
 /// @return The receive buffer.
 template <mpi::experimental::recv_buffer RBuf, mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
 auto scatter(RBuf&& rbuf, Comm const& comm) -> RBuf {

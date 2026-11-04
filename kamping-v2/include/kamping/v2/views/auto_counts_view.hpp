@@ -102,6 +102,12 @@ namespace kamping::v2::views {
 ///   the communicator size;
 /// - `buf | auto_counts(counts)`: in the caller-provided `counts`, which must already have one entry per rank;
 /// - `buf | auto_counts(resize, counts)`: in the caller-provided `counts`, resized to the communicator size.
+///
+/// @code{.signature}
+/// auto auto_counts();
+/// template <mpi::experimental::count_range Counts> auto auto_counts(Counts&& counts);
+/// template <mpi::experimental::count_range Counts> auto auto_counts(resize_t, Counts&& counts);
+/// @endcode
 inline constexpr struct auto_counts_fn : kamping::v2::adaptor_factory<auto_counts_fn> {
     template <typename C>
         requires std::ranges::range<std::remove_cvref_t<C>>

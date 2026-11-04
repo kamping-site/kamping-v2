@@ -8,14 +8,14 @@
 
 namespace kamping::v2 {
 
-/// Returned by blocking two-buffer operations (sendrecv, alltoall, etc.).
+/// The send and receive buffer of a blocking operation with both, e.g. `sendrecv` or `alltoallv`.
 ///
-/// `SBuf` and `RBuf` are deduced from the factory's forwarding references:
-///   - lvalue argument → template parameter is `T&`  → member is a reference (zero-copy borrow)
-///   - rvalue argument → template parameter is `T`   → member is a value (ownership transfer)
+/// A buffer passed as an lvalue is borrowed: the member is a reference to it. A buffer passed as an rvalue was moved
+/// into the operation and is handed back here by value. Unpack it with a structured binding:
 ///
-/// Reference collapsing makes the two cases work with a single uniform member
-/// declaration. Supports structured bindings: `auto [s, r] = blocking_op(...);`.
+/// @code
+/// auto [_, recv] = kamping::v2::allgatherv(local, kamping::v2::auto_recv_v<int>(), comm);
+/// @endcode
 template <typename SBuf, typename RBuf>
 struct result {
     SBuf send;
