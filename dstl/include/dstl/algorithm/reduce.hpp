@@ -39,14 +39,15 @@ template <
     kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm,
     class BinaryOp                                        = std::plus<>>
     requires kamping::v2::has_mpi_type<R>
-auto reduce(R&& r, std::ranges::range_value_t<R> init = {}, BinaryOp op = {}, Comm const& comm = MPI_COMM_WORLD)
+auto reduce(R&& r, std::ranges::range_value_t<R> init = {}, BinaryOp const& op = {}, Comm const& comm = MPI_COMM_WORLD)
     -> std::ranges::range_value_t<R> {
     using T                     = std::ranges::range_value_t<R>;
     MPI_Datatype const mpi_type = kamping::v2::type(r);
 
-    auto first  = std::ranges::begin(r);
-    auto last   = std::ranges::end(r);
-    T    result = (first == last) ? T{} : std::reduce(std::next(first), last, *first, op);
+    auto first = std::ranges::begin(r);
+    auto last  = std::ranges::end(r);
+    // op is passed by reference: handles from make_op are neither copyable nor movable.
+    T result = (first == last) ? T{} : std::reduce(std::next(first), last, *first, std::cref(op));
 
     kamping::v2::allreduce(
         kamping::v2::inplace,
@@ -74,14 +75,18 @@ template <
     class BinaryOp                                        = std::plus<>>
     requires kamping::v2::has_mpi_type<R>
 auto reduce_to_root(
-    R&& r, std::ranges::range_value_t<R> init = {}, BinaryOp op = {}, Rank root = {}, Comm const& comm = MPI_COMM_WORLD
+    R&&                           r,
+    std::ranges::range_value_t<R> init = {},
+    BinaryOp const&               op   = {},
+    Rank                          root = {},
+    Comm const&                   comm = MPI_COMM_WORLD
 ) -> std::optional<std::ranges::range_value_t<R>> {
     using T                     = std::ranges::range_value_t<R>;
     MPI_Datatype const mpi_type = kamping::v2::type(r);
 
     auto first  = std::ranges::begin(r);
     auto last   = std::ranges::end(r);
-    T    result = (first == last) ? T{} : std::reduce(std::next(first), last, *first, op);
+    T    result = (first == last) ? T{} : std::reduce(std::next(first), last, *first, std::cref(op));
 
     kamping::v2::comm_view cv{kamping::v2::handle(comm)};
 
