@@ -12,6 +12,7 @@
 #include "dstl/algorithm/inclusive_scan.hpp"
 #include "dstl/algorithm/reduce.hpp"
 #include "kamping/v2/comm.hpp"
+#include "kamping/v2/ops.hpp"
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -60,6 +61,18 @@ TEST(Reduce, EmptyLocal) {
     EXPECT_EQ(result, 42);
 }
 
+TEST(Reduce, MakeOpHandle) {
+    // make_op handles are neither copyable nor movable; they must be accepted by reference.
+    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
+    int const                    n   = 4;
+    auto const                   vec = iota_vec(comm.rank() * n, n);
+
+    auto      op       = kamping::v2::make_op<int>([](int a, int b) { return a + b; }, kamping::v2::commutative);
+    int const result   = dstl::reduce(vec, 0, op, comm);
+    int const expected = n * comm.size() * (n * comm.size() - 1) / 2;
+    EXPECT_EQ(result, expected);
+}
+
 TEST(Reduce, ForwardRangeInput) {
     // Smoke test: input is a std::list (forward_range, not contiguous).
     kamping::v2::comm_view const comm{MPI_COMM_WORLD};
@@ -82,6 +95,23 @@ TEST(ReduceToRoot, Sum) {
 
     auto const result   = dstl::reduce_to_root(vec, 0, std::plus<int>{}, 0, comm);
     int const  expected = n * p * (n * p - 1) / 2;
+
+    if (comm.rank() == 0) {
+        ASSERT_TRUE(result.has_value());
+        EXPECT_EQ(*result, expected);
+    } else {
+        EXPECT_FALSE(result.has_value());
+    }
+}
+
+TEST(ReduceToRoot, MakeOpHandle) {
+    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
+    int const                    n   = 4;
+    auto const                   vec = iota_vec(comm.rank() * n, n);
+
+    auto       op       = kamping::v2::make_op<int>([](int a, int b) { return a + b; }, kamping::v2::commutative);
+    auto const result   = dstl::reduce_to_root(vec, 0, op, 0, comm);
+    int const  expected = n * comm.size() * (n * comm.size() - 1) / 2;
 
     if (comm.rank() == 0) {
         ASSERT_TRUE(result.has_value());
@@ -150,6 +180,22 @@ TEST(ExclusiveScan, UniformChunks) {
     }
 }
 
+TEST(ExclusiveScan, MakeOpHandle) {
+    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
+    int const                    n    = 4;
+    int const                    base = comm.rank() * n;
+    auto const                   in   = iota_vec(base, n);
+    std::vector<int>             out(static_cast<std::size_t>(n), 0);
+
+    auto op = kamping::v2::make_op<int>([](int a, int b) { return a + b; }, kamping::v2::commutative);
+    dstl::exclusive_scan(in, out, 0, op, comm);
+
+    for (int i = 0; i < n; ++i) {
+        int const global_i = base + i;
+        EXPECT_EQ(out[static_cast<std::size_t>(i)], global_i * (global_i - 1) / 2);
+    }
+}
+
 TEST(ExclusiveScan, SingleElement) {
     // Each rank holds a single element equal to rank.
     // Exclusive scan: out[i] = 0+1+...+(i-1) = i*(i-1)/2.
@@ -211,6 +257,22 @@ TEST(InclusiveScan, UniformChunks) {
     for (int i = 0; i < n; ++i) {
         int const global_i = base + i;
         EXPECT_EQ(out[static_cast<std::size_t>(i)], global_i * (global_i + 1) / 2) << "rank=" << rank << " i=" << i;
+    }
+}
+
+TEST(InclusiveScan, MakeOpHandle) {
+    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
+    int const                    n    = 4;
+    int const                    base = comm.rank() * n;
+    auto const                   in   = iota_vec(base, n);
+    std::vector<int>             out(static_cast<std::size_t>(n), 0);
+
+    auto op = kamping::v2::make_op<int>([](int a, int b) { return a + b; }, kamping::v2::commutative);
+    dstl::inclusive_scan(in, out, op, comm);
+
+    for (int i = 0; i < n; ++i) {
+        int const global_i = base + i;
+        EXPECT_EQ(out[static_cast<std::size_t>(i)], global_i * (global_i + 1) / 2);
     }
 }
 

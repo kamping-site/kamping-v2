@@ -44,14 +44,14 @@ template <
     kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm,
     class BinaryOp                                        = std::plus<>>
     requires kamping::v2::has_mpi_type<R>
-void inclusive_scan(R&& r, O&& out, BinaryOp op = {}, Comm const& comm = MPI_COMM_WORLD) {
+void inclusive_scan(R&& r, O&& out, BinaryOp const& op = {}, Comm const& comm = MPI_COMM_WORLD) {
     using T                               = std::ranges::range_value_t<R>;
     MPI_Datatype const           mpi_type = kamping::v2::type(r);
     kamping::v2::comm_view const cv{kamping::v2::handle(comm)};
 
     T rank_prefix{};
     with_subset(cv, !std::ranges::empty(r), [&](kamping::v2::comm_view sub_comm) {
-        std::inclusive_scan(std::ranges::begin(r), std::ranges::end(r), std::ranges::begin(out), op);
+        std::inclusive_scan(std::ranges::begin(r), std::ranges::end(r), std::ranges::begin(out), std::cref(op));
         T const local_total = *std::prev(std::ranges::end(out));
 
         if (sub_comm.size() > 1) {
