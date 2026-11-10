@@ -19,8 +19,8 @@
 #include <mpi.h>
 
 #include "dstl/thread_multiple_comm.hpp"
-#include "kamping/kassert/kassert.hpp"
 #include "kamping/v2/buffer.hpp"
+#include "kamping/v2/kassert.hpp"
 #include "kamping/v2/result.hpp"
 #include "kamping/v2/views.hpp"
 #include "mpi/buffer.hpp"

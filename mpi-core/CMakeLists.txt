@@ -71,16 +71,6 @@ target_sources(
 set_target_properties(mpi_core PROPERTIES EXPORT_NAME core)
 target_link_libraries(mpi_core INTERFACE MPI::MPI_CXX kamping_v2::kassert kamping::types)
 
-# Default assertion levels, so kassert does not warn about a missing definition. Debug: normal assertions (level 30, the
-# level of a plain KAMPING_V2_ASSERT(...)); otherwise: exceptions only (level 10).
-target_compile_definitions(
-    mpi_core INTERFACE $<IF:$<CONFIG:Debug>,KAMPING_V2_ASSERT_ASSERTION_LEVEL=30,KAMPING_V2_ASSERT_ASSERTION_LEVEL=10>
-)
-# kamping-types uses its own kassert instance (macro prefix KAMPING_ASSERT); set its level too.
-target_compile_definitions(
-    mpi_core INTERFACE $<IF:$<CONFIG:Debug>,KAMPING_ASSERT_ASSERTION_LEVEL=20,KAMPING_ASSERT_ASSERTION_LEVEL=10>
-)
-
 if (KAMPING_V2_INSTALL)
     install(
         TARGETS mpi_core

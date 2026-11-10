@@ -10,7 +10,7 @@
     #include <omp.h>
 #endif
 
-#include "kamping/kassert/kassert.hpp"
+#include "kamping/v2/kassert.hpp"
 
 /// @file
 /// The OpenMP work-splitting kernels shared by the dstl collectives — `chunked_for` (split-by-thread-id
@@ -29,7 +29,7 @@ namespace dstl::detail {
 template <typename F>
 inline void chunked_for([[maybe_unused]] bool parallel, std::ptrdiff_t n, F&& body) {
 #ifndef _OPENMP
-    KAMPING_ASSERT(!parallel, "chunked_for: parallel execution requires OpenMP, which this build lacks.");
+    KAMPING_V2_ASSERT(!parallel, "chunked_for: parallel execution requires OpenMP, which this build lacks.");
     body(std::ptrdiff_t{0}, n);
 #else
     if (!parallel) {
@@ -68,7 +68,7 @@ struct chunking {
             nchunks = std::clamp(omp_get_max_threads(), 1, static_cast<int>(std::max<std::ptrdiff_t>(n, 1)));
         }
 #else
-        KAMPING_ASSERT(!parallel, "chunking: parallel execution requires OpenMP, which this build lacks.");
+        KAMPING_V2_ASSERT(!parallel, "chunking: parallel execution requires OpenMP, which this build lacks.");
 #endif
     }
 

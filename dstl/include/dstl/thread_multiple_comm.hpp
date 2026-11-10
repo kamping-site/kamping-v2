@@ -16,10 +16,10 @@
 #include <mpi.h>
 
 #include "dstl/tags.hpp"
-#include "kamping/kassert/kassert.hpp"
 #include "kamping/v2/collectives/allreduce.hpp"
 #include "kamping/v2/comm.hpp"
 #include "kamping/v2/environment.hpp"
+#include "kamping/v2/kassert.hpp"
 #include "kamping/v2/sentinels.hpp"
 #include "kamping/v2/views/ref_single_view.hpp"
 
@@ -61,7 +61,7 @@ public:
     // `t` must be identical on every rank: both MPI_Comm_dup here and the per-thread MPI_Alltoallv later are
     // collective, so thread `t` on every rank has to participate; hence the MPI_Allreduce before duplicating.
     explicit thread_multiple_comm(kamping::v2::comm_view global) : _global(global) {
-        KAMPING_ASSERT(
+        KAMPING_V2_ASSERT(
             kamping::v2::environment::thread_level() >= kamping::v2::ThreadLevel::multiple,
             "thread_multiple_comm<thread_multiple>: the MPI runtime does not provide MPI_THREAD_MULTIPLE"
         );
