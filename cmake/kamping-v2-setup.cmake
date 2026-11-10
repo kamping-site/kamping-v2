@@ -41,11 +41,21 @@ if (NOT TARGET MPI::MPI_CXX)
     find_package(MPI REQUIRED)
 endif ()
 
+# Assertion level of kamping-v2: 30 (normal assertions) in Debug builds, 10 (exceptions only) otherwise. It is the
+# default level of the kamping_v2::kassert instance, so it applies to every target linking to kamping-v2; a single target
+# can override it with the KAMPING_V2_ASSERT_ASSERTION_LEVEL property. kamping-types has its own kassert instance, whose
+# level is set with KAMPING_TYPES_ASSERTION_LEVEL.
+set(KAMPING_V2_ASSERTION_LEVEL
+    $<IF:$<CONFIG:Debug>,30,10>
+    CACHE STRING "Assertion level of kamping-v2 (a number, may be a generator expression)."
+)
+
 # kassert, configured as an instance of its own (macro prefix KAMPING_V2_ASSERT, header kamping/v2/kassert.hpp). The
 # variables stay inside the block() so that they do not leak into the kassert instance kamping-types configures.
 if (NOT TARGET kamping_v2::kassert)
     block()
     set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
+    set(KASSERT_DEFAULT_ASSERTION_LEVEL ${KAMPING_V2_ASSERTION_LEVEL})
     set(KASSERT_CMAKE_NAMESPACE kamping_v2)
     set(KASSERT_CXX_NAMESPACE kamping::v2::kassert)
     set(KASSERT_INCLUDE_SUBDIR kamping/v2)
@@ -54,7 +64,7 @@ if (NOT TARGET kamping_v2::kassert)
     FetchContent_Declare(
         kamping_v2_kassert
         GIT_REPOSITORY https://github.com/kamping-site/kassert
-        GIT_TAG v1.0.0
+        GIT_TAG v1.1.0
     )
     FetchContent_MakeAvailable(kamping_v2_kassert)
     endblock()
@@ -104,7 +114,7 @@ if (NOT TARGET kamping::types)
     FetchContent_Declare(
         kamping_types
         GIT_REPOSITORY https://github.com/kamping-site/kamping
-        GIT_TAG v0.3.1
+        GIT_TAG v0.3.2
         SOURCE_SUBDIR kamping-types
     )
     FetchContent_MakeAvailable(kamping_types)

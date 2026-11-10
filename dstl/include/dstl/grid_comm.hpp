@@ -14,9 +14,9 @@
 
 #include "dstl/factoring.hpp"
 #include "dstl/tags.hpp"
-#include "kamping/kassert/kassert.hpp"
 #include "kamping/v2/comm.hpp"
 #include "kamping/v2/environment.hpp"
+#include "kamping/v2/kassert.hpp"
 
 /// @file
 /// dstl::grid_comm — a k-dimensional grid communicator built from k iterated splits of a

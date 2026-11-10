@@ -1,0 +1,301 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+	"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+
+<head>
+<title>sparse_alltoall.html</title>
+<meta http-equiv="Content-Type" content="text/html;charset=utf-8"/>
+
+</head>
+
+<body>
+
+<h1>Design: dstl sparse alltoall</h1>
+
+<p>Sparse personalized all-to-all: every rank sends messages to a (small, dynamic) set of
+destinations, and no rank knows in advance from whom it will receive. Implements the four
+protocols of Hoefler, Siebert, Lumsdaine, <em>Scalable Communication Protocols for Dynamic Sparse
+Data Exchange</em> (PPoPP 2010), selected by a tag. Unlike <code>MPI_Alltoallv</code>, NBX has communication
+complexity linear in the number of messages actually sent, not in the communicator size.</p>
+
+<hr />
+
+<h2>Primitives</h2>
+
+<table>
+<thead>
+<tr>
+<th> Primitive </th>
+<th> Status </th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td> <code>probe_result</code>, <code>v2::mprobe</code>, <code>v2::improbe</code> </td>
+<td> done (#83) </td>
+</tr>
+<tr>
+<td> <code>v2::mrecv</code>, <code>v2::imrecv</code> (take <code>probe_result</code> by value, size deferred buffers via <code>infer(comm_op::mrecv, ...)</code>) </td>
+<td> done (#85) </td>
+</tr>
+<tr>
+<td> <code>ibarrier</code> (v2 returns a <code>request</code>) </td>
+<td> done (#84) </td>
+</tr>
+<tr>
+<td> <code>request_vector</code>, <code>testall</code> </td>
+<td> done (#82) </td>
+</tr>
+<tr>
+<td> <code>reduce_scatter_block</code> </td>
+<td> missing — needed for PCX </td>
+</tr>
+<tr>
+<td> one-sided windows (<code>MPI_Win</code>, <code>MPI_Accumulate</code>) </td>
+<td> missing — needed for RSX </td>
+</tr>
+</tbody>
+</table>
+
+
+<hr />
+
+<h2>Algorithm selection</h2>
+
+<p>Tags in the style of the existing <code>execution_policy::*</code> / <code>layout::*</code> tags (<code>tags.hpp</code>):</p>
+
+<p><code>cpp
+namespace dstl::sparse_alltoall_algorithm {
+struct nbx {}; // nonblocking consensus: issend + improbe + ibarrier
+struct pex {}; // personalized exchange: alltoall of counts
+struct pcx {}; // personalized census: reduce_scatter of message flags
+struct rsx {}; // remote summing: MPI_Accumulate into a counter window
+}
+template &lt;typename T&gt;
+concept is_sparse_alltoall_algorithm = /* one of the tags above */;
+</code></p>
+
+<p>The tag is the first argument (like <code>std::execution</code> policies). Every entry point has an
+overload without it that defaults to <code>nbx</code>.</p>
+
+<hr />
+
+<h2>Layer 1 — callback primitive</h2>
+
+<p><code>cpp
+template &lt;
+    is_sparse_alltoall_algorithm                            Algorithm,
+    sparse_send_buffer                                      Sends,
+    std::invocable&lt;incoming_message&gt;p                        OnMessage,
+    mpi::experimental::convertible_to_mpi_handle&lt;MPI_Comm&gt;  Comm = MPI_Comm&gt;
+void dstl::sparse_alltoall(Algorithm, Sends&amp;&amp; sends, OnMessage&amp;&amp; on_message, Comm const&amp; comm = MPI_COMM_WORLD);
+</code></p>
+
+<h3>Input: <code>sparse_send_buffer</code></h3>
+
+<p>A range of <code>(dest, inner_range)</code> pairs — the existing <code>sparse_nested_send_buffer</code> (<code>payload.hpp</code>),
+plus the requirement that each inner range is <code>contiguous_range &amp;&amp; sized_range</code>, since inner
+ranges are sent directly without copying. Inner ranges are plain ranges (<code>std::vector&lt;T&gt;</code>,
+<code>std::span&lt;T&gt;</code>, …); they need not be <code>send_buffer</code>s, so payload types without a builtin MPI type
+work (their type comes from the value-type channel below).</p>
+
+<h3>Datatype: the value-type channel</h3>
+
+<p>The payload datatype is attached once to the whole structure, not per message:</p>
+
+<p><code>cpp
+dstl::sparse_alltoall(sends | kamping::v2::views::with_value_pool(p), on_message, comm);
+dstl::sparse_alltoall(sends | kamping::v2::views::with_value_type(dt), on_message, comm);
+dstl::sparse_alltoall(sends, on_message, comm); // builtin payload: value_type() fallback
+</code></p>
+
+<p>The implementation reads <code>kamping::v2::value_type(sends)</code> once (as <code>request_reply</code> does) and uses it
+for every send. Consequences:</p>
+
+<ul>
+<li>One datatype per call, by construction.</li>
+<li>The datatype must outlive the call; with <code>with_value_pool</code> the <code>type_pool</code> guarantees this.</li>
+<li>No per-message views are created just to carry a type.</li>
+</ul>
+
+
+<h3>Callback: <code>incoming_message</code></h3>
+
+<p>The protocols know different things about an incoming message: PEX knows source and size up
+front, NBX/PCX only learn about a message by probing it. If the callback always received a
+<code>probe_result</code>, PEX would have to probe every message anyway and lose part of its advantage. So
+the callback receives an algorithm-independent handle (name tentative):</p>
+
+<p><code>cpp
+class incoming_message {
+public:
+    int source() const;
+    template &lt;typename T&gt; std::optional&lt;int&gt; count() const;  // elements of T, nullopt for MPI_UNDEFINED
+    auto recv(RBuf&amp;&amp; rbuf) &amp;&amp;;                                // blocking; goes through infer()
+    auto irecv(RBuf&amp;&amp; rbuf) &amp;&amp;;                               // -&gt; iresult&lt;RBuf&gt;
+    auto irecv(Request&amp;&amp; request, RBuf&amp;&amp; rbuf) &amp;&amp;;            // caller-supplied request
+};
+</code></p>
+
+<ul>
+<li>NBX / PCX: wraps a <code>probe_result</code>; <code>recv</code> / <code>irecv</code> are <code>v2::mrecv</code> / <code>v2::imrecv</code>.</li>
+<li>PEX: holds <code>(source, count)</code>; <code>recv</code> / <code>irecv</code> are a targeted <code>recv</code> / <code>irecv</code>, sizing deferred
+buffers from the known count.</li>
+</ul>
+
+
+<p><code>recv</code> / <code>irecv</code> size deferred buffers (<code>views::resize</code>, …) from the count, computed with the
+<em>receive</em> buffer&rsquo;s datatype — so only the sizes of sent and received elements have to match, not
+the declared types.</p>
+
+<p>Contract: move-only, received exactly once; dropping an unreceived message terminates, like
+<code>mpi::experimental::message</code> (for NBX / PCX this falls out of <code>probe_result</code>; the PEX handle needs
+its own flag). The callback may move the handle out and receive it later, as long as that happens
+before <code>sparse_alltoall</code> returns.</p>
+
+<p><strong>Open:</strong> PEX exchanges counts in units of the send datatype. Either convert to the receive
+buffer&rsquo;s datatype via the type sizes, or require the sizes to match.</p>
+
+<hr />
+
+<h2>Shared send phase</h2>
+
+<p>All four protocols start by sending every <code>(dest, inner)</code> pair. This lives in one place,
+parameterized by the send mode:</p>
+
+<ul>
+<li>NBX uses <strong><code>issend</code></strong> (see below); PEX, PCX and RSX use <code>isend</code>.</li>
+<li>Requests go into a <code>request_vector</code>; inner ranges are sent as <code>(data, size, value_type)</code>.</li>
+<li><p>Owning per-message views (e.g. <code>views::serialize</code> applied via <code>std::views::transform</code>) would be
+destroyed while their send is in flight. For non-<code>borrowed_range</code> inner types, the send phase
+moves each one into an internal vector that lives until all sends complete; for borrowed inner
+types this is compiled away. Not implemented yet — until then, materialize first:</p>
+
+<p><code>cpp
+auto staged = sends
+    | std::views::transform([](auto&amp; msg) { auto&amp; [dst, data] = msg; return std::pair{dst, data | kamping::views::serialize}; })
+    | std::ranges::to&lt;std::vector&gt;();
+dstl::sparse_alltoall(staged, callback, comm);
+</code></p></li>
+</ul>
+
+
+<hr />
+
+<h2>Protocols</h2>
+
+<h3>NBX</h3>
+
+<p><code>
+1. issend every message (synchronous mode!), collecting requests
+2. loop:
+       if (auto probe = improbe(MPI_ANY_SOURCE, tag, comm))
+           on_message(incoming_message{std::move(*probe)})
+       if (!barrier_started &amp;&amp; testall(send_requests))
+           barrier = ibarrier(comm); barrier_started = true
+       if (barrier_started &amp;&amp; barrier.test()) break
+</code></p>
+
+<p>The sends <strong>must be synchronous</strong> (<code>issend</code>): termination relies on a completed send meaning the
+receiver has matched the message, which is what allows a rank to enter the <code>ibarrier</code> once all its
+sends are complete. With <code>isend</code>, a small message can complete locally before it is matched, and
+the protocol can terminate with messages still in flight.</p>
+
+<h3>PEX</h3>
+
+<p><code>alltoall</code> of per-destination counts (O(p) per rank), then post the receives for every non-zero
+count and send. Sizes are known up front, so no probing; delivery order is predictable.</p>
+
+<h3>PCX</h3>
+
+<p><code>reduce_scatter_block</code> of a 0/1 &ldquo;I send to you&rdquo; vector yields the number of incoming messages;
+then <code>mprobe(MPI_ANY_SOURCE, tag)</code> that many times. Needs a <code>reduce_scatter_block</code> wrapper
+(small, follows the existing collectives pattern).</p>
+
+<h3>RSX</h3>
+
+<p>Each sender <code>MPI_Accumulate</code>s +1 into a counter on each destination within a fence epoch, yielding
+the number of incoming messages; then probe as in PCX. Needs one-sided windows, which mpi-core does
+not have yet — either a minimal window wrapper or raw MPI inside dstl.</p>
+
+<hr />
+
+<h2>Message isolation across calls</h2>
+
+<p>All protocols send on a reserved tag. After its barrier completes, a fast rank can start the next
+<code>sparse_alltoall</code> and send while a slower rank is still probing in the previous one and may match
+the new message. <strong>Open:</strong> pick one mechanism for all protocols:</p>
+
+<ul>
+<li>a final <code>barrier()</code> (as in the original sketch) — simple, costs a collective per call;</li>
+<li>a duplicated communicator per call (or cached per communicator);</li>
+<li>tags alternating between consecutive calls.</li>
+</ul>
+
+
+<hr />
+
+<h2>Layer 2 — flat buffer convenience</h2>
+
+<p>Built on Layer 1. Takes a variadic send buffer (flat data + per-rank counts + displacements) and
+only sends to ranks with non-zero counts. Its input is already flat, so plain <code>with_type</code> applies.</p>
+
+<p><code>cpp
+template &lt;
+    is_sparse_alltoall_algorithm                            Algorithm,
+    mpi::experimental::data_buffer_v                        SBuf,
+    mpi::experimental::recv_buffer                          RBuf,
+    is_output_layout                                        Layout = layout::unordered,
+    mpi::experimental::convertible_to_mpi_handle&lt;MPI_Comm&gt;  Comm   = MPI_Comm&gt;
+void dstl::sparse_alltoall(Algorithm, SBuf&amp;&amp; sbuf, RBuf&amp;&amp; rbuf, Layout = {}, Comm const&amp; comm = MPI_COMM_WORLD);
+</code></p>
+
+<p>NBX / PCX / RSX deliver in arrival order. The output order reuses the existing layout tags:
+<code>layout::unordered</code> (default) appends in arrival order; <code>layout::ordered_by_source</code> yields the
+<code>MPI_Alltoallv</code> layout (grouped by increasing source rank).</p>
+
+<hr />
+
+<h2>Higher-level convenience variants (built on Layer 1)</h2>
+
+<p>```cpp
+// Collect all received messages as (source, data) pairs
+template <typename T, ...>
+auto sparse_alltoall(Sends&amp;&amp;, Comm const&amp;) -> std::vector&lt;std::pair&lt;int, std::vector<T>>>;</p>
+
+<p>// Flat: all elements concatenated + per-element source annotation
+template <typename T, ...>
+auto sparse_alltoall(Sends&amp;&amp;, Comm const&amp;) -> std::pair&lt;std::vector<T>, std::vector<int>>;
+```</p>
+
+<p>Both are thin wrappers over the callback primitive, and accept the algorithm tag like it.</p>
+
+<hr />
+
+<h2>Dropped: <code>transform_messages</code></h2>
+
+<p>The original design had <code>sends | dstl::views::transform_messages(adaptor)</code> to apply a view to every
+message, mainly to attach a datatype per message (<code>with_auto_pool(p)</code>, <code>with_type(dt)</code>). The
+value-type channel (<code>with_value_type</code> / <code>with_value_pool</code>, see <a href="value_type.md"><code>value_type.md</code></a>)
+replaces that with a single whole-buffer annotation. Remaining per-message transformations that
+change the data (e.g. <code>views::serialize</code>) are written with <code>std::views::transform</code> on the pairs —
+<code>transform_messages</code> was only shorthand for it. The owning-view lifetime issue is independent of
+the spelling and handled in the shared send phase.</p>
+
+<hr />
+
+<h2>Implementation order</h2>
+
+<ol>
+<li>Shared send phase + <code>incoming_message</code> + NBX (all primitives available).</li>
+<li>PEX (needs only <code>alltoall</code>).</li>
+<li>PCX, after a <code>reduce_scatter_block</code> wrapper.</li>
+<li>RSX, after a minimal window wrapper (or raw MPI inside dstl).</li>
+<li>Layer 2 and the convenience variants.</li>
+</ol>
+
+
+</body>
+</html>
