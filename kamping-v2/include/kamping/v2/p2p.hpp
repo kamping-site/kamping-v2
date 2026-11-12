@@ -6,13 +6,14 @@
 
 #pragma once
 
-#include "kamping/v2/p2p/constants.hpp" // IWYU pragma: export
-#include "kamping/v2/p2p/irecv.hpp"     // IWYU pragma: export
-#include "kamping/v2/p2p/isend.hpp"     // IWYU pragma: export
-#include "kamping/v2/p2p/isendrecv.hpp" // IWYU pragma: export
-#include "kamping/v2/p2p/mrecv.hpp"     // IWYU pragma: export
-#include "kamping/v2/p2p/probe.hpp"     // IWYU pragma: export
-#include "kamping/v2/p2p/recv.hpp"      // IWYU pragma: export
-#include "kamping/v2/p2p/send.hpp"      // IWYU pragma: export
-#include "kamping/v2/p2p/send_mode.hpp" // IWYU pragma: export
-#include "kamping/v2/p2p/sendrecv.hpp"  // IWYU pragma: export
+#include "kamping/v2/p2p/constants.hpp"        // IWYU pragma: export
+#include "kamping/v2/p2p/irecv.hpp"            // IWYU pragma: export
+#include "kamping/v2/p2p/isend.hpp"            // IWYU pragma: export
+#include "kamping/v2/p2p/isendrecv.hpp"        // IWYU pragma: export
+#include "kamping/v2/p2p/mrecv.hpp"            // IWYU pragma: export
+#include "kamping/v2/p2p/probe.hpp"            // IWYU pragma: export
+#include "kamping/v2/p2p/recv.hpp"             // IWYU pragma: export
+#include "kamping/v2/p2p/send.hpp"             // IWYU pragma: export
+#include "kamping/v2/p2p/send_mode.hpp"        // IWYU pragma: export
+#include "kamping/v2/p2p/sendrecv.hpp"         // IWYU pragma: export
+#include "kamping/v2/p2p/sendrecv_replace.hpp" // IWYU pragma: export

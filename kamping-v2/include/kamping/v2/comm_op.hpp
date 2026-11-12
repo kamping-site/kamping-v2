@@ -11,21 +11,22 @@
 
 namespace kamping::v2::comm_op {
 
-struct recv {};       ///< recv, irecv
-struct mrecv {};      ///< mrecv, imrecv
-struct bcast {};      ///< bcast
-struct allgather {};  ///< allgather
-struct allgatherv {}; ///< allgatherv
-struct alltoall {};   ///< alltoall
-struct alltoallv {};  ///< alltoallv
-struct sendrecv {};   ///< sendrecv, isendrecv
-struct reduce {};     ///< reduce
-struct allreduce {};  ///< allreduce
-struct gather {};     ///< gather
-struct gatherv {};    ///< gatherv
-struct scatter {};    ///< scatter
-struct scatterv {};   ///< scatterv
-struct scan {};       ///< scan
-struct exscan {};     ///< exscan
+struct recv {};             ///< recv, irecv
+struct mrecv {};            ///< mrecv, imrecv
+struct bcast {};            ///< bcast
+struct allgather {};        ///< allgather
+struct allgatherv {};       ///< allgatherv
+struct alltoall {};         ///< alltoall
+struct alltoallv {};        ///< alltoallv
+struct sendrecv {};         ///< sendrecv, isendrecv
+struct sendrecv_replace {}; ///< sendrecv_replace
+struct reduce {};           ///< reduce
+struct allreduce {};        ///< allreduce
+struct gather {};           ///< gather
+struct gatherv {};          ///< gatherv
+struct scatter {};          ///< scatter
+struct scatterv {};         ///< scatterv
+struct scan {};             ///< scan
+struct exscan {};           ///< exscan
 
 } // namespace kamping::v2::comm_op

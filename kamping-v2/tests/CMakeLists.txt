@@ -118,6 +118,10 @@ add_executable(test_v2_isendrecv isendrecv_test.cpp)
 target_link_libraries(test_v2_isendrecv PRIVATE kamping::v2 kamping_v2_warnings KaTestrophe::main)
 katestrophe_add_mpi_test(test_v2_isendrecv CORES 1 2 4)
 
+add_executable(test_v2_sendrecv_replace sendrecv_replace_test.cpp)
+target_link_libraries(test_v2_sendrecv_replace PRIVATE kamping::v2 kamping_v2_warnings KaTestrophe::main)
+katestrophe_add_mpi_test(test_v2_sendrecv_replace CORES 1 2 4)
+
 add_executable(test_v2_mrecv mrecv_test.cpp)
 target_link_libraries(test_v2_mrecv PRIVATE kamping::v2 kamping_v2_warnings KaTestrophe::main)
 katestrophe_add_mpi_test(test_v2_mrecv CORES 2 4)
