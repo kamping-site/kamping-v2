@@ -18,7 +18,7 @@ namespace mpi::experimental {
 /// received message must not be longer.
 /// @param status Optional: filled with the status of the received message. Defaults to `MPI_STATUS_IGNORE`.
 template <
-    recv_buffer                               SRBuf,
+    send_recv_buffer                          SRBuf,
     rank                                      Dest,
     rank                                      Source,
     tag                                       SendTag,

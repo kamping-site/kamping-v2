@@ -172,6 +172,28 @@ void infer(
     }
 }
 
+/// sendrecv_replace: nothing to infer for a buffer of known size.
+///
+/// A deferred buffer is rejected: `MPI_Sendrecv_replace` uses one count for both directions, so the buffer cannot be
+/// sized to the incoming message without changing what is sent. Buffer types that can handle this themselves, e.g.
+/// by exchanging additional metadata, can provide their own overload.
+template <mpi::experimental::send_recv_buffer SRBuf>
+void infer(
+    comm_op::sendrecv_replace,
+    SRBuf&,
+    int /* dest */,
+    int /* send_tag */,
+    int /* source */,
+    int /* recv_tag */,
+    MPI_Comm
+) {
+    static_assert(
+        !kamping::v2::deferred_recv_buf<SRBuf>,
+        "sendrecv_replace sends and receives count(send_recv_buf) elements and cannot resize the buffer; use sendrecv "
+        "with a separate receive buffer for messages of unknown size"
+    );
+}
+
 /// reduce: sizes a deferred receive buffer on root to `count(sbuf)`.
 template <mpi::experimental::send_buffer SBuf, mpi::experimental::recv_buffer RBuf>
 void infer(comm_op::reduce, SBuf const& sbuf, RBuf& rbuf, MPI_Op, int root, MPI_Comm comm) {

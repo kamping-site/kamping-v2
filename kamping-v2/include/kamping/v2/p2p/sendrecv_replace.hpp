@@ -7,8 +7,8 @@
 
 #include <mpi.h>
 
+#include "kamping/v2/infer.hpp"
 #include "kamping/v2/p2p/constants.hpp"
-#include "kamping/v2/views/concepts.hpp"
 #include "mpi/handle.hpp"
 #include "mpi/p2p/sendrecv_replace.hpp"
 
@@ -18,12 +18,12 @@ namespace kamping::v2 {
 /// `source` with `recv_tag`, in one call (`MPI_Sendrecv_replace`).
 ///
 /// The same buffer, count and datatype are used for both directions: `count(send_recv_buf)` elements are sent, and the
-/// received message must not be longer. The buffer is therefore not resized, and deferred receive buffers such as
-/// `views::resize` are not accepted; use `sendrecv` with a separate receive buffer for messages of unknown size.
+/// received message must not be longer. The default `infer()` therefore rejects deferred receive buffers such as
+/// `views::resize`; use `sendrecv` with a separate receive buffer for messages of unknown size.
 /// @param status Optional: filled with the status of the received message. Defaults to `MPI_STATUS_IGNORE`.
 /// @return The buffer (owned if passed as rvalue, borrowed otherwise).
 template <
-    mpi::experimental::recv_buffer                               SRBuf,
+    mpi::experimental::send_recv_buffer                          SRBuf,
     mpi::experimental::rank                                      Dest,
     mpi::experimental::rank                                      Source,
     mpi::experimental::tag                                       SendTag,
@@ -39,12 +39,14 @@ auto sendrecv_replace(
     Comm const& comm,
     Status&&    status = MPI_STATUS_IGNORE
 ) -> SRBuf {
-    // MPI_Sendrecv_replace has a single count for both directions, so the buffer cannot be sized to the incoming
-    // message without changing what is sent.
-    static_assert(
-        !kamping::v2::deferred_recv_buf<SRBuf>,
-        "sendrecv_replace sends and receives count(send_recv_buf) elements and cannot resize the buffer; use sendrecv "
-        "with a separate receive buffer for messages of unknown size"
+    infer(
+        comm_op::sendrecv_replace{},
+        send_recv_buf,
+        mpi::experimental::to_rank(dest),
+        mpi::experimental::to_tag(send_tag),
+        mpi::experimental::to_rank(source),
+        mpi::experimental::to_tag(recv_tag),
+        mpi::experimental::handle(comm)
     );
     mpi::experimental::sendrecv_replace(
         send_recv_buf,
@@ -60,7 +62,7 @@ auto sendrecv_replace(
 
 /// Like the overload above, sending with @ref DEFAULT_SEND_TAG and receiving with any tag.
 template <
-    mpi::experimental::recv_buffer                               SRBuf,
+    mpi::experimental::send_recv_buffer                          SRBuf,
     mpi::experimental::rank                                      Dest,
     mpi::experimental::rank                                      Source,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>       Comm,
@@ -81,7 +83,7 @@ auto sendrecv_replace(
 
 /// Like the overload above, receiving from any source.
 template <
-    mpi::experimental::recv_buffer                               SRBuf,
+    mpi::experimental::send_recv_buffer                          SRBuf,
     mpi::experimental::rank                                      Dest,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>       Comm,
     mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>
