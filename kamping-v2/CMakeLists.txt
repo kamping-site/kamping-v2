@@ -58,6 +58,7 @@ target_sources(
               include/kamping/v2/p2p/send.hpp
               include/kamping/v2/p2p/send_mode.hpp
               include/kamping/v2/p2p/sendrecv.hpp
+              include/kamping/v2/p2p/sendrecv_replace.hpp
               include/kamping/v2/request.hpp
               include/kamping/v2/result.hpp
               include/kamping/v2/sentinels.hpp

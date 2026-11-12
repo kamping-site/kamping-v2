@@ -39,6 +39,11 @@ The send mode is selected with a tag as first argument, e.g. `v2::send(v2::send_
 ```{doxygenoverloads} kamping::v2::sendrecv
 ```
 
+With one buffer for both directions:
+
+```{doxygenoverloads} kamping::v2::sendrecv_replace
+```
+
 ## Probing
 
 ```{doxygenoverloads} kamping::v2::probe

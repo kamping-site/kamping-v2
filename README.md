@@ -197,8 +197,8 @@ Device memory from `cudaMalloc` or `sycl::malloc_device` needs no adapter: wrap 
 
 ## Supported operations
 
-**Point-to-point:** `send` (standard, buffered, synchronous, and ready modes), `recv`, `sendrecv`, `isend`, `irecv`,
-`isendrecv`, `probe`, `iprobe`, `mprobe`, `improbe`, `mrecv`, `imrecv`
+**Point-to-point:** `send` (standard, buffered, synchronous, and ready modes), `recv`, `sendrecv`, `sendrecv_replace`,
+`isend`, `irecv`, `isendrecv`, `probe`, `iprobe`, `mprobe`, `improbe`, `mrecv`, `imrecv`
 
 **Collectives:** `allgather`, `allgatherv`, `allreduce`, `alltoall`, `alltoallv`, `barrier`, `ibarrier`, `bcast`,
 `exscan`, `gather`, `gatherv`, `reduce`, `scan`, `scatter`, `scatterv`
