@@ -5,7 +5,6 @@
 
 #include <cstdint>
 #include <type_traits>
-#include <utility>
 
 #include <mpi.h>
 
@@ -20,21 +19,30 @@
 namespace mpi::experimental {
 
 namespace detail {
-/// @return The rank and size of the communicator `comm`.
-/// @throws mpi_error if `MPI_Comm_rank` or `MPI_Comm_size` fails.
-inline std::pair<int, int> rank_and_size(MPI_Comm comm) {
+/// @return The rank of the calling process in `comm`.
+/// @throws mpi_error if `MPI_Comm_rank` fails.
+inline int comm_rank(MPI_Comm comm) {
     int rank = 0;
     int err  = MPI_Comm_rank(comm, &rank);
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);
     }
+    return rank;
+}
+
+/// @return The size of `comm`.
+/// @throws mpi_error if `MPI_Comm_size` fails.
+inline int comm_size(MPI_Comm comm) {
     int size = 0;
-    err      = MPI_Comm_size(comm, &size);
+    int err  = MPI_Comm_size(comm, &size);
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);
     }
-    return {rank, size};
+    return size;
 }
+
+/// Tag selecting the private constructors of the rank types that take a size instead of a communicator.
+struct with_size_tag {};
 } // namespace detail
 
 /// @brief A rank in a communicator of fixed size whose arithmetic wraps around at the ends, as in a ring.
@@ -46,6 +54,7 @@ inline std::pair<int, int> rank_and_size(MPI_Comm comm) {
 /// @code
 /// auto const me = periodic_rank(comm);
 /// sendrecv_replace(buf, me - 1, 0, me + 1, 0, comm); // shift buf one rank to the left
+/// auto const root = periodic_rank(0, comm);
 /// @endcode
 class periodic_rank {
     int _rank;
@@ -56,24 +65,31 @@ class periodic_rank {
         return static_cast<int>(r < 0 ? r + size : r);
     }
 
-public:
-    /// @brief The rank `rank` in a communicator of size `size`, wrapped into `[0, size)`.
-    /// @pre `size > 0`.
-    constexpr periodic_rank(int rank, int size) : _rank(0), _size(size) {
+    constexpr periodic_rank(int rank, int size, detail::with_size_tag) : _rank(0), _size(size) {
         if (!std::is_constant_evaluated()) {
             KAMPING_V2_ASSERT(size > 0, "a communicator has at least one rank");
         }
         _rank = wrap(rank, size);
     }
 
+public:
     /// @brief The rank of the calling process in `comm`.
     /// @throws mpi_error if the rank or size of `comm` cannot be queried.
     template <convertible_to_mpi_handle<MPI_Comm> Comm>
-    explicit periodic_rank(Comm const& comm) : _rank(0),
-                                               _size(1) {
-        auto [rank, size] = detail::rank_and_size(mpi::experimental::handle(comm));
-        _rank             = rank;
-        _size             = size;
+    explicit periodic_rank(Comm const& comm)
+        : periodic_rank(detail::comm_rank(mpi::experimental::handle(comm)), comm) {}
+
+    /// @brief The rank `rank` in `comm`, wrapped into `[0, comm.size())`.
+    /// @throws mpi_error if the size of `comm` cannot be queried.
+    template <convertible_to_mpi_handle<MPI_Comm> Comm>
+    periodic_rank(int rank, Comm const& comm)
+        : periodic_rank(rank, detail::comm_size(mpi::experimental::handle(comm)), detail::with_size_tag{}) {}
+
+    /// @return The rank `rank` in a communicator of size `size`, wrapped into `[0, size)`. For code that knows the
+    /// size but has no communicator at hand.
+    /// @pre `size > 0`.
+    [[nodiscard]] static constexpr periodic_rank with_size(int rank, int size) {
+        return periodic_rank(rank, size, detail::with_size_tag{});
     }
 
     /// @return The rank, in `[0, size)`.
@@ -136,23 +152,30 @@ class nonperiodic_rank {
     std::int64_t _position;
     int          _size;
 
-public:
-    /// @brief The position `rank` in a communicator of size `size`. `rank` may be outside of `[0, size)`.
-    /// @pre `size > 0`.
-    constexpr nonperiodic_rank(int rank, int size) : _position(rank), _size(size) {
+    constexpr nonperiodic_rank(int rank, int size, detail::with_size_tag) : _position(rank), _size(size) {
         if (!std::is_constant_evaluated()) {
             KAMPING_V2_ASSERT(size > 0, "a communicator has at least one rank");
         }
     }
 
+public:
     /// @brief The rank of the calling process in `comm`.
     /// @throws mpi_error if the rank or size of `comm` cannot be queried.
     template <convertible_to_mpi_handle<MPI_Comm> Comm>
-    explicit nonperiodic_rank(Comm const& comm) : _position(0),
-                                                  _size(1) {
-        auto [rank, size] = detail::rank_and_size(mpi::experimental::handle(comm));
-        _position         = rank;
-        _size             = size;
+    explicit nonperiodic_rank(Comm const& comm)
+        : nonperiodic_rank(detail::comm_rank(mpi::experimental::handle(comm)), comm) {}
+
+    /// @brief The position `rank` in `comm`. `rank` may be outside of `[0, comm.size())`.
+    /// @throws mpi_error if the size of `comm` cannot be queried.
+    template <convertible_to_mpi_handle<MPI_Comm> Comm>
+    nonperiodic_rank(int rank, Comm const& comm)
+        : nonperiodic_rank(rank, detail::comm_size(mpi::experimental::handle(comm)), detail::with_size_tag{}) {}
+
+    /// @return The position `rank` in a communicator of size `size`. `rank` may be outside of `[0, size)`. For code
+    /// that knows the size but has no communicator at hand.
+    /// @pre `size > 0`.
+    [[nodiscard]] static constexpr nonperiodic_rank with_size(int rank, int size) {
+        return nonperiodic_rank(rank, size, detail::with_size_tag{});
     }
 
     /// @return Whether the position is outside of `[0, size)`, i.e. the rank stands for `MPI_PROC_NULL`.
