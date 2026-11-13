@@ -1,0 +1,225 @@
+// Copyright (c) 2026 Karlsruhe Institute of Technology
+// SPDX-License-Identifier: BSL-1.0
+
+#pragma once
+
+#include <cstdint>
+#include <type_traits>
+#include <utility>
+
+#include <mpi.h>
+
+#include "kamping/v2/kassert.hpp"
+#include "mpi/error.hpp"
+#include "mpi/handle.hpp"
+
+/// @file
+/// Rank types with neighbor arithmetic: `periodic_rank` wraps around at the ends of the communicator,
+/// `nonperiodic_rank` stands for `MPI_PROC_NULL` beyond them. Both are usable wherever an MPI rank is expected.
+
+namespace mpi::experimental {
+
+namespace detail {
+/// @return The rank and size of the communicator `comm`.
+/// @throws mpi_error if `MPI_Comm_rank` or `MPI_Comm_size` fails.
+inline std::pair<int, int> rank_and_size(MPI_Comm comm) {
+    int rank = 0;
+    int err  = MPI_Comm_rank(comm, &rank);
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
+    int size = 0;
+    err      = MPI_Comm_size(comm, &size);
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
+    return {rank, size};
+}
+} // namespace detail
+
+/// @brief A rank in a communicator of fixed size whose arithmetic wraps around at the ends, as in a ring.
+///
+/// `r + k` and `r - k` are the ranks `k` steps further and back along the ring, so in a communicator of size `p`,
+/// `(p - 1) + 1` is `0` and `0 - 1` is `p - 1`. The value is always in `[0, size)`. The rank only stores the size of
+/// the communicator, not the communicator itself.
+///
+/// @code
+/// auto const me = periodic_rank(comm);
+/// sendrecv_replace(buf, me - 1, 0, me + 1, 0, comm); // shift buf one rank to the left
+/// @endcode
+class periodic_rank {
+    int _rank;
+    int _size;
+
+    static constexpr int wrap(std::int64_t rank, int size) {
+        auto r = rank % size;
+        return static_cast<int>(r < 0 ? r + size : r);
+    }
+
+public:
+    /// @brief The rank `rank` in a communicator of size `size`, wrapped into `[0, size)`.
+    /// @pre `size > 0`.
+    constexpr periodic_rank(int rank, int size) : _rank(0), _size(size) {
+        if (!std::is_constant_evaluated()) {
+            KAMPING_V2_ASSERT(size > 0, "a communicator has at least one rank");
+        }
+        _rank = wrap(rank, size);
+    }
+
+    /// @brief The rank of the calling process in `comm`.
+    /// @throws mpi_error if the rank or size of `comm` cannot be queried.
+    template <convertible_to_mpi_handle<MPI_Comm> Comm>
+    explicit periodic_rank(Comm const& comm) : _rank(0),
+                                               _size(1) {
+        auto [rank, size] = detail::rank_and_size(mpi::experimental::handle(comm));
+        _rank             = rank;
+        _size             = size;
+    }
+
+    /// @return The rank, in `[0, size)`.
+    [[nodiscard]] constexpr int value() const noexcept {
+        return _rank;
+    }
+
+    /// @return The size of the communicator.
+    [[nodiscard]] constexpr int size() const noexcept {
+        return _size;
+    }
+
+    /// @brief Moves `offset` steps along the ring.
+    constexpr periodic_rank& operator+=(int offset) noexcept {
+        _rank = wrap(std::int64_t{_rank} + offset % _size, _size);
+        return *this;
+    }
+
+    /// @brief Moves `offset` steps back along the ring.
+    constexpr periodic_rank& operator-=(int offset) noexcept {
+        _rank = wrap(std::int64_t{_rank} - offset % _size, _size);
+        return *this;
+    }
+
+    /// @return The rank `offset` steps further along the ring.
+    friend constexpr periodic_rank operator+(periodic_rank r, int offset) noexcept {
+        return r += offset;
+    }
+
+    /// @return The rank `offset` steps further along the ring.
+    friend constexpr periodic_rank operator+(int offset, periodic_rank r) noexcept {
+        return r += offset;
+    }
+
+    /// @return The rank `offset` steps back along the ring.
+    friend constexpr periodic_rank operator-(periodic_rank r, int offset) noexcept {
+        return r -= offset;
+    }
+
+    /// @return Whether both ranks are the same rank in communicators of the same size.
+    friend constexpr bool operator==(periodic_rank const&, periodic_rank const&) noexcept = default;
+};
+
+/// @brief A rank in a communicator of fixed size that is `MPI_PROC_NULL` beyond the ends, as on a line.
+///
+/// `r + k` and `r - k` are the ranks `k` steps further and back. Once the position leaves `[0, size)`, the rank stands
+/// for `MPI_PROC_NULL`, so that sends to it and receives from it complete immediately without transferring data.
+/// The position is mapped only when the rank is converted, so `(r + 1) - 1` is `r` again even at the last rank.
+///
+/// @code
+/// auto const me = nonperiodic_rank(comm);
+/// // send the left border to the left neighbor, receive the right halo from the right neighbor;
+/// // the outermost ranks skip their missing neighbor
+/// sendrecv(left_border, me - 1, 0, right_halo, me + 1, 0, comm, MPI_STATUS_IGNORE);
+/// @endcode
+///
+/// The rank only stores the size of the communicator, not the communicator itself. A position equal to the value of
+/// `MPI_PROC_NULL` has no special meaning: it is outside of `[0, size)` like any other negative position.
+class nonperiodic_rank {
+    std::int64_t _position;
+    int          _size;
+
+public:
+    /// @brief The position `rank` in a communicator of size `size`. `rank` may be outside of `[0, size)`.
+    /// @pre `size > 0`.
+    constexpr nonperiodic_rank(int rank, int size) : _position(rank), _size(size) {
+        if (!std::is_constant_evaluated()) {
+            KAMPING_V2_ASSERT(size > 0, "a communicator has at least one rank");
+        }
+    }
+
+    /// @brief The rank of the calling process in `comm`.
+    /// @throws mpi_error if the rank or size of `comm` cannot be queried.
+    template <convertible_to_mpi_handle<MPI_Comm> Comm>
+    explicit nonperiodic_rank(Comm const& comm) : _position(0),
+                                                  _size(1) {
+        auto [rank, size] = detail::rank_and_size(mpi::experimental::handle(comm));
+        _position         = rank;
+        _size             = size;
+    }
+
+    /// @return Whether the position is outside of `[0, size)`, i.e. the rank stands for `MPI_PROC_NULL`.
+    [[nodiscard]] constexpr bool is_proc_null() const noexcept {
+        return _position < 0 || _position >= _size;
+    }
+
+    /// @return The rank if the position is in `[0, size)`, `MPI_PROC_NULL` otherwise.
+    [[nodiscard]] constexpr int value() const noexcept {
+        return is_proc_null() ? MPI_PROC_NULL : static_cast<int>(_position);
+    }
+
+    /// @return The size of the communicator.
+    [[nodiscard]] constexpr int size() const noexcept {
+        return _size;
+    }
+
+    /// @brief Moves `offset` steps further.
+    constexpr nonperiodic_rank& operator+=(int offset) noexcept {
+        _position += offset;
+        return *this;
+    }
+
+    /// @brief Moves `offset` steps back.
+    constexpr nonperiodic_rank& operator-=(int offset) noexcept {
+        _position -= offset;
+        return *this;
+    }
+
+    /// @return The rank `offset` steps further.
+    friend constexpr nonperiodic_rank operator+(nonperiodic_rank r, int offset) noexcept {
+        return r += offset;
+    }
+
+    /// @return The rank `offset` steps further.
+    friend constexpr nonperiodic_rank operator+(int offset, nonperiodic_rank r) noexcept {
+        return r += offset;
+    }
+
+    /// @return The rank `offset` steps back.
+    friend constexpr nonperiodic_rank operator-(nonperiodic_rank r, int offset) noexcept {
+        return r -= offset;
+    }
+
+    /// @return Whether both stand for the same rank in communicators of the same size. All positions outside of
+    /// `[0, size)` are equal, since they all stand for `MPI_PROC_NULL`.
+    friend constexpr bool operator==(nonperiodic_rank const& lhs, nonperiodic_rank const& rhs) noexcept {
+        return lhs._size == rhs._size && lhs.value() == rhs.value();
+    }
+};
+
+/// Converts a `periodic_rank` to its value.
+template <>
+struct rank_traits<periodic_rank> {
+    /// @return `r.value()`.
+    static constexpr int rank(periodic_rank const& r) noexcept {
+        return r.value();
+    }
+};
+
+/// Converts a `nonperiodic_rank` to its value, `MPI_PROC_NULL` outside of the communicator.
+template <>
+struct rank_traits<nonperiodic_rank> {
+    /// @return `r.value()`.
+    static constexpr int rank(nonperiodic_rank const& r) noexcept {
+        return r.value();
+    }
+};
+
+} // namespace mpi::experimental

@@ -44,6 +44,25 @@ With one buffer for both directions:
 ```{doxygenoverloads} kamping::v2::sendrecv_replace
 ```
 
+## Neighbor ranks
+
+`periodic_rank` and `nonperiodic_rank` hold a rank together with the size of its communicator and can be shifted by
+an offset. They can be passed wherever a rank is expected. A `periodic_rank` wraps around at the ends, as in a ring;
+a `nonperiodic_rank` beyond the ends stands for `MPI_PROC_NULL`, so communication with a missing neighbor is skipped:
+
+```cpp
+auto const me = v2::periodic_rank(comm);
+v2::sendrecv_replace(block, me - 1, me + 1, comm);  // shift the blocks one rank to the left
+```
+
+```{doxygenclass} kamping::v2::periodic_rank
+:members:
+```
+
+```{doxygenclass} kamping::v2::nonperiodic_rank
+:members:
+```
+
 ## Probing
 
 ```{doxygenoverloads} kamping::v2::probe

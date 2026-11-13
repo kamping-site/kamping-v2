@@ -21,6 +21,7 @@
 #include "kamping/v2/iresult.hpp"             // IWYU pragma: export
 #include "kamping/v2/ops.hpp"                 // IWYU pragma: export
 #include "kamping/v2/p2p.hpp"                 // IWYU pragma: export
+#include "kamping/v2/rank.hpp"                // IWYU pragma: export
 #include "kamping/v2/request.hpp"             // IWYU pragma: export
 #include "kamping/v2/result.hpp"              // IWYU pragma: export
 #include "kamping/v2/sentinels.hpp"           // IWYU pragma: export

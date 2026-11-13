@@ -9,6 +9,7 @@
 
 #include "kamping/v2/comm_op.hpp"
 #include "kamping/v2/p2p/sendrecv_replace.hpp"
+#include "kamping/v2/rank.hpp"
 #include "kamping/v2/views.hpp"
 #include "mpi/p2p/sendrecv.hpp"
 #include "mpi/p2p/sendrecv_replace.hpp"
@@ -171,4 +172,19 @@ TEST_F(V2SendrecvReplaceTest, DeferredBufferWithOwnInfer) {
     EXPECT_EQ(buf.infer_calls, 1);
     EXPECT_EQ(buf.data, std::vector<int>(3, left));
     EXPECT_EQ(g_sendrecv_replace_calls, 1);
+}
+
+// Neighbors given as rank types: a periodic rank wraps around, a nonperiodic rank beyond the ends is MPI_PROC_NULL.
+TEST_F(V2SendrecvReplaceTest, RankTypes) {
+    auto const       me = kamping::v2::periodic_rank(comm);
+    std::vector<int> buf{rank, rank};
+    kamping::v2::sendrecv_replace(buf, me + 1, me - 1, comm);
+    EXPECT_EQ(buf, std::vector<int>(2, left));
+
+    // Along a line, the last rank sends to MPI_PROC_NULL and the first receives from it, leaving its buffer as is.
+    auto const line = kamping::v2::nonperiodic_rank(comm);
+    int        item = rank;
+    kamping::v2::sendrecv_replace(kamping::v2::views::ref_single(item), line + 1, line - 1, comm);
+    EXPECT_EQ(item, rank == 0 ? 0 : rank - 1);
+    EXPECT_EQ(g_sendrecv_replace_calls, 2);
 }

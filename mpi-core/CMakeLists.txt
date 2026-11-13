@@ -60,6 +60,7 @@ target_sources(
               include/mpi/p2p/sendrecv.hpp
               include/mpi/p2p/sendrecv_replace.hpp
               include/mpi/range_concepts.hpp
+              include/mpi/rank.hpp
               include/mpi/request.hpp
               include/mpi/request_vector.hpp
               include/mpi/sentinels.hpp

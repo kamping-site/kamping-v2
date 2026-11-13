@@ -48,6 +48,7 @@ target_sources(
               include/kamping/v2/iresult.hpp
               include/kamping/v2/ops.hpp
               include/kamping/v2/p2p.hpp
+              include/kamping/v2/rank.hpp
               include/kamping/v2/p2p/constants.hpp
               include/kamping/v2/p2p/irecv.hpp
               include/kamping/v2/p2p/isend.hpp
