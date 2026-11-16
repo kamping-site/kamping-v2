@@ -43,6 +43,9 @@
 ```{doxygenstruct} dstl::execution_policy::par_comm
 ```
 
+```{doxygenvariable} dstl::has_parallel_execution_policies
+```
+
 ### Receive layouts
 
 ```{doxygenstruct} dstl::layout::unordered

@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <cstddef>
 
-#ifdef _OPENMP
+#ifdef DSTL_HAS_OPENMP
     #include <omp.h>
 #endif
 
@@ -28,7 +28,7 @@ namespace dstl::detail {
 /// `body` must be safe to invoke concurrently across distinct slices.
 template <typename F>
 inline void chunked_for([[maybe_unused]] bool parallel, std::ptrdiff_t n, F&& body) {
-#ifndef _OPENMP
+#ifndef DSTL_HAS_OPENMP
     KAMPING_V2_ASSERT(!parallel, "chunked_for: parallel execution requires OpenMP, which this build lacks.");
     body(std::ptrdiff_t{0}, n);
 #else
@@ -63,7 +63,7 @@ struct chunking {
     chunking() = default;
 
     chunking(bool parallel_, std::ptrdiff_t n_) : n{n_}, parallel{parallel_} {
-#ifdef _OPENMP
+#ifdef DSTL_HAS_OPENMP
         if (parallel) {
             nchunks = std::clamp(omp_get_max_threads(), 1, static_cast<int>(std::max<std::ptrdiff_t>(n, 1)));
         }
@@ -92,7 +92,7 @@ struct chunking {
     /// (see the class note); `body` must be safe to invoke concurrently across distinct chunks.
     template <typename F>
     void for_each_chunk(F&& body) const {
-#ifdef _OPENMP
+#ifdef DSTL_HAS_OPENMP
         if (parallel) {
     #pragma omp parallel for schedule(static)
             for (int c = 0; c < nchunks; ++c) {

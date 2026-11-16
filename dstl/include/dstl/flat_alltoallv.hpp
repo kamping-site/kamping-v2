@@ -12,7 +12,7 @@
 #include <utility>
 #include <vector>
 
-#ifdef _OPENMP
+#ifdef DSTL_HAS_OPENMP
     #include <omp.h>
 #endif
 
@@ -40,26 +40,25 @@
 /// `MPI_Alltoallv`, i.e. exactly `kamping::v2::alltoallv`. The `par` policy's parallel send-buffer
 /// pack is a separate helper (see DSTL-Flat-Alltoallv-Design.md §0/§9).
 
+// Like thread_multiple_comm, this exists only in a build with OpenMP.
+#ifdef DSTL_HAS_OPENMP
+
 namespace dstl {
 
 namespace detail {
 
 template <typename F>
-inline void for_each_thread([[maybe_unused]] int nthreads, F&& body) {
-#ifndef _OPENMP
-    for (int tid = 0; tid < nthreads; ++tid)
-        body(tid);
-#else
+inline void for_each_thread(int nthreads, F&& body) {
     #pragma omp parallel for schedule(static) num_threads(nthreads)
     for (int tid = 0; tid < nthreads; ++tid) {
         body(tid);
     }
-#endif
 }
 
 } // namespace detail
 
-/// All-to-all-v that uses several threads for the communication itself, on a `dstl::thread_multiple_comm`.
+/// All-to-all-v that uses several threads for the communication itself, on a `dstl::thread_multiple_comm`. Only
+/// available with OpenMP (see `has_parallel_execution_policies`).
 ///
 /// The call looks like `kamping::v2::alltoallv`, with a `thread_multiple_comm` instead of a communicator. The data
 /// for each destination is split among the `t` threads of the communicator, and `t` `MPI_Alltoallv`s run
@@ -152,3 +151,5 @@ auto alltoallv(SBuf&& sbuf, RBuf&& rbuf, thread_multiple_comm const& fc) -> kamp
 }
 
 } // namespace dstl
+
+#endif // DSTL_HAS_OPENMP

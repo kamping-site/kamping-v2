@@ -11,16 +11,20 @@ target_link_libraries(test_dstl_grid_alltoallv PRIVATE dstl::dstl kamping_v2_war
 katestrophe_add_mpi_test(test_dstl_grid_alltoallv CORES 1 2 4 8)
 
 # The flat tests exercise the funneled / thread_multiple policies, which need MPI_THREAD_MULTIPLE, so they link
-# KaTestrophe::main_thread_multiple instead of KaTestrophe::main.
-add_executable(test_dstl_thread_multiple_comm thread_multiple_comm_test.cpp)
-target_link_libraries(
-    test_dstl_thread_multiple_comm PRIVATE dstl::dstl kamping_v2_warnings KaTestrophe::main_thread_multiple
-)
-katestrophe_add_mpi_test(test_dstl_thread_multiple_comm CORES 1 2 4 8)
+# KaTestrophe::main_thread_multiple instead of KaTestrophe::main. thread_multiple_comm only exists with OpenMP.
+if (KAMPING_V2_ENABLE_OPENMP)
+    add_executable(test_dstl_thread_multiple_comm thread_multiple_comm_test.cpp)
+    target_link_libraries(
+        test_dstl_thread_multiple_comm PRIVATE dstl::dstl kamping_v2_warnings KaTestrophe::main_thread_multiple
+    )
+    katestrophe_add_mpi_test(test_dstl_thread_multiple_comm CORES 1 2 4 8)
 
-add_executable(test_dstl_flat_alltoallv flat_alltoallv_test.cpp)
-target_link_libraries(test_dstl_flat_alltoallv PRIVATE dstl::dstl kamping_v2_warnings KaTestrophe::main_thread_multiple)
-katestrophe_add_mpi_test(test_dstl_flat_alltoallv CORES 1 2 4 8)
+    add_executable(test_dstl_flat_alltoallv flat_alltoallv_test.cpp)
+    target_link_libraries(
+        test_dstl_flat_alltoallv PRIVATE dstl::dstl kamping_v2_warnings KaTestrophe::main_thread_multiple
+    )
+    katestrophe_add_mpi_test(test_dstl_flat_alltoallv CORES 1 2 4 8)
+endif ()
 
 add_executable(test_dstl_is_sorted is_sorted_test.cpp)
 target_link_libraries(test_dstl_is_sorted PRIVATE dstl::dstl kamping_v2_warnings KaTestrophe::main_thread_single)

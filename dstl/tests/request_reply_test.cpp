@@ -200,6 +200,7 @@ TEST(RequestReply, OrderedVariadic) {
 
 // ── par policy: element-identical to seq ────────────────────────────────────────────────────────────
 
+#ifdef DSTL_HAS_OPENMP
 TEST(RequestReply, ParMatchesSeq) {
     int  rank  = world_rank();
     int  size  = world_size();
@@ -216,6 +217,7 @@ TEST(RequestReply, ParMatchesSeq) {
     EXPECT_EQ(seq, par);
     EXPECT_EQ(seq, (expected_grouped<int>(reqs, size, reply)));
 }
+#endif
 
 // A fixed-size, non-resizable recv_buffer_v: a plain pre-sized vector with pre-computed per-responder
 // counts/displs (this rank's forward per-destination request counts) attached via views::with_counts /

@@ -14,7 +14,7 @@
 #include <utility>
 #include <vector>
 
-#ifdef _OPENMP
+#ifdef DSTL_HAS_OPENMP
     #include <omp.h>
 #endif
 

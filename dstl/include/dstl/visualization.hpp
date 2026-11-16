@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-#ifdef _OPENMP
+#ifdef DSTL_HAS_OPENMP
     #include <omp.h>
 #endif
 
@@ -40,7 +40,7 @@ namespace dstl {
 /// OpenMP. This reflects the real team size the runtime grants (e.g. after dynamic adjustment or
 /// affinity limits), unlike `omp_get_max_threads()`, which is only the configured upper bound.
 [[nodiscard]] inline int local_thread_count() noexcept {
-#ifdef _OPENMP
+#ifdef DSTL_HAS_OPENMP
     int n = 1;
     #pragma omp parallel
     {

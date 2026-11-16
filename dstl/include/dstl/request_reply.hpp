@@ -184,7 +184,8 @@ packed_buffer<T> counting_sort_pack(chunking const& chunks, int nbuckets, std::p
 /// @param make_reply  Computes the reply to a request: `Reply(Value const&)`.
 /// @param comm        The communicator.
 /// @tparam Exec       `execution_policy::seq` (default) or `execution_policy::par`, which computes the replies and
-///                    sorts the requests with OpenMP. The communication is single-threaded in both cases.
+///                    sorts the requests with OpenMP (see `has_parallel_execution_policies`). The communication is
+///                    single-threaded in both cases.
 /// @tparam Order      `layout::unordered` (default) or `layout::ordered_by_source`.
 /// @return The `result` buffer: by reference if passed as an lvalue, by value if passed as an rvalue.
 template <
@@ -211,6 +212,11 @@ auto request_reply(
     static_assert(
         !std::is_same_v<Exec, execution_policy::par_comm>,
         "request_reply: par_comm is not supported by the flat path; use execution_policy::seq or ::par."
+    );
+    static_assert(
+        detail::execution_policy_available<Exec>,
+        "request_reply: the execution policy par needs OpenMP; configure with KAMPING_V2_ENABLE_OPENMP=ON or use "
+        "execution_policy::seq."
     );
     constexpr bool parallel = !std::is_same_v<Exec, execution_policy::seq>;
     MPI_Comm const c        = kamping::v2::handle(comm);

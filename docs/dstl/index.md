@@ -38,6 +38,10 @@ dstl::sparse_alltoall(sends, [&](v2::probe_result probe) {
   from p−1 to about 2√p. This pays off for many small messages on many processes.
 - `alltoallv` on a `thread_multiple_comm` uses several threads for the communication itself.
 
+The parallel execution policies (`par`, `par_comm`) and `thread_multiple_comm` need OpenMP. dstl uses it unless
+configured with `-DKAMPING_V2_ENABLE_OPENMP=OFF`, in which case only the sequential policy `seq` (the default) is
+available.
+
 ## Distributions and redistribution
 
 A `distribution` describes how a global array is split into contiguous parts over the processes, and

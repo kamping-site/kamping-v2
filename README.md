@@ -271,6 +271,7 @@ ctest --preset debug
 | `KAMPING_V2_INSTALL` | on if top-level | Generate install rules |
 | `KAMPING_V2_ENABLE_REFLECTION` | `ON` | Derive MPI datatypes for plain structs via Boost.PFR |
 | `KAMPING_V2_REFLECTION_USE_SYSTEM_BOOST_FOR_PFR` | `OFF` | Take Boost.PFR from a system Boost |
+| `KAMPING_V2_ENABLE_OPENMP` | `ON` | Use OpenMP in dstl (needed for the parallel execution policies `par` and `par_comm`) |
 | `KAMPING_V2_ENABLE_CEREAL` | `OFF` | Build the Cereal adapter |
 | `KAMPING_V2_ENABLE_KOKKOS` | `OFF` | Build the Kokkos adapter |
 | `KAMPING_V2_ENABLE_KOKKOS_COMM` | `OFF` | Let the Kokkos adapter use KokkosComm |

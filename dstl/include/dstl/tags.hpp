@@ -21,16 +21,17 @@ namespace dstl {
 
 namespace execution_policy {
 
-/// Sequential: one thread regroups the elements between phases and issues all MPI calls. Works with any MPI thread
-/// level.
+/// Sequential (the default): one thread regroups the elements between phases and issues all MPI calls. Works with any
+/// MPI thread level.
 struct seq {};
 
-/// Parallel computation (the default): the elements are regrouped between phases with OpenMP, but MPI is called from
-/// a single thread. Requires at least `MPI_THREAD_FUNNELED`. Without OpenMP, the regrouping is sequential.
+/// Parallel computation: the elements are regrouped between phases with OpenMP, but MPI is called from a single
+/// thread. Requires at least `MPI_THREAD_FUNNELED`, and OpenMP (see `has_parallel_execution_policies`).
 struct par {};
 
 /// Parallel computation and communication: like `par`, but MPI is also called concurrently from several threads,
-/// each on its own duplicated communicator. Requires `MPI_THREAD_MULTIPLE` (asserted).
+/// each on its own duplicated communicator. Requires `MPI_THREAD_MULTIPLE` (asserted), and OpenMP (see
+/// `has_parallel_execution_policies`).
 struct par_comm {};
 
 } // namespace execution_policy
@@ -39,6 +40,26 @@ struct par_comm {};
 template <typename T>
 concept is_execution_policy = std::is_same_v<T, execution_policy::seq> || std::is_same_v<T, execution_policy::par>
                               || std::is_same_v<T, execution_policy::par_comm>;
+
+/// Whether the parallel execution policies `par` and `par_comm` (and `thread_multiple_comm`) are available. They need
+/// OpenMP, which dstl uses if it is configured with `KAMPING_V2_ENABLE_OPENMP=ON` (the default). Otherwise, only
+/// `seq` is available, and using another policy is a compile-time error.
+inline constexpr bool has_parallel_execution_policies =
+#ifdef DSTL_HAS_OPENMP
+    true;
+#else
+    false;
+#endif
+
+namespace detail {
+
+// Rejects the parallel policies at compile time in a build without OpenMP. Used as
+// `static_assert(detail::execution_policy_available<Exec>, ...)` by everything that takes an execution policy.
+template <typename Exec>
+inline constexpr bool execution_policy_available =
+    std::is_same_v<Exec, execution_policy::seq> || has_parallel_execution_policies;
+
+} // namespace detail
 
 // Recv ordering (D5)
 

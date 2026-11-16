@@ -46,11 +46,20 @@ target_sources(
 )
 target_link_libraries(dstl INTERFACE kamping::v2)
 
-# Optional OpenMP acceleration for the funneled / thread_multiple re-bin kernels. When not found, those execution
-# policies fall back to a serial rebin (correctness is unaffected).
-find_package(OpenMP QUIET)
-if (OpenMP_CXX_FOUND)
+# OpenMP for the parallel execution policies par and par_comm. Without it, only seq is available: dstl rejects the
+# parallel policies at compile time and leaves out thread_multiple_comm. The definition DSTL_HAS_OPENMP (not _OPENMP,
+# which depends on the flags of the code including dstl) tells the headers which case applies.
+if (KAMPING_V2_ENABLE_OPENMP)
+    find_package(OpenMP COMPONENTS CXX)
+    if (NOT OpenMP_CXX_FOUND)
+        message(
+            FATAL_ERROR
+                "dstl: OpenMP not found. Install it (e.g. libomp) or configure with -DKAMPING_V2_ENABLE_OPENMP=OFF to "
+                "build dstl with the sequential execution policy only."
+        )
+    endif ()
     target_link_libraries(dstl INTERFACE OpenMP::OpenMP_CXX)
+    target_compile_definitions(dstl INTERFACE DSTL_HAS_OPENMP)
 endif ()
 
 if (KAMPING_V2_INSTALL)
