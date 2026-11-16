@@ -86,14 +86,31 @@ struct info_value_traits<T> {
     }
 };
 
-/// @brief Specialization for `ThreadLevel` — stored as its underlying integer value.
+/// @brief Specialization for `thread_level`, stored as the name of the MPI constant (`"MPI_THREAD_SINGLE"`, ...,
+/// `"MPI_THREAD_MULTIPLE"`), the format of the `thread_level` key of a session.
 template <>
-struct info_value_traits<ThreadLevel> {
-    static std::string to_string(ThreadLevel v) {
-        return std::to_string(static_cast<int>(v));
+struct info_value_traits<thread_level> {
+    static std::string to_string(thread_level v) {
+        switch (v) {
+            case thread_level::single:
+                return "MPI_THREAD_SINGLE";
+            case thread_level::funneled:
+                return "MPI_THREAD_FUNNELED";
+            case thread_level::serialized:
+                return "MPI_THREAD_SERIALIZED";
+            case thread_level::multiple:
+                return "MPI_THREAD_MULTIPLE";
+        }
+        throw std::invalid_argument("info_value_traits<thread_level>::to_string: not a thread level");
     }
-    static ThreadLevel from_string(std::string const& s) {
-        return static_cast<ThreadLevel>(info_value_traits<int>::from_string(s));
+    static thread_level from_string(std::string const& s) {
+        for (thread_level const v:
+             {thread_level::single, thread_level::funneled, thread_level::serialized, thread_level::multiple}) {
+            if (s == to_string(v)) {
+                return v;
+            }
+        }
+        throw std::invalid_argument("info_value_traits<thread_level>::from_string: cannot parse \"" + s + "\"");
     }
 };
 

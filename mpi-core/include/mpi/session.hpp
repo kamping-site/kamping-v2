@@ -8,6 +8,7 @@
 #if defined(MPI_VERSION) && MPI_VERSION >= 4
 
     #include <iterator>
+    #include <optional>
     #include <string>
     #include <string_view>
     #include <utility>
@@ -15,6 +16,8 @@
     #include "mpi/comm.hpp"
     #include "mpi/error.hpp"
     #include "mpi/group.hpp"
+    #include "mpi/info.hpp"
+    #include "mpi/thread_level.hpp"
 
 namespace mpi::experimental {
 
@@ -220,6 +223,29 @@ public:
     [[nodiscard]] pset_range<Info> psets(Info info = MPI_INFO_NULL) const {
         return pset_range<Info>{sess(), std::move(info)};
     }
+
+    /// @brief The hints in effect for this session (`MPI_Session_get_info`).
+    /// @return A new, owned info object; empty if the session has no hints.
+    /// @throws mpi_error if `MPI_Session_get_info` fails.
+    [[nodiscard]] mpi::experimental::info get_info() const {
+        MPI_Info used = MPI_INFO_NULL;
+        int      err  = MPI_Session_get_info(sess(), &used);
+        if (err != MPI_SUCCESS) {
+            throw mpi_error(err);
+        }
+        return mpi::experimental::info::from_native(used);
+    }
+
+    /// @brief The thread support level provided for the MPI objects derived from this session, such as communicators
+    /// created with `comm_from_pset()`: the `thread_level` key of `get_info()`.
+    ///
+    /// It can differ between sessions, and from `environment::provided_thread_level()` of the World Model.
+    /// @return The provided level, or nothing if the MPI implementation does not report it. Open MPI, for example,
+    /// only reports it if a level was requested when the session was initialized.
+    /// @throws mpi_error if `MPI_Session_get_info` fails.
+    [[nodiscard]] std::optional<mpi::experimental::thread_level> provided_thread_level() const {
+        return get_info().template get<mpi::experimental::thread_level>("thread_level");
+    }
 };
 
 // ── session_view ──────────────────────────────────────────────────────────────
@@ -271,12 +297,27 @@ public:
     /// @brief Initialize a session with default info and the return-errors error handler.
     ///
     /// @throws mpi_error if `MPI_Session_init` fails.
-    session() {
-        int err = MPI_Session_init(MPI_INFO_NULL, MPI_ERRORS_RETURN, &_session);
+    session() : session(MPI_INFO_NULL) {}
+
+    /// @brief Initialize a session with the hints in `info` and the return-errors error handler.
+    ///
+    /// @tparam Info Any type satisfying `convertible_to_mpi_handle<MPI_Info>`:
+    ///              raw `MPI_Info`, `info`, `info_view`, or any third-party wrapper.
+    /// @param info Hints for the session, e.g. the key `thread_level`.
+    /// @throws mpi_error if `MPI_Session_init` fails.
+    template <convertible_to_mpi_handle<MPI_Info> Info>
+    explicit session(Info const& info) {
+        int err = MPI_Session_init(mpi::experimental::handle(info), MPI_ERRORS_RETURN, &_session);
         if (err != MPI_SUCCESS) {
             throw mpi_error(err);
         }
     }
+
+    /// @brief Initialize a session that requests the thread support level `requested` for the objects derived from
+    /// it. MPI may provide a lower level; see `provided_thread_level()`.
+    ///
+    /// @throws mpi_error if `MPI_Session_init` fails.
+    explicit session(thread_level requested) : session(thread_level_hint(requested)) {}
 
     session(session const&)            = delete;
     session& operator=(session const&) = delete;
@@ -347,6 +388,12 @@ private:
     struct adopt_t {};
 
     session(MPI_Session s, adopt_t) noexcept : _session(s) {}
+
+    [[nodiscard]] static mpi::experimental::info thread_level_hint(thread_level requested) {
+        mpi::experimental::info hints;
+        hints.set("thread_level", requested);
+        return hints;
+    }
 
     /// @brief Finalize the session if it is non-null and MPI has not yet been finalized.
     ///

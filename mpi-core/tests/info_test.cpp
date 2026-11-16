@@ -229,10 +229,21 @@ TEST(InfoTest, EntriesRangeCompatibleWithAlgorithms) {
 
 TEST(InfoTest, SetGetThreadLevel) {
     info i;
-    i.set("thread_level", ThreadLevel::multiple);
-    EXPECT_EQ(i.get<ThreadLevel>("thread_level"), std::optional<ThreadLevel>{ThreadLevel::multiple});
-    i.set("thread_level", ThreadLevel::single);
-    EXPECT_EQ(i.get<ThreadLevel>("thread_level"), std::optional<ThreadLevel>{ThreadLevel::single});
+    i.set("thread_level", thread_level::multiple);
+    EXPECT_EQ(i.get<thread_level>("thread_level"), std::optional<thread_level>{thread_level::multiple});
+    i.set("thread_level", thread_level::single);
+    EXPECT_EQ(i.get<thread_level>("thread_level"), std::optional<thread_level>{thread_level::single});
+}
+
+TEST(InfoTest, ThreadLevelUsesTheNamesOfTheMpiConstants) {
+    // The format of the thread_level key of a session (MPI-4.1, section 12.3.1).
+    info i;
+    i.set("thread_level", thread_level::funneled);
+    EXPECT_EQ(i.get("thread_level"), std::optional<std::string>{"MPI_THREAD_FUNNELED"});
+    i.set("thread_level", "MPI_THREAD_SERIALIZED");
+    EXPECT_EQ(i.get<thread_level>("thread_level"), std::optional<thread_level>{thread_level::serialized});
+    i.set("thread_level", "3");
+    EXPECT_THROW((void)i.get<thread_level>("thread_level"), std::invalid_argument);
 }
 
 TEST(InfoTest, StructuredBindingsRangeFor) {

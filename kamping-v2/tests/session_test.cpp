@@ -9,13 +9,50 @@
 
     #include <gtest/gtest.h>
 
+    #include "kamping/v2/environment.hpp"
     #include "kamping/v2/session.hpp"
     #include "mpi/comm.hpp"
     #include "mpi/group.hpp"
+    #include "mpi/info.hpp"
     #include "mpi/session.hpp"
 
 using namespace mpi::experimental;
 using namespace kamping::v2;
+
+// ── thread support level ──────────────────────────────────────────────────────
+
+TEST(SessionTest, RequestedThreadLevelIsReportedAsProvided) {
+    // MPI may provide a lower level than requested, but always at least MPI_THREAD_SINGLE.
+    session s(thread_level::serialized);
+    auto    provided = s.provided_thread_level();
+    if (provided.has_value()) {
+        EXPECT_LE(*provided, thread_level::multiple);
+        EXPECT_TRUE(s.get_info().get("thread_level").has_value());
+    }
+}
+
+TEST(SessionTest, ConstructFromInfo) {
+    info hints;
+    hints.set("thread_level", thread_level::funneled);
+    session s(hints);
+    EXPECT_NE(s.mpi_handle(), MPI_SESSION_NULL);
+    auto provided = s.provided_thread_level();
+    if (provided.has_value()) {
+        EXPECT_GE(*provided, thread_level::single);
+    }
+}
+
+TEST(SessionTest, ProvidedThreadLevelOnView) {
+    session            s(thread_level::single);
+    session_view const v = s;
+    EXPECT_EQ(v.provided_thread_level(), s.provided_thread_level());
+}
+
+TEST(EnvironmentTest, ProvidedThreadLevelMatchesQueryThread) {
+    int raw = -1;
+    MPI_Query_thread(&raw);
+    EXPECT_EQ(static_cast<int>(environment::provided_thread_level()), raw);
+}
 
 // ── session construction / move ───────────────────────────────────────────────
 

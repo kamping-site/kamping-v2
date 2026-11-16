@@ -28,7 +28,7 @@ using dstl_test::world_size;
 // thread_multiple: the per-thread recv displacements reassemble each source's block contiguously in
 // rank-then-thread order, so the result is element-identical to the flat alltoallv.
 TEST(FlatAlltoallvTest, EqualsFlat) {
-    if (kamping::v2::environment::thread_level() < kamping::v2::ThreadLevel::multiple) {
+    if (kamping::v2::environment::provided_thread_level() < kamping::v2::thread_level::multiple) {
         GTEST_SKIP() << "runtime does not provide MPI_THREAD_MULTIPLE";
     }
     int rank                    = world_rank();
@@ -46,7 +46,7 @@ TEST(FlatAlltoallvTest, EqualsFlat) {
 
 // Owned (rvalue) recv buffer: the data lives in the returned result.
 TEST(FlatAlltoallvTest, OwnedRecvBuffer) {
-    if (kamping::v2::environment::thread_level() < kamping::v2::ThreadLevel::multiple) {
+    if (kamping::v2::environment::provided_thread_level() < kamping::v2::thread_level::multiple) {
         GTEST_SKIP() << "runtime does not provide MPI_THREAD_MULTIPLE";
     }
     int rank                    = world_rank();
@@ -65,7 +65,7 @@ TEST(FlatAlltoallvTest, OwnedRecvBuffer) {
 
 // Each rank sends exactly one element to each rank.
 TEST(FlatAlltoallvTest, UniformSingleElement) {
-    if (kamping::v2::environment::thread_level() < kamping::v2::ThreadLevel::multiple) {
+    if (kamping::v2::environment::provided_thread_level() < kamping::v2::thread_level::multiple) {
         GTEST_SKIP() << "runtime does not provide MPI_THREAD_MULTIPLE";
     }
     int              rank = world_rank();
@@ -87,7 +87,7 @@ TEST(FlatAlltoallvTest, UniformSingleElement) {
 // Deferred send buffer: sparse flatten_v() sends require set_comm_size() before counts/displs are
 // read. Without the fix, ensure_flattened() would assert comm_size_.has_value() and abort.
 TEST(FlatAlltoallvTest, DeferredSendBuf_SparseFlattenV) {
-    if (kamping::v2::environment::thread_level() < kamping::v2::ThreadLevel::multiple) {
+    if (kamping::v2::environment::provided_thread_level() < kamping::v2::thread_level::multiple) {
         GTEST_SKIP() << "runtime does not provide MPI_THREAD_MULTIPLE";
     }
     int rank                    = world_rank();
@@ -112,7 +112,7 @@ TEST(FlatAlltoallvTest, DeferredSendBuf_SparseFlattenV) {
 
 // Degenerate: every rank sends nothing.
 TEST(FlatAlltoallvTest, AllEmpty) {
-    if (kamping::v2::environment::thread_level() < kamping::v2::ThreadLevel::multiple) {
+    if (kamping::v2::environment::provided_thread_level() < kamping::v2::thread_level::multiple) {
         GTEST_SKIP() << "runtime does not provide MPI_THREAD_MULTIPLE";
     }
     int              size = world_size();

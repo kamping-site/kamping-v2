@@ -9,7 +9,15 @@ With `MPI_ERRORS_RETURN` set on a communicator, errors are thrown as `mpi_error`
 
 ## Environment
 
+An `environment` initializes and finalizes the World Model. Its static members query the World Model, also when MPI
+was initialized by someone else. A session has a thread support level of its own (see
+[Sessions](#sessions)).
+
 ```{doxygenclass} kamping::v2::environment
+:members:
+```
+
+```{doxygenenum} kamping::v2::thread_level
 ```
 
 ## Communicators
@@ -46,6 +54,9 @@ The free functions `dup` and `split` do the same as the members, and can also wr
 
 ```{doxygenclass} kamping::v2::group
 :members:
+```
+
+```{doxygenenum} kamping::v2::group_equality
 ```
 
 ## Status
