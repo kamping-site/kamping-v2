@@ -52,6 +52,10 @@ add_executable(test_v2_comm_view_with_pool comm_view_with_pool_test.cpp)
 target_link_libraries(test_v2_comm_view_with_pool PRIVATE kamping::v2 kamping_v2_warnings KaTestrophe::main)
 katestrophe_add_mpi_test(test_v2_comm_view_with_pool CORES 1 2)
 
+add_executable(test_v2_datatype datatype_test.cpp)
+target_link_libraries(test_v2_datatype PRIVATE kamping::v2 kamping_v2_warnings KaTestrophe::main)
+katestrophe_add_mpi_test(test_v2_datatype CORES 1 2)
+
 add_executable(test_v2_type_pool type_pool_test.cpp)
 target_link_libraries(test_v2_type_pool PRIVATE kamping::v2 kamping_v2_warnings KaTestrophe::main)
 katestrophe_add_mpi_test(test_v2_type_pool CORES 1 2)

@@ -37,6 +37,7 @@ target_sources(
               include/mpi/completion/waitall.hpp
               include/mpi/completion/waitany.hpp
               include/mpi/completion/waitsome.hpp
+              include/mpi/datatype.hpp
               include/mpi/detail/handle_iterator.hpp
               include/mpi/environment.hpp
               include/mpi/error.hpp
