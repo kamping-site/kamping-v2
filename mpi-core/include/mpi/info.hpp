@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <algorithm>
+#include <array>
 #include <charconv>
 #include <concepts>
 #include <iterator>
@@ -91,27 +93,30 @@ struct info_value_traits<T> {
 template <>
 struct info_value_traits<thread_level> {
     static std::string to_string(thread_level v) {
-        switch (v) {
-            case thread_level::single:
-                return "MPI_THREAD_SINGLE";
-            case thread_level::funneled:
-                return "MPI_THREAD_FUNNELED";
-            case thread_level::serialized:
-                return "MPI_THREAD_SERIALIZED";
-            case thread_level::multiple:
-                return "MPI_THREAD_MULTIPLE";
+        auto const it = std::ranges::find(_names, v, &name_entry::first);
+        if (it == _names.end()) {
+            throw std::invalid_argument("info_value_traits<thread_level>::to_string: not a thread level");
         }
-        throw std::invalid_argument("info_value_traits<thread_level>::to_string: not a thread level");
+        return std::string{it->second};
     }
     static thread_level from_string(std::string const& s) {
-        for (thread_level const v:
-             {thread_level::single, thread_level::funneled, thread_level::serialized, thread_level::multiple}) {
-            if (s == to_string(v)) {
-                return v;
-            }
+        auto const it = std::ranges::find(_names, std::string_view{s}, &name_entry::second);
+        if (it == _names.end()) {
+            throw std::invalid_argument("info_value_traits<thread_level>::from_string: cannot parse \"" + s + "\"");
         }
-        throw std::invalid_argument("info_value_traits<thread_level>::from_string: cannot parse \"" + s + "\"");
+        return it->first;
     }
+
+private:
+    // One table for both directions. Not indexed by the enum value: the values of the MPI_THREAD_* constants are
+    // implementation-defined (only their order is specified).
+    using name_entry = std::pair<thread_level, std::string_view>;
+    static constexpr std::array<name_entry, 4> _names{{
+        {thread_level::single, "MPI_THREAD_SINGLE"},
+        {thread_level::funneled, "MPI_THREAD_FUNNELED"},
+        {thread_level::serialized, "MPI_THREAD_SERIALIZED"},
+        {thread_level::multiple, "MPI_THREAD_MULTIPLE"},
+    }};
 };
 
 // ─── entry_iterator / entry_sentinel ─────────────────────────────────────────
