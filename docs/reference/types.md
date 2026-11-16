@@ -39,6 +39,15 @@ committed, such as a building block for another datatype; `std::move(u).commit()
 ```{doxygenconcept} kamping::v2::buffer_datatype
 ```
 
+Datatypes that are managed by hand, without an owning wrapper, are committed and freed with `type_commit` and
+`type_free` instead of the C functions.
+
+```{doxygenoverloads} kamping::v2::type_commit
+```
+
+```{doxygenoverloads} kamping::v2::type_free
+```
+
 ```{doxygenclass} kamping::v2::datatype_accessors
 :members:
 ```

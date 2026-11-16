@@ -314,4 +314,44 @@ template <typename T>
 concept buffer_datatype = convertible_to_mpi_handle<std::remove_cvref_t<T>, MPI_Datatype>
                           && !std::same_as<std::remove_cvref_t<T>, uncommitted_datatype>;
 
+/// @brief Commits a datatype that is managed by hand (`MPI_Type_commit`).
+///
+/// For datatypes without an owning wrapper; owned datatypes are committed with `datatype::commit` or
+/// `std::move(u).commit()`. `dt` is a raw `MPI_Datatype` lvalue or a wrapper exposing a writable handle via
+/// `mpi_handle_ptr()` or `handle_traits`, since MPI may write the handle back. Committing an already committed
+/// datatype is allowed.
+/// @pre `dt` is a derived datatype, not a predefined one such as `MPI_INT`.
+/// @throws mpi_error if `MPI_Type_commit` fails.
+template <convertible_to_mpi_handle_ptr<MPI_Datatype> Datatype>
+void type_commit(Datatype& dt) {
+    MPI_Datatype* h = mpi::experimental::handle_ptr(dt);
+    KAMPING_V2_ASSERT(
+        *h != MPI_DATATYPE_NULL && !detail::is_predefined_datatype(*h),
+        "type_commit takes a derived datatype; predefined datatypes are committed already"
+    );
+    int err = MPI_Type_commit(h);
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
+}
+
+/// @brief Frees a datatype that is managed by hand (`MPI_Type_free`); `dt` is `MPI_DATATYPE_NULL` afterwards.
+///
+/// For datatypes without an owning wrapper; `datatype` and `uncommitted_datatype` free theirs themselves. `dt` is a
+/// raw `MPI_Datatype` lvalue or a wrapper exposing a writable handle via `mpi_handle_ptr()` or `handle_traits`.
+/// @pre `dt` is a derived datatype, not a predefined one such as `MPI_INT`, which must not be freed.
+/// @throws mpi_error if `MPI_Type_free` fails.
+template <convertible_to_mpi_handle_ptr<MPI_Datatype> Datatype>
+void type_free(Datatype& dt) {
+    MPI_Datatype* h = mpi::experimental::handle_ptr(dt);
+    KAMPING_V2_ASSERT(
+        *h != MPI_DATATYPE_NULL && !detail::is_predefined_datatype(*h),
+        "type_free takes a derived datatype; predefined datatypes must not be freed"
+    );
+    int err = MPI_Type_free(h);
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
+}
+
 } // namespace mpi::experimental
