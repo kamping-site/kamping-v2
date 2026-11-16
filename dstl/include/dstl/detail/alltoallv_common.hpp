@@ -10,8 +10,6 @@
     #include <omp.h>
 #endif
 
-#include "kamping/v2/kassert.hpp"
-
 /// @file
 /// The OpenMP work-splitting kernels shared by the dstl collectives — `chunked_for` (split-by-thread-id
 /// inside one parallel region) and `chunking` (a fixed split-by-chunk-index partition). Used by the grid
@@ -24,12 +22,11 @@ namespace dstl::detail {
 /// OpenMP thread and the chunks run concurrently; otherwise `body` runs once over the whole range. The
 /// `n*tid/nthreads` split tolerates `n` not divisible by the thread count: chunks stay contiguous, cover
 /// `[0, n)` exactly, and differ in size by at most one element (empty chunks when threads outnumber
-/// elements are fine — `body` then sees `lo == hi`). Parallel execution requires OpenMP, asserted here.
-/// `body` must be safe to invoke concurrently across distinct slices.
+/// elements are fine — `body` then sees `lo == hi`). Without OpenMP, `body` runs once over the whole range even
+/// if `parallel` is set. `body` must be safe to invoke concurrently across distinct slices.
 template <typename F>
 inline void chunked_for([[maybe_unused]] bool parallel, std::ptrdiff_t n, F&& body) {
 #ifndef _OPENMP
-    KAMPING_V2_ASSERT(!parallel, "chunked_for: parallel execution requires OpenMP, which this build lacks.");
     body(std::ptrdiff_t{0}, n);
 #else
     if (!parallel) {
@@ -54,7 +51,7 @@ inline void chunked_for([[maybe_unused]] bool parallel, std::ptrdiff_t n, F&& bo
 /// there is one chunk per OpenMP thread, capped at `n` so chunks never outnumber elements; otherwise a
 /// single chunk spans the whole range. The `n*c/count` split keeps chunks contiguous, covers `[0, n)`
 /// exactly, and balances sizes to within one element (empty chunks — when threads outnumber elements —
-/// are fine). Parallel use requires OpenMP, asserted in the ctor (as `chunked_for`).
+/// are fine). Without OpenMP, there is always a single chunk, processed sequentially (as `chunked_for`).
 struct chunking {
     std::ptrdiff_t n        = 0;
     int            nchunks  = 1;
@@ -67,8 +64,6 @@ struct chunking {
         if (parallel) {
             nchunks = std::clamp(omp_get_max_threads(), 1, static_cast<int>(std::max<std::ptrdiff_t>(n, 1)));
         }
-#else
-        KAMPING_V2_ASSERT(!parallel, "chunking: parallel execution requires OpenMP, which this build lacks.");
 #endif
     }
 

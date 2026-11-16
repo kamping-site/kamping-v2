@@ -46,12 +46,23 @@ target_sources(
 )
 target_link_libraries(dstl INTERFACE kamping::v2)
 
-# Optional OpenMP acceleration for the funneled / thread_multiple re-bin kernels. When not found, those execution
-# policies fall back to a serial rebin (correctness is unaffected).
-find_package(OpenMP QUIET)
-if (OpenMP_CXX_FOUND)
+# Optional OpenMP acceleration for the re-bin kernels of the parallel execution policies. Without it, those policies
+# regroup the elements sequentially (correctness is unaffected). KAMPING_V2_ENABLE_OPENMP selects whether OpenMP is used
+# if found (AUTO), required (ON) or not used (OFF).
+set(KAMPING_V2_DSTL_USES_OPENMP OFF)
+if (KAMPING_V2_ENABLE_OPENMP STREQUAL "AUTO")
+    find_package(OpenMP QUIET COMPONENTS CXX)
+    if (OpenMP_CXX_FOUND)
+        set(KAMPING_V2_DSTL_USES_OPENMP ON)
+    endif ()
+elseif (KAMPING_V2_ENABLE_OPENMP)
+    find_package(OpenMP REQUIRED COMPONENTS CXX)
+    set(KAMPING_V2_DSTL_USES_OPENMP ON)
+endif ()
+if (KAMPING_V2_DSTL_USES_OPENMP)
     target_link_libraries(dstl INTERFACE OpenMP::OpenMP_CXX)
 endif ()
+message(STATUS "dstl: OpenMP ${KAMPING_V2_DSTL_USES_OPENMP} (KAMPING_V2_ENABLE_OPENMP=${KAMPING_V2_ENABLE_OPENMP})")
 
 if (KAMPING_V2_INSTALL)
     install(
