@@ -19,14 +19,15 @@ namespace mpi::experimental {
 
 namespace detail {
 /// @return Whether `dt` is a predefined datatype such as `MPI_INT`, which must not be committed by the user or freed.
-inline bool is_predefined_datatype(MPI_Datatype dt) {
+/// `false` if `dt` cannot be inspected. Only used in assertions.
+inline bool is_predefined_datatype(MPI_Datatype dt) noexcept {
     int num_integers  = 0;
     int num_addresses = 0;
     int num_datatypes = 0;
     int combiner      = 0;
     int err           = MPI_Type_get_envelope(dt, &num_integers, &num_addresses, &num_datatypes, &combiner);
     if (err != MPI_SUCCESS) {
-        throw mpi_error(err);
+        return false;
     }
     return combiner == MPI_COMBINER_NAMED;
 }
@@ -99,13 +100,14 @@ private:
 
 /// @brief Owning RAII wrapper for a derived `MPI_Datatype`.
 ///
-/// Takes ownership of a datatype built with an MPI type constructor (`MPI_Type_contiguous`, `MPI_Type_vector`,
-/// `MPI_Type_create_darray`, ...), commits it, and frees it on destruction. Move-only.
+/// Owns a datatype built with an MPI type constructor (`MPI_Type_contiguous`, `MPI_Type_vector`,
+/// `MPI_Type_create_darray`, ...) and frees it on destruction. Move-only. `commit` takes ownership of a datatype and
+/// commits it; `from_native` takes ownership without committing, e.g. of a building block for another datatype.
 ///
 /// @code
 /// MPI_Datatype block;
 /// MPI_Type_create_darray(size, rank, 2, gsizes, distribs, dargs, psizes, MPI_ORDER_C, MPI_DOUBLE, &block);
-/// auto const block_type = datatype::from_native(block);  // committed, freed at the end of the scope
+/// auto const block_type = datatype::commit(block);  // committed, freed at the end of the scope
 /// send(matrix | views::with_type(block_type) | views::with_count(1), 0, comm);
 /// @endcode
 class datatype : public datatype_accessors<datatype> {
@@ -133,16 +135,31 @@ public:
         free_if_valid();
     }
 
-    /// @brief Takes ownership of the derived datatype `dt` and commits it.
+    /// @brief Takes ownership of the derived datatype `dt` as it is, without committing it.
+    ///
+    /// Use this for datatypes that are already committed, and for building blocks that are only passed to other type
+    /// constructors and must be freed but need not be committed. Use @ref commit for a datatype that is used for
+    /// communication.
+    /// @pre `dt` is `MPI_DATATYPE_NULL` or a derived datatype, not a predefined one such as `MPI_INT`, which must not
+    /// be freed.
+    [[nodiscard]] static datatype from_native(MPI_Datatype dt) noexcept {
+        KAMPING_V2_ASSERT(
+            dt == MPI_DATATYPE_NULL || !detail::is_predefined_datatype(dt),
+            "datatype::from_native takes a derived datatype; predefined datatypes must not be freed"
+        );
+        return datatype(dt);
+    }
+
+    /// @brief Takes ownership of the derived datatype `dt` and commits it, so that it can be used for communication.
     ///
     /// Committing an already committed datatype is allowed. `dt` is owned from this call on, even if it throws: if
     /// the commit fails, `dt` is freed before the exception is thrown.
     /// @pre `dt` is a derived datatype, not a predefined one such as `MPI_INT`, which must not be freed.
     /// @throws mpi_error if `MPI_Type_commit` fails.
-    [[nodiscard]] static datatype from_native(MPI_Datatype dt) {
+    [[nodiscard]] static datatype commit(MPI_Datatype dt) {
         KAMPING_V2_ASSERT(
             dt != MPI_DATATYPE_NULL && !detail::is_predefined_datatype(dt),
-            "datatype::from_native takes a derived datatype; predefined datatypes must not be freed"
+            "datatype::commit takes a derived datatype; predefined datatypes must not be freed"
         );
         datatype owned(dt);
         int      err = MPI_Type_commit(&owned._type);

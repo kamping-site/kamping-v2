@@ -56,7 +56,7 @@ public:
             std::type_index idx = std::type_index(typeid(T));
             auto            it  = _types.find(idx);
             if (it == _types.end()) {
-                it = _types.emplace(idx, datatype::from_native(kamping::types::mpi_type_traits<T>::data_type())).first;
+                it = _types.emplace(idx, datatype::commit(kamping::types::mpi_type_traits<T>::data_type())).first;
             }
             return it->second.mpi_handle();
         }
@@ -67,8 +67,8 @@ public:
     ///
     /// `T` is used purely as the lookup key (`std::type_index(typeid(T))`) — e.g. a byte-blob
     /// type for a struct that has no trait specialization written for it. The pool takes
-    /// ownership of `dt` as a `datatype`, which commits it (a no-op if already committed) and
-    /// frees it on pool destruction; the caller must not free it separately.
+    /// ownership of `dt` with `datatype::commit`, which commits it (a no-op if already committed),
+    /// and frees it on pool destruction; the caller must not free it separately.
     ///
     /// Idempotent: if `T` is already registered (by this overload or the trait-based one above),
     /// the existing handle is kept and `dt` is freed immediately, so calling this repeatedly with a
@@ -84,7 +84,7 @@ public:
         std::type_index idx = std::type_index(typeid(T));
         auto            it  = _types.find(idx);
         if (it == _types.end()) {
-            it = _types.emplace(idx, datatype::from_native(dt)).first;
+            it = _types.emplace(idx, datatype::commit(dt)).first;
         } else if (dt != MPI_DATATYPE_NULL) {
             MPI_Type_free(&dt);
         }
@@ -94,14 +94,19 @@ public:
     /// @brief Registers an owned datatype for `T`, without requiring a `kamping::types::mpi_type_traits<T>`
     /// specialization.
     ///
-    /// Like the `MPI_Datatype` overload, but takes a `datatype`, which is already committed. If `T` is already
-    /// registered, the existing datatype is kept and `dt` is freed when it goes out of scope.
+    /// Like the `MPI_Datatype` overload, but takes a `datatype`, e.g. one from `datatype::from_native`. The pool
+    /// takes ownership and commits it (a no-op if already committed). If `T` is already registered, the existing
+    /// datatype is kept and `dt` stays with the caller, who frees it when it goes out of scope.
     /// @tparam T The lookup key; no trait requirement.
-    /// @param dt The datatype to register for `T`; the pool takes ownership.
+    /// @param dt The datatype to register for `T`.
     /// @return The committed `MPI_Datatype` now owned by the pool for `T`.
     template <typename T>
     MPI_Datatype register_type(datatype&& dt) {
-        auto [it, inserted] = _types.try_emplace(std::type_index(typeid(T)), std::move(dt));
+        std::type_index idx = std::type_index(typeid(T));
+        auto            it  = _types.find(idx);
+        if (it == _types.end()) {
+            it = _types.emplace(idx, datatype::commit(dt.release())).first;
+        }
         return it->second.mpi_handle();
     }
 

@@ -85,7 +85,7 @@ namespace kamping::v2::views {
 /// when it is destroyed:
 ///
 /// @code
-/// send(matrix | views::with_type(datatype::from_native(block)) | views::with_count(1), 0, comm);
+/// send(matrix | views::with_type(datatype::commit(block)) | views::with_count(1), 0, comm);
 /// @endcode
 ///
 /// @code{.signature}

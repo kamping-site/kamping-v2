@@ -18,8 +18,9 @@ a type is described by specializing `kamping::types::mpi_type_traits`, by hand o
 
 ## Datatype handles
 
-A `datatype` owns a derived datatype that you built with an MPI type constructor: `datatype::from_native` commits it,
-and the destructor frees it. A `datatype_view` refers to any datatype without owning it. `views::with_type` accepts
+A `datatype` owns a derived datatype that you built with an MPI type constructor and frees it in its destructor.
+`datatype::commit` takes ownership and commits the datatype; `datatype::from_native` takes ownership without
+committing, e.g. of a building block for another datatype. A `datatype_view` refers to any datatype without owning it. `views::with_type` accepts
 both, as well as a raw `MPI_Datatype`; a temporary `datatype` passed to it is moved into the view.
 
 ```{doxygenclass} kamping::v2::datatype

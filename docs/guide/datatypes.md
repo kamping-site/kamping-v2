@@ -38,21 +38,25 @@ auto [_, all] = v2::allgatherv(points | views::with_auto_pool(env),
 ## One-off datatypes
 
 Some datatypes describe a layout rather than a C++ type, such as the block of a distributed matrix that one process
-owns. Build them with the MPI type constructors and hand them to a `datatype`, which commits the datatype and frees
-it at the end of its lifetime:
+owns. Build them with the MPI type constructors and hand them to a `datatype`. `datatype::commit` commits the
+datatype, and the `datatype` frees it at the end of its lifetime:
 
 ```cpp
 MPI_Datatype raw;
 MPI_Type_create_darray(comm.size(), comm.rank(), 2, gsizes, distribs, dargs, psizes,
                        MPI_ORDER_C, MPI_DOUBLE, &raw);
-auto const block = v2::datatype::from_native(raw);
+auto const block = v2::datatype::commit(raw);
 
 v2::send(matrix | views::with_type(block) | views::with_count(1), 0, comm);
 ```
 
 `views::with_type` borrows a `datatype` passed as an lvalue. A temporary is moved into the view instead, so
-`views::with_type(v2::datatype::from_native(raw))` frees the datatype once the view is gone. A `type_pool` can also
+`views::with_type(v2::datatype::commit(raw))` frees the datatype once the view is gone. A `type_pool` can also
 take a `datatype` with `pool.register_type<T>(std::move(dt))`.
+
+Datatypes that only serve as building blocks for other datatypes, such as the vector in
+`MPI_Type_create_resized(vector, ...)`, need not be committed, but still have to be freed. `datatype::from_native`
+takes ownership of a datatype without committing it.
 
 ## Types without a datatype
 

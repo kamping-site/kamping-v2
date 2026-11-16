@@ -47,7 +47,7 @@ struct Unregistered {
 
 TEST(WithTypeDatatypeTest, LvalueHandlesAreBorrowed) {
     std::vector<int> v(3);
-    auto const       dt = v2::datatype::from_native(make_int3());
+    auto const       dt = v2::datatype::commit(make_int3());
 
     auto full = views::with_type(v, dt);
     static_assert(std::same_as<stored_type_t<decltype(full)>, MPI_Datatype>);
@@ -70,12 +70,12 @@ TEST(WithTypeDatatypeTest, LvalueHandlesAreBorrowed) {
 TEST(WithTypeDatatypeTest, TemporaryDatatypeIsOwnedByTheView) {
     std::vector<int> v(3);
 
-    auto piped = v | views::with_type(v2::datatype::from_native(make_int3()));
+    auto piped = v | views::with_type(v2::datatype::commit(make_int3()));
     static_assert(std::same_as<stored_type_t<decltype(piped)>, v2::datatype>);
     EXPECT_NE(v2::type(piped), MPI_DATATYPE_NULL);
     EXPECT_EQ(v2::datatype_view(v2::type(piped)).size(), 3 * static_cast<int>(sizeof(int)));
 
-    auto full = views::with_type(v, v2::datatype::from_native(make_int3()));
+    auto full = views::with_type(v, v2::datatype::commit(make_int3()));
     static_assert(std::same_as<stored_type_t<decltype(full)>, v2::datatype>);
 
     // A view owning its datatype is never borrowed: the datatype is freed with the view.
@@ -88,7 +88,7 @@ TEST(WithTypeDatatypeTest, BcastWithOwnedDatatype) {
     if (comm.rank() == 0) {
         v = {1, 2, 3};
     }
-    v2::bcast(v | views::with_type(v2::datatype::from_native(make_int3())) | views::with_count(1), 0, comm);
+    v2::bcast(v | views::with_type(v2::datatype::commit(make_int3())) | views::with_count(1), 0, comm);
     EXPECT_EQ(v, (std::vector<int>{1, 2, 3}));
 }
 
@@ -96,7 +96,7 @@ TEST(WithTypeDatatypeTest, BcastWithOwnedDatatype) {
 
 TEST(TypePoolDatatypeTest, RegisterOwnedDatatype) {
     v2::type_pool pool;
-    auto          dt  = v2::datatype::from_native(make_int3());
+    auto          dt  = v2::datatype::commit(make_int3());
     MPI_Datatype  raw = dt.mpi_handle();
 
     EXPECT_EQ(pool.register_type<Unregistered>(std::move(dt)), raw);
@@ -105,9 +105,22 @@ TEST(TypePoolDatatypeTest, RegisterOwnedDatatype) {
     EXPECT_EQ(*pool.find<Unregistered>(), raw);
 
     // A second registration keeps the first datatype; the new one stays with the caller.
-    auto second = v2::datatype::from_native(make_int3());
+    auto second = v2::datatype::commit(make_int3());
     EXPECT_EQ(pool.register_type<Unregistered>(std::move(second)), raw);
     EXPECT_NE(second.mpi_handle(), MPI_DATATYPE_NULL); // NOLINT(bugprone-use-after-move)
+}
+
+TEST(TypePoolDatatypeTest, RegisterUncommittedDatatypeCommitsIt) {
+    v2::type_pool pool;
+    MPI_Datatype  dt = pool.register_type<Unregistered>(v2::datatype::from_native(make_int3()));
+
+    v2::comm_view const comm(MPI_COMM_WORLD);
+    std::vector<int>    v(3, -1);
+    if (comm.rank() == 0) {
+        v = {7, 8, 9};
+    }
+    v2::bcast(v | views::with_type(dt) | views::with_count(1), 0, comm);
+    EXPECT_EQ(v, (std::vector<int>{7, 8, 9}));
 }
 
 TEST(TypePoolDatatypeTest, RegisterRawDatatypeCommitsIt) {
