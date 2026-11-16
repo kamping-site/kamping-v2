@@ -92,7 +92,10 @@ public:
                     kamping::v2::resize_for_receive(_displs, static_cast<std::ptrdiff_t>(std::ranges::size(counts)));
                 }
             }
-            KAMPING_V2_ASSERT(std::ranges::size(_displs) >= std::ranges::size(counts));
+            KAMPING_V2_ASSERT(
+                static_cast<std::ptrdiff_t>(std::ranges::size(_displs))
+                >= static_cast<std::ptrdiff_t>(std::ranges::size(counts))
+            );
             std::exclusive_scan(std::ranges::begin(counts), std::ranges::end(counts), std::ranges::begin(_displs), 0);
             _needs_to_compute_displs = false;
         }
