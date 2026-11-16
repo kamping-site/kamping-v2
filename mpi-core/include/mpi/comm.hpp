@@ -11,6 +11,7 @@
 #include "mpi/error.hpp"
 #include "mpi/group.hpp"
 #include "mpi/handle.hpp"
+#include "mpi/rank.hpp"
 
 namespace mpi::experimental {
 
@@ -20,7 +21,8 @@ namespace mpi::experimental {
 class comm;
 
 /// CRTP mixin providing read-only accessors and collective operations for any communicator wrapper: `.rank()`,
-/// `.size()`, `.group()`, `.dup()`, `.split()`. `Derived` must implement `MPI_Comm mpi_handle() const`.
+/// `.size()`, `.periodic_rank()`, `.nonperiodic_rank()`, `.group()`, `.dup()`, `.split()`. `Derived` must implement
+/// `MPI_Comm mpi_handle() const`.
 template <typename Derived>
 class comm_accessors {
     [[nodiscard]] MPI_Comm underlying() const noexcept {
@@ -40,6 +42,33 @@ public:
         int s;
         MPI_Comm_size(underlying(), &s);
         return s;
+    }
+
+    /// @return The rank of the calling process as a `periodic_rank`, whose arithmetic wraps around at the ends of the
+    /// communicator: `comm.periodic_rank() + 1` is the right neighbor in a ring.
+    /// @throws mpi_error if the rank or size cannot be queried.
+    [[nodiscard]] mpi::experimental::periodic_rank periodic_rank() const {
+        return mpi::experimental::periodic_rank(underlying());
+    }
+
+    /// @return The rank `rank` of this communicator as a `periodic_rank`, wrapped into `[0, size())`.
+    /// @throws mpi_error if the size cannot be queried.
+    [[nodiscard]] mpi::experimental::periodic_rank periodic_rank(int rank) const {
+        return mpi::experimental::periodic_rank(rank, underlying());
+    }
+
+    /// @return The rank of the calling process as a `nonperiodic_rank`, which stands for `MPI_PROC_NULL` beyond the
+    /// ends of the communicator: `comm.nonperiodic_rank() + 1` is the right neighbor on a line, if there is one.
+    /// @throws mpi_error if the rank or size cannot be queried.
+    [[nodiscard]] mpi::experimental::nonperiodic_rank nonperiodic_rank() const {
+        return mpi::experimental::nonperiodic_rank(underlying());
+    }
+
+    /// @return The position `rank` in this communicator as a `nonperiodic_rank`. `rank` may be outside of
+    /// `[0, size())`.
+    /// @throws mpi_error if the size cannot be queried.
+    [[nodiscard]] mpi::experimental::nonperiodic_rank nonperiodic_rank(int rank) const {
+        return mpi::experimental::nonperiodic_rank(rank, underlying());
     }
 
     /// @brief Extract the group associated with this communicator.
