@@ -52,7 +52,7 @@ std::array const distribs{MPI_DISTRIBUTE_BLOCK, MPI_DISTRIBUTE_BLOCK};
 std::array const dargs{MPI_DISTRIBUTE_DFLT_DARG, MPI_DISTRIBUTE_DFLT_DARG};
 std::array const psizes{p_rows, p_cols};     // on a p_rows x p_cols grid
 auto const block = v2::type_create_darray(comm.size(), comm.rank(), gsizes, distribs,
-                                          dargs, psizes, v2::ArrayOrder::c, MPI_DOUBLE)
+                                          dargs, psizes, v2::array_order::c, MPI_DOUBLE)
                        .commit();
 
 v2::send(matrix | views::with_type(block) | views::with_count(1), 0, comm);

@@ -16,6 +16,9 @@ with the Doxygen comment as their description:
 ``doxygenvariable`` / ``doxygentypedef``
     A variable or constant, without ``inline constexpr``; a type alias.
 
+``doxygenenum``
+    An enumeration with its underlying type, and its documented enumerators with their values.
+
 ``doxygenview``
     The ``inline constexpr`` adaptor objects in ``kamping::v2::views``. Their declared type is an adaptor template
     over a lambda, which is useless to a reader, so the signatures shown are taken from a ``@code{.signature}`` block
@@ -51,7 +54,7 @@ from docutils.parsers.rst import directives
 from docutils.statemachine import StringList
 from sphinx import addnodes
 from sphinx.application import Sphinx
-from sphinx.domains.cpp import CPPClassObject, CPPConceptObject, CPPFunctionObject, CPPMemberObject, CPPTypeObject, CPPNamespacePopObject, CPPNamespacePushObject
+from sphinx.domains.cpp import CPPClassObject, CPPConceptObject, CPPEnumeratorObject, CPPEnumObject, CPPFunctionObject, CPPMemberObject, CPPTypeObject, CPPNamespacePopObject, CPPNamespacePushObject
 from sphinx.util import logging
 from sphinx.util.docutils import SphinxDirective
 
@@ -704,6 +707,44 @@ class DoxygenType(_DoxygenObject, CPPTypeObject):
         return [f"{short_name} = {aliased}" if aliased else short_name]
 
 
+class DoxygenEnum(_DoxygenObject, CPPEnumObject):
+    """An enumeration (``enum`` or ``enum class``) with its underlying type, followed by its documented enumerators
+    and their values."""
+
+    domain_directive = "cpp:enum"
+    option_spec = dict(CPPEnumObject.option_spec)
+
+    def signatures(self, element: ET.Element, short_name: str) -> list[str]:
+        self.domain_directive = "cpp:enum-class" if element.get("strong") == "yes" else "cpp:enum"
+        underlying = _text(element.find("type"))
+        return [f"{short_name} : {underlying}" if underlying else short_name]
+
+    def after_description(self, content_node) -> None:
+        for value in self._element.findall("enumvalue"):
+            if not _documented(value):
+                continue
+            directive = DoxygenEnumerator(
+                "doxygenenumerator", [value.findtext("name") or ""], {}, StringList(), self.lineno,
+                self.content_offset, "", self.state, self.state_machine,
+            )
+            directive.preset = value
+            directive.display_namespace = self._namespace
+            directive.show_header = False
+            directive.is_member = True
+            content_node.extend(directive.run())
+
+
+class DoxygenEnumerator(_DoxygenObject, CPPEnumeratorObject):
+    """An enumerator with its value, rendered by DoxygenEnum."""
+
+    domain_directive = "cpp:enumerator"
+    option_spec = dict(CPPEnumeratorObject.option_spec)
+
+    def signatures(self, element: ET.Element, short_name: str) -> list[str]:
+        initializer = _text(element.find("initializer"))
+        return [f"{short_name} {initializer}" if initializer else short_name]
+
+
 _MEMBER_SECTIONS = ("public-type", "public-func", "public-static-func", "public-attrib", "public-static-attrib")
 
 
@@ -792,5 +833,6 @@ def setup(app: Sphinx) -> dict:
     app.add_directive("doxygenclass", DoxygenClass)
     app.add_directive("doxygenstruct", DoxygenClass)
     app.add_directive("doxygentypedef", DoxygenType)
+    app.add_directive("doxygenenum", DoxygenEnum)
     app.connect("missing-reference", _unlinked)
     return {"version": "0.2", "parallel_read_safe": True, "parallel_write_safe": True}

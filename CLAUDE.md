@@ -81,8 +81,8 @@ cmake --build build/docs --target docs         # site in build/docs/docs/html
   from compiled examples (`literalinclude` between `// [docs:...]` markers) where possible.
 - Reference pages pull entities from the XML with the directives in `docs/_ext/kamping_doxygen.py`:
   `doxygenclass`/`doxygenstruct` (`:members:` for documented public members), `doxygenoverloads` (all overloads of
-  a function, numbered in one block as on cppreference), `doxygenconcept`, `doxygenvariable`, `doxygentypedef`, and
-  `doxygenview` for the view adaptor objects. Name re-exported core entities by their `kamping::v2::` name; the
+  a function, numbered in one block as on cppreference), `doxygenconcept`, `doxygenvariable`, `doxygentypedef`,
+  `doxygenenum` (an enum with its documented enumerators), and `doxygenview` for the view adaptor objects. Name re-exported core entities by their `kamping::v2::` name; the
   extension shows them under it.
 - Doc comments of public API are written for users. Implementation notes go in plain `//` comments. Members that
   are public only for the library's own use get `/// @internal` (left out of the docs). `mpi_*` protocol members
