@@ -203,16 +203,16 @@ TEST(TypeConstructorsTest, Subarray) {
     std::array const starts{1, 1};
     auto const       m = iota16();
 
-    auto const row_major = type_create_subarray(sizes, subsizes, starts, ArrayOrder::c, MPI_INT).commit();
+    auto const row_major = type_create_subarray(sizes, subsizes, starts, array_order::c, MPI_INT).commit();
     EXPECT_EQ(row_major.extent(), 16 * int_size);
     EXPECT_EQ(selected_ints(m.data(), row_major, 4), (std::vector<int>{5, 6, 9, 10}));
 
     // Rows 0..1 and columns 1..3 in row-major order; in column-major order, sizes and starts are read the other way.
     std::array const wide{2, 3};
     std::array const offset{0, 1};
-    auto const       c_order = type_create_subarray(sizes, wide, offset, ArrayOrder::c, MPI_INT).commit();
+    auto const       c_order = type_create_subarray(sizes, wide, offset, array_order::c, MPI_INT).commit();
     EXPECT_EQ(selected_ints(m.data(), c_order, 6), (std::vector<int>{1, 2, 3, 5, 6, 7}));
-    auto const f_order = type_create_subarray(sizes, wide, offset, ArrayOrder::fortran, MPI_INT).commit();
+    auto const f_order = type_create_subarray(sizes, wide, offset, array_order::fortran, MPI_INT).commit();
     EXPECT_EQ(selected_ints(m.data(), f_order, 6), (std::vector<int>{4, 5, 8, 9, 12, 13}));
 }
 
@@ -229,7 +229,7 @@ TEST(TypeConstructorsTest, Darray) {
     std::array const distribs{MPI_DISTRIBUTE_BLOCK};
     std::array const dargs{MPI_DISTRIBUTE_DFLT_DARG};
     std::array const psizes{size};
-    auto const dt = type_create_darray(size, rank, gsizes, distribs, dargs, psizes, ArrayOrder::c, MPI_INT).commit();
+    auto const dt = type_create_darray(size, rank, gsizes, distribs, dargs, psizes, array_order::c, MPI_INT).commit();
 
     int const block = 8 / size;
     EXPECT_EQ(dt.size(), block * static_cast<int>(sizeof(int)));

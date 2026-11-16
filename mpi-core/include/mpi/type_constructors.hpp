@@ -32,7 +32,7 @@
 namespace mpi::experimental {
 
 /// @brief Storage order of a multi-dimensional array for `type_create_subarray` and `type_create_darray`.
-enum class ArrayOrder : int {
+enum class array_order : int {
     c       = MPI_ORDER_C,      ///< Row-major: the last dimension varies fastest.
     fortran = MPI_ORDER_FORTRAN ///< Column-major: the first dimension varies fastest.
 };
@@ -202,7 +202,7 @@ void type_create_subarray(
     std::span<int const> sizes,
     std::span<int const> subsizes,
     std::span<int const> starts,
-    ArrayOrder           order,
+    array_order          order,
     Datatype const&      oldtype,
     NewDatatype&         newtype
 ) {
@@ -232,7 +232,7 @@ void type_create_subarray(
 /// std::array const sizes{rows, cols};          // a rows x cols matrix ...
 /// std::array const subsizes{rows - 2, cols - 2};
 /// std::array const starts{1, 1};               // ... without its boundary
-/// auto interior = type_create_subarray(sizes, subsizes, starts, ArrayOrder::c, MPI_DOUBLE).commit();
+/// auto interior = type_create_subarray(sizes, subsizes, starts, array_order::c, MPI_DOUBLE).commit();
 /// @endcode
 /// @return The new datatype, owned and not committed.
 /// @throws mpi_error if `MPI_Type_create_subarray` fails.
@@ -241,7 +241,7 @@ template <convertible_to_mpi_handle<MPI_Datatype> Datatype>
     std::span<int const> sizes,
     std::span<int const> subsizes,
     std::span<int const> starts,
-    ArrayOrder           order,
+    array_order          order,
     Datatype const&      oldtype
 ) {
     uncommitted_datatype newtype;
@@ -268,7 +268,7 @@ void type_create_darray(
     std::span<int const> distribs,
     std::span<int const> dargs,
     std::span<int const> psizes,
-    ArrayOrder           order,
+    array_order          order,
     Datatype const&      oldtype,
     NewDatatype&         newtype
 ) {
@@ -305,7 +305,7 @@ void type_create_darray(
 /// std::array const dargs{MPI_DISTRIBUTE_DFLT_DARG, MPI_DISTRIBUTE_DFLT_DARG};
 /// std::array const psizes{p_rows, p_cols};
 /// auto block =
-///     type_create_darray(size, rank, gsizes, distribs, dargs, psizes, ArrayOrder::c, MPI_DOUBLE).commit();
+///     type_create_darray(size, rank, gsizes, distribs, dargs, psizes, array_order::c, MPI_DOUBLE).commit();
 /// @endcode
 /// @return The new datatype, owned and not committed.
 /// @throws mpi_error if `MPI_Type_create_darray` fails.
@@ -317,7 +317,7 @@ template <convertible_to_mpi_handle<MPI_Datatype> Datatype>
     std::span<int const> distribs,
     std::span<int const> dargs,
     std::span<int const> psizes,
-    ArrayOrder           order,
+    array_order          order,
     Datatype const&      oldtype
 ) {
     uncommitted_datatype newtype;

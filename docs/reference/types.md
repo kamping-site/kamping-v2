@@ -82,8 +82,8 @@ including an `uncommitted_datatype`. Array arguments are contiguous ranges, and 
 ```{doxygenoverloads} kamping::v2::type_dup
 ```
 
-`type_create_subarray` and `type_create_darray` take the storage order as an `ArrayOrder`: `ArrayOrder::c`
-(`MPI_ORDER_C`, row-major) or `ArrayOrder::fortran` (`MPI_ORDER_FORTRAN`, column-major).
+```{doxygenenum} kamping::v2::array_order
+```
 
 ## Committing by hand
 

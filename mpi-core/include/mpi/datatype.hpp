@@ -214,7 +214,7 @@ private:
 ///
 /// @code
 /// auto const block_type =  // committed, freed at the end of the scope
-///     type_create_darray(size, rank, gsizes, distribs, dargs, psizes, ArrayOrder::c, MPI_DOUBLE).commit();
+///     type_create_darray(size, rank, gsizes, distribs, dargs, psizes, array_order::c, MPI_DOUBLE).commit();
 /// send(matrix | views::with_type(block_type) | views::with_count(1), 0, comm);
 /// @endcode
 class datatype : public datatype_accessors<datatype> {

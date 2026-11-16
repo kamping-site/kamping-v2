@@ -7,7 +7,7 @@
 #include <mpi/type_constructors.hpp>
 
 namespace kamping::v2 {
-using mpi::experimental::ArrayOrder;
+using mpi::experimental::array_order;
 using mpi::experimental::buffer_datatype;
 using mpi::experimental::datatype;
 using mpi::experimental::datatype_accessors;
