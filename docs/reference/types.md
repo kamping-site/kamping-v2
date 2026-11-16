@@ -51,6 +51,44 @@ committed, such as a building block for another datatype; `std::move(u).commit()
 ```{doxygenconcept} kamping::v2::buffer_datatype
 ```
 
+The free function `type_dup` does the same as the `dup()` members, and can also write into a raw handle.
+
+```{doxygenoverloads} kamping::v2::type_dup
+```
+
+## Type constructors
+
+The type constructors wrap the MPI ones. Each has two forms: the full form mirrors the MPI call and writes the new
+datatype into its last argument, a raw `MPI_Datatype` or an empty `uncommitted_datatype`; the short form returns it
+as an `uncommitted_datatype`. The new datatype is never committed. Base datatypes can be any datatype handle,
+including an `uncommitted_datatype`. Array arguments are contiguous ranges, and their length is MPI's count.
+
+```{doxygenoverloads} kamping::v2::type_contiguous
+```
+
+```{doxygenoverloads} kamping::v2::type_vector
+```
+
+```{doxygenoverloads} kamping::v2::type_create_hvector
+```
+
+```{doxygenoverloads} kamping::v2::type_create_struct
+```
+
+```{doxygenoverloads} kamping::v2::type_create_subarray
+```
+
+```{doxygenoverloads} kamping::v2::type_create_darray
+```
+
+```{doxygenoverloads} kamping::v2::type_create_resized
+```
+
+```{doxygenenum} kamping::v2::array_order
+```
+
+## Committing by hand
+
 A datatype that is managed by hand, without an owning wrapper, is committed with `type_commit`.
 
 ```{doxygenoverloads} kamping::v2::type_commit

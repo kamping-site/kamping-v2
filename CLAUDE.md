@@ -81,8 +81,8 @@ cmake --build build/docs --target docs         # site in build/docs/docs/html
   from compiled examples (`literalinclude` between `// [docs:...]` markers) where possible.
 - Reference pages pull entities from the XML with the directives in `docs/_ext/kamping_doxygen.py`:
   `doxygenclass`/`doxygenstruct` (`:members:` for documented public members), `doxygenoverloads` (all overloads of
-  a function, numbered in one block as on cppreference), `doxygenconcept`, `doxygenvariable`, `doxygentypedef`, and
-  `doxygenview` for the view adaptor objects. Name re-exported core entities by their `kamping::v2::` name; the
+  a function, numbered in one block as on cppreference), `doxygenconcept`, `doxygenvariable`, `doxygentypedef`,
+  `doxygenenum` (an enum with its documented enumerators), and `doxygenview` for the view adaptor objects. Name re-exported core entities by their `kamping::v2::` name; the
   extension shows them under it.
 - Doc comments of public API are written for users. Implementation notes go in plain `//` comments. Members that
   are public only for the library's own use get `/// @internal` (left out of the docs). `mpi_*` protocol members
@@ -235,7 +235,11 @@ The same pattern applies to ranks (`to_rank`) and tags (`to_tag`), supporting bo
 - Header-only: all implementation in `.hpp` files under `include/`
 - `#pragma once` for include guards
 - East-side `const` (`int const` not `const int`)
-- CamelCase for types, snake_case for functions/variables
+- snake_case for types (including enums and their enumerators), functions and variables
+- A public member must not have the name of a type it uses (e.g. `environment::provided_thread_level()`, not
+  `thread_level()`): inside the class, the member hides the type
+- Tag types only when a value selects code at compile time (e.g. commutativity); an `enum class` when the value is only
+  passed to MPI at runtime (e.g. `array_order`)
 - Private members prefixed with `_`: `_member`
 - Doxygen required for all public API
 - No `using namespace` in headers

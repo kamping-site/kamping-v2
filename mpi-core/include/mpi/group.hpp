@@ -13,15 +13,15 @@
 
 namespace mpi::experimental {
 
-// ── GroupEquality ─────────────────────────────────────────────────────────────
+// ── group_equality ─────────────────────────────────────────────────────────────
 
 /// @brief Result of `MPI_Group_compare`.
 ///
 /// No ordering operator — the values are not comparable by magnitude.
-enum class GroupEquality {
-    Identical, ///< Same group object (same processes in same order).
-    Similar,   ///< Same processes but in different order.
-    Unequal,   ///< Different process sets.
+enum class group_equality {
+    identical, ///< Same group object (same processes in same order).
+    similar,   ///< Same processes but in different order.
+    unequal,   ///< Different process sets.
 };
 
 // ── Forward declarations ──────────────────────────────────────────────────────
@@ -65,9 +65,10 @@ public:
     }
 
     /// @brief Compare two groups.
-    /// @return `GroupEquality::Identical` if same object, `Similar` if same
-    ///         processes in different order, `Unequal` otherwise.
-    [[nodiscard]] GroupEquality compare(group_view other) const;
+    /// @return `group_equality::identical` if same object, `similar` if same
+    ///         processes in different order, `unequal` otherwise.
+    /// @throws mpi_error if `MPI_Group_compare` fails.
+    [[nodiscard]] group_equality compare(group_view other) const;
 };
 
 // ── group_view ────────────────────────────────────────────────────────────────
@@ -178,16 +179,19 @@ private:
 // ── group_accessors::compare (out-of-line — needs group_view definition) ──────
 
 template <typename Derived>
-GroupEquality group_accessors<Derived>::compare(group_view other) const {
+group_equality group_accessors<Derived>::compare(group_view other) const {
     int result = MPI_IDENT;
-    MPI_Group_compare(grp(), other.mpi_handle(), &result);
+    int err    = MPI_Group_compare(grp(), other.mpi_handle(), &result);
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
     switch (result) {
         case MPI_IDENT:
-            return GroupEquality::Identical;
+            return group_equality::identical;
         case MPI_SIMILAR:
-            return GroupEquality::Similar;
+            return group_equality::similar;
         default:
-            return GroupEquality::Unequal;
+            return group_equality::unequal;
     }
 }
 

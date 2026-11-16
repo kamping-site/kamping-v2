@@ -3,6 +3,7 @@
 
 #include <concepts>
 #include <functional>
+#include <span>
 #include <type_traits>
 #include <utility>
 #include <vector>
@@ -101,6 +102,21 @@ TEST(WithTypeDatatypeTest, BcastWithOwnedDatatype) {
     }
     v2::bcast(v | views::with_type(v2::datatype::commit(make_int3())) | views::with_count(1), 0, comm);
     EXPECT_EQ(v, (std::vector<int>{1, 2, 3}));
+}
+
+TEST(WithTypeDatatypeTest, BcastColumnBuiltWithTypeConstructors) {
+    // Column 1 of a 3 x 3 row-major matrix: the vector is only a building block, freed after the call.
+    v2::comm_view const comm   = v2::comm_world();
+    auto const          column = v2::type_create_resized(v2::type_vector(3, 1, 3, MPI_INT), 0, sizeof(int)).commit();
+
+    std::vector<int> m(9, -1);
+    if (comm.rank() == 0) {
+        m = {0, 1, 2, 3, 4, 5, 6, 7, 8};
+    }
+    v2::bcast(std::span(m).subspan(1) | views::with_type(column) | views::with_count(1), 0, comm);
+    if (comm.rank() != 0) {
+        EXPECT_EQ(m, (std::vector<int>{-1, 1, -1, -1, 4, -1, -1, 7, -1}));
+    }
 }
 
 // ── type_pool with datatype ────────────────────────────────────────────────────────────────────────────────────────

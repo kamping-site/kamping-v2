@@ -15,7 +15,8 @@
 
 /// @file
 /// Handles for MPI datatypes: the owning `datatype`, which is always committed, the owning `uncommitted_datatype` for
-/// building blocks, and the non-owning `datatype_view`.
+/// building blocks, and the non-owning `datatype_view`. The type constructors that create them are in
+/// mpi/type_constructors.hpp.
 
 namespace mpi::experimental {
 
@@ -81,6 +82,9 @@ public:
     }
 };
 
+class datatype;
+class uncommitted_datatype;
+
 /// @brief Non-owning wrapper around an `MPI_Datatype`.
 ///
 /// Implicitly constructible from a raw `MPI_Datatype` and from a `datatype`, so functions can take a
@@ -91,6 +95,14 @@ public:
     /// @brief Views `dt`, which must outlive the view.
     datatype_view(MPI_Datatype dt) noexcept : _type(dt) {}
 
+    /// @brief A copy of the datatype (`MPI_Type_dup`).
+    ///
+    /// Returned as an `uncommitted_datatype`, since a view may refer to a datatype that is not committed. The copy of a
+    /// committed datatype is committed as well, so `std::move(u).commit()` turns it into a `datatype` at no extra cost.
+    /// Delegates to the free function `type_dup`.
+    /// @throws mpi_error if `MPI_Type_dup` fails.
+    [[nodiscard]] uncommitted_datatype dup() const; // defined out-of-line after type_dup
+
     /// @return The underlying `MPI_Datatype`.
     [[nodiscard]] MPI_Datatype mpi_handle() const noexcept {
         return _type;
@@ -100,22 +112,16 @@ private:
     MPI_Datatype _type;
 };
 
-class datatype;
-
 /// @brief Owning RAII wrapper for a derived `MPI_Datatype` that is not committed yet.
 ///
 /// Holds a building block for other datatypes, which has to be freed but need not be committed, or a datatype that is
 /// committed later with `std::move(u).commit()`. It cannot be used as the datatype of a buffer: `views::with_type`
-/// rejects it at compile time. Its handle can be passed to MPI type constructors. Move-only.
+/// rejects it at compile time. The type constructors (`type_vector`, `type_create_resized`, ...) return it and accept
+/// it as a base datatype. Move-only.
 ///
 /// @code
-/// MPI_Datatype raw_column;
-/// MPI_Type_vector(n, 1, n, MPI_DOUBLE, &raw_column);
-/// auto const column = uncommitted_datatype::from_native(raw_column);  // freed at the end of the scope
-///
-/// MPI_Datatype raw_resized;
-/// MPI_Type_create_resized(column.mpi_handle(), 0, sizeof(double), &raw_resized);
-/// auto const column_type = datatype::commit(raw_resized);
+/// auto const column      = type_vector(n, 1, n, MPI_DOUBLE);             // freed at the end of the scope
+/// auto const column_type = type_create_resized(column, 0, sizeof(double)).commit();
 /// @endcode
 class uncommitted_datatype : public datatype_accessors<uncommitted_datatype> {
 public:
@@ -161,6 +167,12 @@ public:
     /// @throws mpi_error if `MPI_Type_commit` fails.
     [[nodiscard]] datatype commit() &&; // defined after datatype
 
+    /// @brief A copy of the datatype (`MPI_Type_dup`), not committed either.
+    ///
+    /// Delegates to the free function `type_dup`.
+    /// @throws mpi_error if `MPI_Type_dup` fails.
+    [[nodiscard]] uncommitted_datatype dup() const; // defined out-of-line after type_dup
+
     /// @brief Frees the datatype now; afterwards `*this` holds `MPI_DATATYPE_NULL`.
     /// @throws mpi_error if `MPI_Type_free` fails.
     void free() {
@@ -184,6 +196,17 @@ public:
         return _type;
     }
 
+    /// @return A pointer to the underlying `MPI_Datatype`, so that a type constructor can write the new datatype
+    /// into `*this`.
+    /// @pre `*this` holds `MPI_DATATYPE_NULL`. Writing into it otherwise would leak the datatype it holds.
+    [[nodiscard]] MPI_Datatype* mpi_handle_ptr() noexcept {
+        KAMPING_V2_ASSERT(
+            _type == MPI_DATATYPE_NULL,
+            "uncommitted_datatype::mpi_handle_ptr: the datatype must be empty, or the datatype it holds is leaked"
+        );
+        return &_type;
+    }
+
 private:
     explicit uncommitted_datatype(MPI_Datatype dt) noexcept : _type(dt) {}
 
@@ -200,14 +223,13 @@ private:
 /// @brief Owning RAII wrapper for a committed derived `MPI_Datatype`.
 ///
 /// A `datatype` is always committed (or holds `MPI_DATATYPE_NULL`), so it can be used as the datatype of a buffer.
-/// It is created with `datatype::commit` from a datatype built with an MPI type constructor (`MPI_Type_contiguous`,
-/// `MPI_Type_vector`, `MPI_Type_create_darray`, ...), or from an `uncommitted_datatype` with
-/// `std::move(u).commit()`, and frees the datatype on destruction. Move-only.
+/// It is created from an `uncommitted_datatype`, as returned by the type constructors (`type_contiguous`,
+/// `type_vector`, `type_create_darray`, ...), with `std::move(u).commit()`, or with `datatype::commit` from a raw
+/// derived datatype, and frees the datatype on destruction. Move-only.
 ///
 /// @code
-/// MPI_Datatype block;
-/// MPI_Type_create_darray(size, rank, 2, gsizes, distribs, dargs, psizes, MPI_ORDER_C, MPI_DOUBLE, &block);
-/// auto const block_type = datatype::commit(block);  // committed, freed at the end of the scope
+/// auto const block_type =  // committed, freed at the end of the scope
+///     type_create_darray(size, rank, gsizes, distribs, dargs, psizes, array_order::c, MPI_DOUBLE).commit();
 /// send(matrix | views::with_type(block_type) | views::with_count(1), 0, comm);
 /// @endcode
 class datatype : public datatype_accessors<datatype> {
@@ -255,6 +277,12 @@ public:
         return owned;
     }
 
+    /// @brief A copy of the datatype (`MPI_Type_dup`), committed like the original.
+    ///
+    /// Delegates to the free function `type_dup`.
+    /// @throws mpi_error if `MPI_Type_dup` fails.
+    [[nodiscard]] datatype dup() const; // defined out-of-line after type_dup
+
     /// @brief Frees the datatype now; afterwards `*this` holds `MPI_DATATYPE_NULL`.
     ///
     /// Use this instead of the destructor to handle errors of `MPI_Type_free`. The handle is reset before the MPI
@@ -292,6 +320,9 @@ public:
 private:
     explicit datatype(MPI_Datatype dt) noexcept : _type(dt) {}
 
+    // Takes over the already committed copy through the private constructor.
+    friend datatype type_dup(datatype const& oldtype);
+
     void free_if_valid() noexcept {
         if (_type != MPI_DATATYPE_NULL) {
             MPI_Type_free(&_type);
@@ -318,11 +349,13 @@ concept buffer_datatype = convertible_to_mpi_handle<std::remove_cvref_t<T>, MPI_
 ///
 /// For datatypes without an owning wrapper; owned datatypes are committed with `datatype::commit` or
 /// `std::move(u).commit()`. `dt` is a raw `MPI_Datatype` lvalue or a wrapper exposing a writable handle via
-/// `mpi_handle_ptr()` or `handle_traits`, since MPI may write the handle back. Committing an already committed
-/// datatype is allowed.
+/// `mpi_handle_ptr()` or `handle_traits`, since MPI may write the handle back. An `uncommitted_datatype` is rejected:
+/// it would hold a committed datatype afterwards; use `std::move(u).commit()` instead. Committing an already
+/// committed datatype is allowed.
 /// @pre `dt` is a derived datatype, not a predefined one such as `MPI_INT`.
 /// @throws mpi_error if `MPI_Type_commit` fails.
 template <convertible_to_mpi_handle_ptr<MPI_Datatype> Datatype>
+    requires(!std::same_as<std::remove_cvref_t<Datatype>, uncommitted_datatype>)
 void type_commit(Datatype& dt) {
     MPI_Datatype* h = mpi::experimental::handle_ptr(dt);
     KAMPING_V2_ASSERT(
@@ -333,6 +366,59 @@ void type_commit(Datatype& dt) {
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);
     }
+}
+
+// ── Free functions: type_dup ──────────────────────────────────────────────────────────────────────────────────────
+
+/// @brief A copy of `oldtype` (`MPI_Type_dup`).
+///
+/// The copy of a committed datatype is committed as well.
+/// @param newtype Output: receives the new datatype.
+/// @throws mpi_error if `MPI_Type_dup` fails.
+template <convertible_to_mpi_handle<MPI_Datatype> Datatype, convertible_to_mpi_handle_ptr<MPI_Datatype> NewDatatype>
+void type_dup(Datatype const& oldtype, NewDatatype& newtype) {
+    int err = MPI_Type_dup(mpi::experimental::handle(oldtype), mpi::experimental::handle_ptr(newtype));
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
+}
+
+/// @brief A copy of `oldtype` (`MPI_Type_dup`), committed like the original.
+/// @return The new datatype, owned.
+/// @throws mpi_error if `MPI_Type_dup` fails.
+[[nodiscard]] inline datatype type_dup(datatype const& oldtype) {
+    MPI_Datatype newtype = MPI_DATATYPE_NULL;
+    type_dup(oldtype, newtype);
+    // MPI_Type_dup copies the committed state, so the copy is taken over without another MPI_Type_commit.
+    return datatype(newtype);
+}
+
+/// @brief A copy of `oldtype` (`MPI_Type_dup`).
+///
+/// Returned as an `uncommitted_datatype`, since `oldtype` (a raw handle, a `datatype_view` or an
+/// `uncommitted_datatype`) may be uncommitted. The copy of a committed datatype is committed as well, so
+/// `std::move(u).commit()` turns it into a `datatype` at no extra cost.
+/// @return The new datatype, owned.
+/// @throws mpi_error if `MPI_Type_dup` fails.
+template <convertible_to_mpi_handle<MPI_Datatype> Datatype>
+[[nodiscard]] uncommitted_datatype type_dup(Datatype const& oldtype) {
+    uncommitted_datatype newtype;
+    type_dup(oldtype, newtype);
+    return newtype;
+}
+
+// ── Member dup() (out-of-line — needs type_dup) ───────────────────────────────────────────────────────────────────
+
+inline uncommitted_datatype datatype_view::dup() const {
+    return mpi::experimental::type_dup(*this);
+}
+
+inline uncommitted_datatype uncommitted_datatype::dup() const {
+    return mpi::experimental::type_dup(*this);
+}
+
+inline datatype datatype::dup() const {
+    return mpi::experimental::type_dup(*this);
 }
 
 } // namespace mpi::experimental

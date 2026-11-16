@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <algorithm>
+#include <array>
 #include <charconv>
 #include <concepts>
 #include <iterator>
@@ -86,15 +88,35 @@ struct info_value_traits<T> {
     }
 };
 
-/// @brief Specialization for `ThreadLevel` — stored as its underlying integer value.
+/// @brief Specialization for `thread_level`, stored as the name of the MPI constant (`"MPI_THREAD_SINGLE"`, ...,
+/// `"MPI_THREAD_MULTIPLE"`), the format of the `thread_level` key of a session.
 template <>
-struct info_value_traits<ThreadLevel> {
-    static std::string to_string(ThreadLevel v) {
-        return std::to_string(static_cast<int>(v));
+struct info_value_traits<thread_level> {
+    static std::string to_string(thread_level v) {
+        auto const it = std::ranges::find(_names, v, &name_entry::first);
+        if (it == _names.end()) {
+            throw std::invalid_argument("info_value_traits<thread_level>::to_string: not a thread level");
+        }
+        return std::string{it->second};
     }
-    static ThreadLevel from_string(std::string const& s) {
-        return static_cast<ThreadLevel>(info_value_traits<int>::from_string(s));
+    static thread_level from_string(std::string const& s) {
+        auto const it = std::ranges::find(_names, std::string_view{s}, &name_entry::second);
+        if (it == _names.end()) {
+            throw std::invalid_argument("info_value_traits<thread_level>::from_string: cannot parse \"" + s + "\"");
+        }
+        return it->first;
     }
+
+private:
+    // One table for both directions. Not indexed by the enum value: the values of the MPI_THREAD_* constants are
+    // implementation-defined (only their order is specified).
+    using name_entry = std::pair<thread_level, std::string_view>;
+    static constexpr std::array<name_entry, 4> _names{{
+        {thread_level::single, "MPI_THREAD_SINGLE"},
+        {thread_level::funneled, "MPI_THREAD_FUNNELED"},
+        {thread_level::serialized, "MPI_THREAD_SERIALIZED"},
+        {thread_level::multiple, "MPI_THREAD_MULTIPLE"},
+    }};
 };
 
 // ─── entry_iterator / entry_sentinel ─────────────────────────────────────────

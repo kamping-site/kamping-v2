@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Karlsruhe Institute of Technology
 // SPDX-License-Identifier: BSL-1.0
 
+#include <concepts>
 #include <type_traits>
 #include <utility>
 
@@ -39,6 +40,10 @@ template <typename T>
 concept committable = requires(T&& u) { std::forward<T>(u).commit(); };
 static_assert(committable<uncommitted_datatype>);
 static_assert(!committable<uncommitted_datatype&>);
+// dup() keeps the committed state where the type knows it; a view may refer to an uncommitted datatype.
+static_assert(std::same_as<decltype(std::declval<datatype const&>().dup()), datatype>);
+static_assert(std::same_as<decltype(std::declval<uncommitted_datatype const&>().dup()), uncommitted_datatype>);
+static_assert(std::same_as<decltype(std::declval<datatype_view const&>().dup()), uncommitted_datatype>);
 
 namespace {
 /// A fresh, uncommitted contiguous datatype of three ints.
@@ -128,6 +133,44 @@ TEST(DatatypeTest, ConvertsToView) {
     EXPECT_EQ(mpi::experimental::handle(dt), dt.mpi_handle());
 }
 
+TEST(DatatypeTest, DupIsCommittedCopy) {
+    auto const     original = datatype::commit(make_int3());
+    datatype const copy     = original.dup();
+    EXPECT_NE(copy.mpi_handle(), MPI_DATATYPE_NULL);
+    EXPECT_NE(copy.mpi_handle(), original.mpi_handle());
+    EXPECT_EQ(copy.size(), original.size());
+
+    // Usable for communication without a further commit.
+    int send[3] = {1, 2, 3};
+    int recv[3] = {-1, -1, -1};
+    ASSERT_EQ(
+        MPI_Sendrecv(
+            send,
+            1,
+            copy.mpi_handle(),
+            0,
+            0,
+            recv,
+            1,
+            copy.mpi_handle(),
+            0,
+            0,
+            MPI_COMM_SELF,
+            MPI_STATUS_IGNORE
+        ),
+        MPI_SUCCESS
+    );
+    EXPECT_EQ(recv[2], 3);
+}
+
+TEST(DatatypeViewTest, DupOfPredefinedType) {
+    datatype_view const        v    = MPI_INT;
+    uncommitted_datatype const copy = v.dup();
+    EXPECT_NE(copy.mpi_handle(), MPI_DATATYPE_NULL);
+    EXPECT_NE(copy.mpi_handle(), MPI_INT);
+    EXPECT_EQ(copy.size(), static_cast<int>(sizeof(int)));
+}
+
 // ── uncommitted_datatype ───────────────────────────────────────────────────────────────────────────────────────────
 
 TEST(UncommittedDatatypeTest, DefaultAndNullAreNull) {
@@ -178,6 +221,14 @@ TEST(UncommittedDatatypeTest, CommitTransfersToDatatype) {
     EXPECT_EQ(recv[1], 2);
 }
 
+TEST(UncommittedDatatypeTest, DupIsSeparateCopy) {
+    auto const                 original = uncommitted_datatype::from_native(make_int3());
+    uncommitted_datatype const copy     = original.dup();
+    EXPECT_NE(copy.mpi_handle(), MPI_DATATYPE_NULL);
+    EXPECT_NE(copy.mpi_handle(), original.mpi_handle());
+    EXPECT_EQ(copy.size(), original.size());
+}
+
 TEST(UncommittedDatatypeTest, MoveReleaseFree) {
     auto         a   = uncommitted_datatype::from_native(make_int3());
     MPI_Datatype raw = a.mpi_handle();
@@ -217,7 +268,8 @@ template <typename T>
 concept type_committable = requires(T& t) { mpi::experimental::type_commit(t); };
 } // namespace
 
-// The owning types commit themselves and expose no writable handle; views hold only a copy.
+// The owning types commit themselves: a datatype exposes no writable handle, and an uncommitted_datatype, whose
+// writable handle receives the result of a type constructor, is rejected explicitly. Views hold only a copy.
 static_assert(type_committable<MPI_Datatype>);
 static_assert(type_committable<my_type>);
 static_assert(!type_committable<datatype>);
