@@ -370,7 +370,8 @@ void type_dup(Datatype const& oldtype, NewDatatype& newtype) {
 /// @brief A copy of `oldtype` (`MPI_Type_dup`).
 ///
 /// Returned as an `uncommitted_datatype` like the result of every other constructor, even though MPI commits the copy
-/// of a committed datatype; `std::move(u).commit()` turns it into a `datatype`.
+/// of a committed datatype; `std::move(u).commit()` turns it into a `datatype`. The member `dup()` of `datatype`
+/// returns the copy as a `datatype` directly.
 /// @return The new datatype, owned.
 /// @throws mpi_error if `MPI_Type_dup` fails.
 template <convertible_to_mpi_handle<MPI_Datatype> Datatype>

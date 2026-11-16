@@ -236,6 +236,10 @@ The same pattern applies to ranks (`to_rank`) and tags (`to_tag`), supporting bo
 - `#pragma once` for include guards
 - East-side `const` (`int const` not `const int`)
 - snake_case for types (including enums and their enumerators), functions and variables
+- A public member must not have the name of a type it uses (e.g. `environment::provided_thread_level()`, not
+  `thread_level()`): inside the class, the member hides the type
+- Tag types only when a value selects code at compile time (e.g. commutativity); an `enum class` when the value is only
+  passed to MPI at runtime (e.g. `array_order`)
 - Private members prefixed with `_`: `_member`
 - Doxygen required for all public API
 - No `using namespace` in headers

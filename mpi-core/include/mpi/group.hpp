@@ -67,6 +67,7 @@ public:
     /// @brief Compare two groups.
     /// @return `group_equality::identical` if same object, `similar` if same
     ///         processes in different order, `unequal` otherwise.
+    /// @throws mpi_error if `MPI_Group_compare` fails.
     [[nodiscard]] group_equality compare(group_view other) const;
 };
 
@@ -180,7 +181,10 @@ private:
 template <typename Derived>
 group_equality group_accessors<Derived>::compare(group_view other) const {
     int result = MPI_IDENT;
-    MPI_Group_compare(grp(), other.mpi_handle(), &result);
+    int err    = MPI_Group_compare(grp(), other.mpi_handle(), &result);
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
     switch (result) {
         case MPI_IDENT:
             return group_equality::identical;
