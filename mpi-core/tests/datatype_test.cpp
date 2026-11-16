@@ -199,7 +199,7 @@ TEST(UncommittedDatatypeTest, MoveReleaseFree) {
     EXPECT_EQ(d.mpi_handle(), MPI_DATATYPE_NULL);
 }
 
-// ── type_commit / type_free ────────────────────────────────────────────────────────────────────────────────────────
+// ── type_commit ────────────────────────────────────────────────────────────────────────────────────────
 
 namespace {
 /// A user wrapper that exposes a writable handle.
@@ -217,14 +217,14 @@ template <typename T>
 concept type_committable = requires(T& t) { mpi::experimental::type_commit(t); };
 } // namespace
 
-// The owning types manage commit and free themselves and expose no writable handle; views hold only a copy.
+// The owning types commit themselves and expose no writable handle; views hold only a copy.
 static_assert(type_committable<MPI_Datatype>);
 static_assert(type_committable<my_type>);
 static_assert(!type_committable<datatype>);
 static_assert(!type_committable<uncommitted_datatype>);
 static_assert(!type_committable<datatype_view>);
 
-TEST(TypeCommitFreeTest, RawHandle) {
+TEST(TypeCommitTest, RawHandle) {
     MPI_Datatype dt = make_int3();
     type_commit(dt);
 
@@ -233,14 +233,12 @@ TEST(TypeCommitFreeTest, RawHandle) {
     ASSERT_EQ(MPI_Sendrecv(send, 1, dt, 0, 0, recv, 1, dt, 0, 0, MPI_COMM_SELF, MPI_STATUS_IGNORE), MPI_SUCCESS);
     EXPECT_EQ(recv[2], 3);
 
-    type_free(dt);
-    EXPECT_EQ(dt, MPI_DATATYPE_NULL);
+    MPI_Type_free(&dt);
 }
 
-TEST(TypeCommitFreeTest, WrapperWithHandlePtr) {
+TEST(TypeCommitTest, WrapperWithHandlePtr) {
     my_type t{make_int3()};
     type_commit(t);
     EXPECT_EQ(datatype_view(t.raw).size(), 3 * static_cast<int>(sizeof(int)));
-    type_free(t);
-    EXPECT_EQ(t.raw, MPI_DATATYPE_NULL);
+    MPI_Type_free(&t.raw);
 }

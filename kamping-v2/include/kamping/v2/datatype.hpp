@@ -11,6 +11,5 @@ using mpi::experimental::datatype;
 using mpi::experimental::datatype_accessors;
 using mpi::experimental::datatype_view;
 using mpi::experimental::type_commit;
-using mpi::experimental::type_free;
 using mpi::experimental::uncommitted_datatype;
 } // namespace kamping::v2
