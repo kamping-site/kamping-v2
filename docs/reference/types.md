@@ -1,4 +1,16 @@
-# Derived datatypes
+# Datatypes
+
+## Builtin types
+
+C++ types with a predefined MPI datatype, such as `int` (`MPI_INT`) or `double` (`MPI_DOUBLE`), need no datatype
+handling: contiguous ranges of them are buffers as they are. The mapping comes from kamping-types and is re-exported in
+`kamping::v2`. `builtin_type<T>::data_type()` returns the predefined datatype of `T`, e.g. for raw MPI calls, and
+`is_builtin_type_v<T>` tells whether there is one. Predefined datatypes are never committed or freed.
+
+```{doxygenconcept} kamping::v2::builtin_mpi_type
+```
+
+## Derived datatypes
 
 A `type_pool` owns committed `MPI_Datatype`s: it commits a datatype on first use and frees it with the pool. The
 views `with_pool` and `with_auto_pool` attach a datatype from a pool to a buffer (see {doc}`views`). The datatype of

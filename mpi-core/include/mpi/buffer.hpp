@@ -49,6 +49,12 @@ template <typename T>
 concept count_range =
     std::ranges::contiguous_range<T> && std::same_as<int, std::remove_cvref_t<std::ranges::range_value_t<T>>>;
 
+/// A type with a predefined MPI datatype, e.g. `int` (`MPI_INT`) or `double` (`MPI_DOUBLE`), ignoring cv- and reference
+/// qualifiers. Contiguous ranges of such types are buffers without further adaption. The datatype itself is
+/// `kamping::types::builtin_type<T>::data_type()`; it is predefined, so it needs no commit and is never freed.
+template <typename T>
+concept builtin_mpi_type = kamping::types::is_builtin_type_v<std::remove_cvref_t<T>>;
+
 // ──────────────────────────────────────────────────────────────────────────────
 // detail — implementation helpers for the accessor dispatch, not public API.
 // ──────────────────────────────────────────────────────────────────────────────
@@ -63,8 +69,7 @@ concept ptr_to_object =
     std::is_pointer_v<T> && (std::is_object_v<std::remove_pointer_t<T>> || std::is_void_v<std::remove_pointer_t<T>>);
 
 template <typename T>
-concept range_of_builtin_mpi_type =
-    std::ranges::range<T> && kamping::types::is_builtin_type_v<std::remove_cvref_t<std::ranges::range_value_t<T>>>;
+concept range_of_builtin_mpi_type = std::ranges::range<T> && builtin_mpi_type<std::ranges::range_value_t<T>>;
 
 // Tier-2: intrusive member function detection.
 

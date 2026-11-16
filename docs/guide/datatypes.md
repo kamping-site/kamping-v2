@@ -1,6 +1,8 @@
 # Derived datatypes
 
-Elements of builtin types such as `int` or `double` are sent with the matching builtin MPI datatype. For your own
+Elements of builtin types such as `int` or `double` are sent with the matching builtin MPI datatype. If you need
+that datatype yourself, e.g. for a raw MPI call, `v2::builtin_type<T>::data_type()` returns it, and the concept
+`v2::builtin_mpi_type<T>` checks that `T` has one. For your own
 types, MPI needs a derived datatype that describes their memory layout. Derived datatypes have to be committed
 before they are used and freed afterwards, which is easy to get wrong.
 
