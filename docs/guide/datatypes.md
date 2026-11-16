@@ -39,35 +39,44 @@ auto [_, all] = v2::allgatherv(points | views::with_auto_pool(env),
 
 ## One-off datatypes
 
-Some datatypes describe a layout rather than a C++ type, such as the block of a distributed matrix that one process
-owns. Build them with the MPI type constructors and hand them to a `datatype`. `datatype::commit` commits the
-datatype, and the `datatype` frees it at the end of its lifetime:
+Some datatypes describe a layout rather than a C++ type, such as a column of a matrix or the block of a distributed
+matrix that one process owns. Build them with the type constructors, which wrap the MPI ones: `type_contiguous`,
+`type_vector`, `type_create_hvector`, `type_create_struct`, `type_create_subarray`, `type_create_darray`,
+`type_create_resized` and `type_dup`. Each returns the new datatype as an `uncommitted_datatype`, which frees it at
+the end of its lifetime. `std::move(u).commit()`, or `.commit()` on the returned temporary, commits it and turns it
+into a `datatype`:
 
 ```cpp
-MPI_Datatype raw;
-MPI_Type_create_darray(comm.size(), comm.rank(), 2, gsizes, distribs, dargs, psizes,
-                       MPI_ORDER_C, MPI_DOUBLE, &raw);
-auto const block = v2::datatype::commit(raw);
+std::array const gsizes{n, n};               // an n x n matrix in blocks
+std::array const distribs{MPI_DISTRIBUTE_BLOCK, MPI_DISTRIBUTE_BLOCK};
+std::array const dargs{MPI_DISTRIBUTE_DFLT_DARG, MPI_DISTRIBUTE_DFLT_DARG};
+std::array const psizes{p_rows, p_cols};     // on a p_rows x p_cols grid
+auto const block = v2::type_create_darray(comm.size(), comm.rank(), gsizes, distribs,
+                                          dargs, psizes, v2::ArrayOrder::c, MPI_DOUBLE)
+                       .commit();
 
 v2::send(matrix | views::with_type(block) | views::with_count(1), 0, comm);
 ```
 
+Array arguments such as `gsizes` are contiguous ranges (an `std::array`, a `std::vector`, a `std::span`, ...); their
+length is the count MPI expects, e.g. the number of dimensions. The base datatype can be a builtin one like
+`MPI_DOUBLE`, a `datatype` or an `uncommitted_datatype`. Each constructor also has a form that mirrors the MPI
+call and writes the new datatype into a last argument, a raw `MPI_Datatype` or an empty `uncommitted_datatype`.
+
 `views::with_type` borrows a `datatype` passed as an lvalue. A temporary is moved into the view instead, so
-`views::with_type(v2::datatype::commit(raw))` frees the datatype once the view is gone. A `type_pool` can also
-take a `datatype` with `pool.register_type<T>(std::move(dt))`.
+`views::with_type(std::move(u).commit())` frees the datatype once the view is gone. A `type_pool` can also take a
+`datatype` with `pool.register_type<T>(std::move(dt))`. If you build a datatype with a raw MPI call,
+`datatype::commit(raw)` takes ownership of it and commits it.
 
 A `datatype` is always committed. Datatypes that only serve as building blocks for other datatypes need not be
-committed, but still have to be freed. An `uncommitted_datatype` owns such a datatype; `views::with_type` rejects it
-at compile time, and `std::move(u).commit()` turns it into a `datatype`:
+committed, but still have to be freed. The `uncommitted_datatype` that the constructors return does both:
+`views::with_type` rejects it at compile time, and a temporary one passed as the base datatype of another
+constructor is freed right after the call, which MPI allows:
 
 ```cpp
-MPI_Datatype raw_column;
-MPI_Type_vector(n, 1, n, MPI_DOUBLE, &raw_column);                     // one matrix column
-auto const column = v2::uncommitted_datatype::from_native(raw_column); // freed, never committed
-
-MPI_Datatype raw_resized;
-MPI_Type_create_resized(column.mpi_handle(), 0, sizeof(double), &raw_resized);
-auto const column_type = v2::datatype::commit(raw_resized);            // consecutive columns
+// Consecutive columns of an n x n row-major matrix: one column, resized to start one element later.
+auto const column_type =
+    v2::type_create_resized(v2::type_vector(n, 1, n, MPI_DOUBLE), 0, sizeof(double)).commit();
 ```
 
 ## Types without a datatype
