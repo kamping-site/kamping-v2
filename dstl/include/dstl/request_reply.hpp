@@ -21,6 +21,7 @@
 #include "dstl/tags.hpp"
 #include "kamping/v2/buffer.hpp"
 #include "kamping/v2/collectives/alltoallv.hpp"
+#include "kamping/v2/comm.hpp"
 #include "kamping/v2/handle.hpp"
 #include "kamping/v2/views.hpp"
 
@@ -190,7 +191,7 @@ template <
     kamping::v2::value_destination_pair_buffer Requests,
     typename RBuf,
     typename MakeReply,
-    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm  = MPI_Comm,
+    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm  = kamping::v2::comm_view,
     is_execution_policy                              Exec  = execution_policy::seq,
     is_output_layout                                 Order = layout::unordered>
     requires detail::request_reply_args<Requests, RBuf, MakeReply, Order> && kamping::v2::has_mpi_value_type<Requests>
@@ -198,7 +199,7 @@ auto request_reply(
     Requests&&             requests,
     RBuf&&                 result,
     MakeReply&&            make_reply,
-    Comm const&            comm  = MPI_COMM_WORLD,
+    Comm const&            comm  = kamping::v2::comm_world(),
     [[maybe_unused]] Exec  exec  = {},
     [[maybe_unused]] Order order = {}
 ) -> RBuf {

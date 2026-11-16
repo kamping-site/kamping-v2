@@ -42,19 +42,19 @@ struct NonAssignable {
 
 // Rank r holds [r*n, r*n+n); the global minimum is on rank 0.
 TEST(Min, AscendingBlocks) {
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
-    int const                    n   = 4;
-    auto const                   vec = iota_vec(comm.rank() * n, n);
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
+    int const                    n    = 4;
+    auto const                   vec  = iota_vec(comm.rank() * n, n);
 
     EXPECT_EQ(dstl::min(vec, std::ranges::less{}, std::identity{}, comm), 0);
 }
 
 // Reversed block order: the global minimum is on the last rank.
 TEST(Min, DescendingBlocks) {
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
-    int const                    p   = comm.size();
-    int const                    n   = 4;
-    auto const                   vec = iota_vec((p - 1 - comm.rank()) * n, n);
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
+    int const                    p    = comm.size();
+    int const                    n    = 4;
+    auto const                   vec  = iota_vec((p - 1 - comm.rank()) * n, n);
 
     EXPECT_EQ(dstl::min(vec, std::ranges::less{}, std::identity{}, comm), 0);
 }
@@ -62,7 +62,7 @@ TEST(Min, DescendingBlocks) {
 // Positive values on every rank: the minimum is still correctly identified, i.e. no rank's
 // contribution is silently clamped or defaulted to 0.
 TEST(Min, AllPositive) {
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
     std::vector<int>             data = {10, comm.rank() + 1};
     EXPECT_EQ(dstl::min(data, std::ranges::less{}, std::identity{}, comm), 1);
 }
@@ -70,7 +70,7 @@ TEST(Min, AllPositive) {
 // Even ranks are empty; odd ranks carry the global iota. The empty ranks must contribute the
 // sentinel (numeric_limits<int>::max()), never a wrong value.
 TEST(Min, EmptyRanksInterleaved) {
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
     int const                    p    = comm.size();
     int const                    n    = 4;
     int const                    rank = comm.rank();
@@ -88,17 +88,17 @@ TEST(Min, EmptyRanksInterleaved) {
 // An entirely empty global range falls back to the sentinel on every rank, rather than the
 // undefined behavior std::ranges::min has on an empty range.
 TEST(Min, AllRanksEmpty) {
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
     std::vector<int>             data;
     EXPECT_EQ(dstl::min(data, std::ranges::less{}, std::identity{}, comm), std::numeric_limits<int>::max());
 }
 
 // Custom comparator: under std::ranges::greater the "min" is the numerically largest element.
 TEST(Min, CustomComparatorGreater) {
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
-    int const                    p   = comm.size();
-    int const                    n   = 4;
-    auto const                   vec = iota_vec(comm.rank() * n, n);
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
+    int const                    p    = comm.size();
+    int const                    n    = 4;
+    auto const                   vec  = iota_vec(comm.rank() * n, n);
 
     EXPECT_EQ(
         dstl::min(vec, std::ranges::greater{}, std::identity{}, comm, std::numeric_limits<int>::min()),
@@ -109,11 +109,11 @@ TEST(Min, CustomComparatorGreater) {
 // Projection: under a negating projection, "min" of the ascending global sequence is its
 // largest (most negative-after-negation) element, i.e. the last global element.
 TEST(Min, ProjectionNegate) {
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
-    int const                    p   = comm.size();
-    int const                    n   = 4;
-    auto const                   vec = iota_vec(comm.rank() * n, n);
-    auto                         neg = [](int x) {
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
+    int const                    p    = comm.size();
+    int const                    n    = 4;
+    auto const                   vec  = iota_vec(comm.rank() * n, n);
+    auto                         neg  = [](int x) {
         return -x;
     };
 
@@ -125,7 +125,7 @@ TEST(Min, ProjectionNegate) {
 // even for two ints -- see https://stackoverflow.com/q/58283694), so dstl::min must not gate on
 // that trait, only on std::copy_constructible.
 TEST(Min, OrdinaryPairValueType) {
-    kamping::v2::comm_view const     comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view const     comm   = kamping::v2::comm_world();
     std::vector<std::pair<int, int>> data   = {{comm.rank(), 0}};
     auto const                       winner = dstl::min(
         data | kamping::v2::views::with_type(MPI_INT),
@@ -139,7 +139,7 @@ TEST(Min, OrdinaryPairValueType) {
 
 // With p == 1 the distributed result must match std::ranges::min.
 TEST(Min, SingleRankMatchesStd) {
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
     if (comm.size() != 1) {
         GTEST_SKIP() << "single-rank only";
     }
@@ -151,7 +151,7 @@ TEST(Min, SingleRankMatchesStd) {
 // generic (non-builtin-op) combine path end-to-end for a value type that only the
 // copy-construct fix (not the old assignment-based one) can handle.
 TEST(Min, NonAssignableValueType) {
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
     std::vector<NonAssignable>   data = {NonAssignable{comm.rank()}};
 
     auto const winner = dstl::min(

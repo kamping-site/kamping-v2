@@ -71,7 +71,7 @@ static_assert((nonperiodic_rank::with_size(0, 4) + std::numeric_limits<int>::min
 
 class RankTest : public ::testing::Test {
 protected:
-    comm_view comm{MPI_COMM_WORLD};
+    comm_view comm = comm_world();
     int       me   = comm.rank();
     int       size = comm.size();
 };
@@ -92,8 +92,8 @@ TEST_F(RankTest, CommunicatorMembers) {
     EXPECT_TRUE(comm.nonperiodic_rank(size).is_proc_null());
 
     // Owning communicators get the members, too.
-    comm_view const world(MPI_COMM_WORLD);
-    auto const      dup = world.dup();
+    comm_view const world = comm_world();
+    auto const      dup   = world.dup();
     EXPECT_EQ((dup.periodic_rank() + size).value(), me);
     EXPECT_EQ(dup.nonperiodic_rank(me).value(), me);
 }

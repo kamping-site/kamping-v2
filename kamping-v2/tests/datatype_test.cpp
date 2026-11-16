@@ -94,7 +94,7 @@ TEST(WithTypeDatatypeTest, TemporaryDatatypeIsOwnedByTheView) {
 }
 
 TEST(WithTypeDatatypeTest, BcastWithOwnedDatatype) {
-    v2::comm_view const comm(MPI_COMM_WORLD);
+    v2::comm_view const comm = v2::comm_world();
     std::vector<int>    v(3, -1);
     if (comm.rank() == 0) {
         v = {1, 2, 3};
@@ -126,7 +126,7 @@ TEST(TypePoolDatatypeTest, RegisterCommittedBuildingBlockResult) {
     auto          u  = v2::uncommitted_datatype::from_native(make_int3());
     MPI_Datatype  dt = pool.register_type<Unregistered>(std::move(u).commit());
 
-    v2::comm_view const comm(MPI_COMM_WORLD);
+    v2::comm_view const comm = v2::comm_world();
     std::vector<int>    v(3, -1);
     if (comm.rank() == 0) {
         v = {7, 8, 9};

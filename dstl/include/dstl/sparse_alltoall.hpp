@@ -237,9 +237,13 @@ template <
     sparse_alltoall_send_buffer                      SBuf,
     std::invocable<kamping::v2::probe_result>        OnMessage,
     kamping::v2::tag                                 Tag  = int,
-    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = kamping::v2::comm_view>
 void sparse_alltoall(
-    sparse_alltoall_algorithm::nbx_t, SBuf&& sbuf, OnMessage&& on_message, Tag tag, Comm const& comm = MPI_COMM_WORLD
+    sparse_alltoall_algorithm::nbx_t,
+    SBuf&&      sbuf,
+    OnMessage&& on_message,
+    Tag         tag,
+    Comm const& comm = kamping::v2::comm_world()
 ) {
     int const                   t = kamping::v2::to_tag(tag);
     kamping::v2::request_vector sends;
@@ -274,9 +278,13 @@ template <
     sparse_alltoall_send_buffer                      SBuf,
     std::invocable<kamping::v2::probe_result>        OnMessage,
     kamping::v2::tag                                 Tag  = int,
-    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = kamping::v2::comm_view>
 void sparse_alltoall(
-    sparse_alltoall_algorithm::pcx_t, SBuf&& sbuf, OnMessage&& on_message, Tag tag, Comm const& comm = MPI_COMM_WORLD
+    sparse_alltoall_algorithm::pcx_t,
+    SBuf&&      sbuf,
+    OnMessage&& on_message,
+    Tag         tag,
+    Comm const& comm = kamping::v2::comm_world()
 ) {
     int const                   t = kamping::v2::to_tag(tag);
     MPI_Comm const              c = kamping::v2::handle(comm);
@@ -307,7 +315,7 @@ template <
     sparse_alltoall_send_buffer                      SBuf,
     std::invocable<kamping::v2::probe_result>        OnMessage,
     kamping::v2::tag                                 Tag  = int,
-    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = kamping::v2::comm_view>
 void sparse_alltoall(
     sparse_alltoall_algorithm::rsx_t,
     SBuf&&            sbuf,
@@ -338,9 +346,13 @@ template <
     sparse_alltoall_send_buffer                      SBuf,
     std::invocable<kamping::v2::probe_result>        OnMessage,
     kamping::v2::tag                                 Tag  = int,
-    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = kamping::v2::comm_view>
 void sparse_alltoall(
-    sparse_alltoall_algorithm::rsx_t, SBuf&& sbuf, OnMessage&& on_message, Tag tag, Comm const& comm = MPI_COMM_WORLD
+    sparse_alltoall_algorithm::rsx_t,
+    SBuf&&      sbuf,
+    OnMessage&& on_message,
+    Tag         tag,
+    Comm const& comm = kamping::v2::comm_world()
 ) {
     rsx_window_cache windows;
     sparse_alltoall(
@@ -358,8 +370,8 @@ template <
     sparse_alltoall_send_buffer                      SBuf,
     std::invocable<kamping::v2::probe_result>        OnMessage,
     kamping::v2::tag                                 Tag  = int,
-    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
-void sparse_alltoall(SBuf&& sbuf, OnMessage&& on_message, Tag tag, Comm const& comm = MPI_COMM_WORLD) {
+    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = kamping::v2::comm_view>
+void sparse_alltoall(SBuf&& sbuf, OnMessage&& on_message, Tag tag, Comm const& comm = kamping::v2::comm_world()) {
     sparse_alltoall(
         sparse_alltoall_algorithm::nbx,
         std::forward<SBuf>(sbuf),

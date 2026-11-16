@@ -34,11 +34,11 @@ namespace dstl {
 /// ranks checks their pair-wise boundaries with a single shift_right exchange.
 template <
     std::ranges::bidirectional_range                 R,
-    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm                                  = MPI_Comm,
+    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm                                  = kamping::v2::comm_view,
     class Proj                                                                             = std::identity,
     std::indirect_strict_weak_order<std::projected<std::ranges::iterator_t<R>, Proj>> Comp = std::ranges::less>
     requires kamping::v2::has_mpi_type<R>
-bool is_sorted(R&& r, Comm const& comm = MPI_COMM_WORLD, Comp comp = {}, Proj proj = {}) {
+bool is_sorted(R&& r, Comm const& comm = kamping::v2::comm_world(), Comp comp = {}, Proj proj = {}) {
     kamping::v2::comm_view const cv{kamping::v2::handle(comm)};
     bool                         result = std::ranges::is_sorted(r, std::ref(comp), std::ref(proj));
     if (cv.size() == 1) {

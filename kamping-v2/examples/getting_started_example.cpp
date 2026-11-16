@@ -20,7 +20,7 @@ namespace views = kamping::v2::views;
 int main(int argc, char* argv[]) {
     // [docs:setup]
     v2::environment     env(argc, argv);
-    v2::comm_view const world{MPI_COMM_WORLD};
+    v2::comm_view const world = v2::comm_world();
     // [docs:setup]
 
     // [docs:send-recv]

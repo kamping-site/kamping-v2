@@ -24,7 +24,7 @@ std::vector<int> iota_vec(int start, int n) {
 // Same count per rank; every rank keeps its own slice. Exercises self-send.
 
 TEST(Redistribute, Identity) {
-    kamping::v2::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm    = kamping::v2::comm_world();
     int const              rank    = comm.rank();
     int const              local_n = 4;
 
@@ -40,7 +40,7 @@ TEST(Redistribute, Identity) {
 // All ranks send local_n elements; rank 0 receives everything, others nothing.
 
 TEST(Redistribute, Gather) {
-    kamping::v2::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm    = kamping::v2::comm_world();
     int const              rank    = comm.rank();
     int const              p       = comm.size();
     int const              local_n = 3;
@@ -63,7 +63,7 @@ TEST(Redistribute, Gather) {
 // Rank 0 sends p*local_n elements; all ranks receive local_n.
 
 TEST(Redistribute, Scatter) {
-    kamping::v2::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm    = kamping::v2::comm_world();
     int const              rank    = comm.rank();
     int const              p       = comm.size();
     int const              local_n = 3;
@@ -83,7 +83,7 @@ TEST(Redistribute, Scatter) {
 // Exercises a cross-rank transfer where the send and recv partitions differ.
 
 TEST(Redistribute, Uneven) {
-    kamping::v2::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm = kamping::v2::comm_world();
     if (comm.size() != 2) {
         GTEST_SKIP() << "2 ranks only";
     }
@@ -103,7 +103,7 @@ TEST(Redistribute, Uneven) {
 // p == 1: all data is local, no MPI communication.
 
 TEST(Redistribute, SingleRank) {
-    kamping::v2::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm = kamping::v2::comm_world();
     if (comm.size() != 1) {
         GTEST_SKIP() << "single-rank only";
     }

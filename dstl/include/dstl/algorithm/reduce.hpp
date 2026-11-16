@@ -36,11 +36,15 @@ namespace dstl {
 /// @pre If any rank's range is empty, T{} must be the identity element for op.
 template <
     std::ranges::forward_range                       R,
-    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm,
+    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = kamping::v2::comm_view,
     class BinaryOp                                        = std::plus<>>
     requires kamping::v2::has_mpi_type<R>
-auto reduce(R&& r, std::ranges::range_value_t<R> init = {}, BinaryOp const& op = {}, Comm const& comm = MPI_COMM_WORLD)
-    -> std::ranges::range_value_t<R> {
+auto reduce(
+    R&&                           r,
+    std::ranges::range_value_t<R> init = {},
+    BinaryOp const&               op   = {},
+    Comm const&                   comm = kamping::v2::comm_world()
+) -> std::ranges::range_value_t<R> {
     using T                     = std::ranges::range_value_t<R>;
     MPI_Datatype const mpi_type = kamping::v2::type(r);
 
@@ -71,7 +75,7 @@ auto reduce(R&& r, std::ranges::range_value_t<R> init = {}, BinaryOp const& op =
 template <
     std::ranges::forward_range                       R,
     kamping::v2::rank                                Rank = int,
-    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm,
+    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = kamping::v2::comm_view,
     class BinaryOp                                        = std::plus<>>
     requires kamping::v2::has_mpi_type<R>
 auto reduce_to_root(
@@ -79,7 +83,7 @@ auto reduce_to_root(
     std::ranges::range_value_t<R> init = {},
     BinaryOp const&               op   = {},
     Rank                          root = {},
-    Comm const&                   comm = MPI_COMM_WORLD
+    Comm const&                   comm = kamping::v2::comm_world()
 ) -> std::optional<std::ranges::range_value_t<R>> {
     using T                     = std::ranges::range_value_t<R>;
     MPI_Datatype const mpi_type = kamping::v2::type(r);

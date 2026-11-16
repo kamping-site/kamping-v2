@@ -55,7 +55,7 @@ struct ranks {
 };
 
 ranks world_ranks() {
-    kamping::v2::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm = kamping::v2::comm_world();
     int const              rank = comm.rank();
     int const              p    = comm.size();
     return {rank, p, (rank + 1) % p, (rank - 1 + p) % p};

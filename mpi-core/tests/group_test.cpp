@@ -84,29 +84,29 @@ TEST(GroupTest, ImplicitConversionToView) {
 // ── group_accessors ───────────────────────────────────────────────────────────
 
 TEST(GroupAccessorsTest, SizeMatchesCommSize) {
-    comm_view world(MPI_COMM_WORLD);
-    group     g = world.group();
+    comm_view world = comm_world();
+    group     g     = world.group();
     EXPECT_EQ(g.size(), world.size());
 }
 
 TEST(GroupAccessorsTest, RankMatchesCommRank) {
-    comm_view world(MPI_COMM_WORLD);
-    group     g   = world.group();
-    auto      rnk = g.rank();
+    comm_view world = comm_world();
+    group     g     = world.group();
+    auto      rnk   = g.rank();
     ASSERT_TRUE(rnk.has_value());
     EXPECT_EQ(*rnk, world.rank());
 }
 
 TEST(GroupAccessorsTest, ContainsSelfTrue) {
-    comm_view world(MPI_COMM_WORLD);
-    group     g = world.group();
+    comm_view world = comm_world();
+    group     g     = world.group();
     EXPECT_TRUE(g.contains_self());
 }
 
 TEST(GroupAccessorsTest, CompareWorldWithItself) {
-    comm_view world(MPI_COMM_WORLD);
-    group     a = world.group();
-    group     b = world.group();
+    comm_view world = comm_world();
+    group     a     = world.group();
+    group     b     = world.group();
     EXPECT_EQ(a.compare(b), GroupEquality::Identical);
 }
 
@@ -117,7 +117,7 @@ TEST(CommTest, ConceptSatisfied) {
 }
 
 TEST(CommTest, DupPreservesRankAndSize) {
-    comm_view world(MPI_COMM_WORLD);
+    comm_view world = comm_world();
 
     // Free function: default-constructed comm as out-parameter
     comm dup_comm;
@@ -134,7 +134,7 @@ TEST(CommTest, DupPreservesRankAndSize) {
 }
 
 TEST(CommTest, MoveConstructTransfersOwnership) {
-    comm_view world(MPI_COMM_WORLD);
+    comm_view world = comm_world();
     comm      a;
     dup(world, a);
     MPI_Comm raw = a.mpi_handle();
@@ -145,7 +145,7 @@ TEST(CommTest, MoveConstructTransfersOwnership) {
 }
 
 TEST(CommTest, SplitEvenOdd) {
-    comm_view world(MPI_COMM_WORLD);
+    comm_view world   = comm_world();
     int       my_rank = world.rank();
     int       color   = my_rank % 2; // 0 = even, 1 = odd
     comm      sub;
@@ -161,15 +161,15 @@ TEST(CommTest, SplitEvenOdd) {
 }
 
 TEST(CommTest, GroupFromCommView) {
-    comm_view world(MPI_COMM_WORLD);
-    group     g = world.group();
+    comm_view world = comm_world();
+    group     g     = world.group();
     EXPECT_EQ(g.size(), world.size());
 }
 
 #if defined(MPI_VERSION) && MPI_VERSION >= 4
 
 TEST(CommTest, CommFromGroup) {
-    comm_view world(MPI_COMM_WORLD);
+    comm_view world    = comm_world();
     group     g        = world.group();
     comm      from_grp = comm::from_group(g, "test-tag");
 
@@ -178,10 +178,10 @@ TEST(CommTest, CommFromGroup) {
 }
 
 TEST(CommTest, FromGroupWithGroupView) {
-    comm_view  world(MPI_COMM_WORLD);
-    group      g  = world.group();
-    group_view gv = g;
-    comm       c  = comm::from_group(gv, "view-tag");
+    comm_view  world = comm_world();
+    group      g     = world.group();
+    group_view gv    = g;
+    comm       c     = comm::from_group(gv, "view-tag");
     EXPECT_EQ(c.size(), world.size());
 }
 
@@ -189,14 +189,14 @@ TEST(CommTest, FromGroupWithRawHandle) {
     MPI_Group raw_g = MPI_GROUP_EMPTY;
     MPI_Comm_group(MPI_COMM_WORLD, &raw_g);
     comm c = comm::from_group(raw_g, "raw-tag");
-    EXPECT_EQ(c.size(), static_cast<int>(comm_view(MPI_COMM_WORLD).size()));
+    EXPECT_EQ(c.size(), static_cast<int>(comm_world().size()));
     MPI_Group_free(&raw_g);
 }
 
 #endif
 
 TEST(CommTest, ReleaseRelinquishesOwnership) {
-    comm_view world(MPI_COMM_WORLD);
+    comm_view world = comm_world();
     comm      a;
     dup(world, a);
     MPI_Comm raw      = a.mpi_handle();
@@ -207,15 +207,15 @@ TEST(CommTest, ReleaseRelinquishesOwnership) {
 }
 
 TEST(CommViewTest, DupViaAccessorBase) {
-    comm_view world(MPI_COMM_WORLD);
-    comm      d = world.dup();
+    comm_view world = comm_world();
+    comm      d     = world.dup();
     EXPECT_EQ(d.rank(), world.rank());
     EXPECT_EQ(d.size(), world.size());
     EXPECT_NE(d.mpi_handle(), MPI_COMM_WORLD);
 }
 
 TEST(CommViewTest, SplitViaAccessorBase) {
-    comm_view world(MPI_COMM_WORLD);
+    comm_view world = comm_world();
     int       color = world.rank() % 2;
     comm      sub   = world.split(color, world.rank());
     EXPECT_NE(sub.mpi_handle(), MPI_COMM_NULL);

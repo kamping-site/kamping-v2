@@ -78,7 +78,7 @@ TEST(TypePoolTest, WithAutoPoolRegistersType) {
 
 // Integration: bcast a vector of custom structs using with_pool.
 TEST(TypePoolTest, BcastWithPool) {
-    kamping::v2::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm = kamping::v2::comm_world();
     kamping::v2::type_pool pool;
     pool.register_type<MyStruct>();
     std::vector<MyStruct> v;

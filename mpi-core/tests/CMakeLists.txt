@@ -42,6 +42,10 @@ add_executable(test_core_request_view request_view_test.cpp)
 target_link_libraries(test_core_request_view PRIVATE mpi::core kamping_v2_warnings KaTestrophe::main)
 katestrophe_add_mpi_test(test_core_request_view CORES 1 2)
 
+add_executable(test_core_comm comm_test.cpp)
+target_link_libraries(test_core_comm PRIVATE mpi::core kamping_v2_warnings KaTestrophe::main)
+katestrophe_add_mpi_test(test_core_comm CORES 1 2 4)
+
 add_executable(test_core_rank rank_test.cpp)
 target_link_libraries(test_core_rank PRIVATE mpi::core kamping_v2_warnings KaTestrophe::main)
 katestrophe_add_mpi_test(test_core_rank CORES 1 2 4)

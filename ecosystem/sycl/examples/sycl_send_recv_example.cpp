@@ -30,7 +30,7 @@ static_assert(!std::ranges::contiguous_range<sycl::host_accessor<int, 1>>);
 
 int main(int argc, char* argv[]) {
     kamping::v2::environment env;
-    kamping::v2::comm_view   world(MPI_COMM_WORLD);
+    kamping::v2::comm_view   world = kamping::v2::comm_world();
 
     sycl::queue       q;
     sycl::buffer<int> buf{sycl::range{10}};

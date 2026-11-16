@@ -21,7 +21,7 @@ std::vector<int> const expected_data{1, 2, 3, 4, 5};
 
 /// Rank 0 sends `expected_data` to rank 1 with `tag`; returns true on rank 1, which should receive it.
 bool send_to_rank_one(int tag) {
-    kamping::v2::comm_view world{MPI_COMM_WORLD};
+    kamping::v2::comm_view world = kamping::v2::comm_world();
     if (world.rank() == 0) {
         kamping::v2::send(expected_data, 1, tag, MPI_COMM_WORLD);
     }

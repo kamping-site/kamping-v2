@@ -8,7 +8,6 @@
 #if defined(MPI_VERSION) && MPI_VERSION >= 4
 
     #include <iterator>
-    #include <optional>
     #include <string>
     #include <string_view>
     #include <utility>
@@ -162,59 +161,48 @@ class session_accessors {
 public:
     /// @brief Create an owned group from a named process set.
     ///
-    /// Calls `MPI_Group_from_session_pset`. Returns `std::nullopt` if the calling
-    /// process is not a member of the named process set — MPI sets the output
-    /// group to `MPI_GROUP_EMPTY` in that case. Returns the owned group otherwise.
+    /// Calls `MPI_Group_from_session_pset`. A session only lists the process sets the calling process is a member of
+    /// (see `psets()`), so the group always contains the calling process.
     ///
     /// This is a local (non-collective) operation.
     ///
     /// @param pset_name Name of the process set (e.g., `"mpi://WORLD"`).
-    /// @return The owned group, or `std::nullopt` if this process is not a member.
+    /// @return The owned group.
     /// @throws mpi_error if the MPI call fails (e.g., unknown pset name).
-    [[nodiscard]] std::optional<group> group_from_pset(std::string_view pset_name) const {
+    [[nodiscard]] group group_from_pset(std::string_view pset_name) const {
         // string_view is not guaranteed null-terminated; check before using data() directly.
         std::string tmp_storage;
         char const* cstr = (pset_name.data()[pset_name.size()] == '\0')
                                ? pset_name.data()
                                : (tmp_storage = pset_name, tmp_storage.c_str());
-        MPI_Group   g    = MPI_GROUP_EMPTY;
+        MPI_Group   g    = MPI_GROUP_NULL;
         int         err  = MPI_Group_from_session_pset(sess(), cstr, &g);
         if (err != MPI_SUCCESS) {
             throw mpi_error(err);
-        }
-        if (g == MPI_GROUP_EMPTY) {
-            return std::nullopt;
         }
         return group::from_native(g);
     }
 
     /// @brief Collective: create a communicator from a named process set.
     ///
-    /// Convenience shortcut for:
-    /// @code
-    /// auto g = s.group_from_pset(pset_name);
-    /// if (g) auto c = comm::from_group(*g, tag, info);
-    /// @endcode
+    /// Shortcut for `comm::from_group(s.group_from_pset(pset_name), tag, info)`. All processes of the process set
+    /// must call this collectively with the same `tag`.
     ///
-    /// Returns `std::nullopt` if the calling process is not a member of the pset.
-    /// All processes that *are* members must call this collectively with the same
-    /// `tag`. Processes that receive `std::nullopt` must not call this.
+    /// The tag distinguishes communicator creations that run concurrently on several threads of a process; those must
+    /// use different tags. Library code, which cannot know what its caller does on other threads, should pass a tag
+    /// unique to the library, e.g., its name.
     ///
     /// @tparam Info Any type satisfying `convertible_to_mpi_handle<MPI_Info>`:
     ///              raw `MPI_Info`, `info`, `info_view`, or any third-party wrapper.
     /// @param pset_name Name of the process set (e.g., `"mpi://WORLD"`).
     /// @param tag       Application-defined string tag (must match across all callers).
     /// @param info      MPI info hints (defaults to `MPI_INFO_NULL`).
-    /// @return The new communicator, or `std::nullopt` if this process is not a member.
+    /// @return The new, owned communicator.
     /// @throws mpi_error if either MPI call fails.
     template <convertible_to_mpi_handle<MPI_Info> Info = MPI_Info>
-    [[nodiscard]] std::optional<comm>
+    [[nodiscard]] comm
     comm_from_pset(std::string_view pset_name, std::string_view tag = "", Info info = MPI_INFO_NULL) const {
-        auto g = group_from_pset(pset_name);
-        if (!g) {
-            return std::nullopt;
-        }
-        return comm::from_group(*g, tag, info);
+        return comm::from_group(group_from_pset(pset_name), tag, info);
     }
 
     /// @brief Enumerate all process set names visible to this session.
@@ -269,16 +257,14 @@ private:
 /// @code
 /// namespace psets = kamping::v2::psets;
 ///
-/// mpi::experimental::session s;
+/// kamping::v2::session s;
 ///
-/// // Create a comm directly from a pset name (most concise):
-/// auto c = s.comm_from_pset(psets::world);
+/// // Create a communicator directly from a process set:
+/// kamping::v2::comm world = s.comm_from_pset(psets::world, "my-lib");
 ///
 /// // Or work through the group explicitly:
-/// auto g = s.group_from_pset(psets::world);  // std::optional<group>
-/// if (g) {
-///     auto c2 = comm::from_group(*g, "my-tag");
-/// }
+/// kamping::v2::group g     = s.group_from_pset(psets::world);
+/// kamping::v2::comm  world2 = kamping::v2::comm::from_group(g, "my-lib");
 /// @endcode
 class session : public session_accessors<session> {
 public:

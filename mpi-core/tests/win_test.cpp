@@ -24,9 +24,9 @@ TEST(WinTest, AllocateExposesLocalMemory) {
 
 TEST(WinTest, AccumulateWithFences) {
     // Every rank adds 1 to rank 0's counter; afterwards it holds the communicator size.
-    mpi::experimental::comm_view world{MPI_COMM_WORLD};
-    auto [w, local] = mpi::experimental::win_allocate<int>(1, MPI_COMM_WORLD);
-    local[0]        = 0;
+    mpi::experimental::comm_view world = mpi::experimental::comm_world();
+    auto [w, local]                    = mpi::experimental::win_allocate<int>(1, MPI_COMM_WORLD);
+    local[0]                           = 0;
     w.fence(MPI_MODE_NOPRECEDE);
     int const one = 1;
     MPI_Accumulate(&one, 1, MPI_INT, 0, 0, 1, MPI_INT, MPI_SUM, mpi::experimental::handle(w));
@@ -46,9 +46,9 @@ TEST(WinTest, LevelOneAllocateIntoOutputHandle) {
 }
 
 TEST(WinTest, ViewAndGroup) {
-    mpi::experimental::comm_view world{MPI_COMM_WORLD};
-    auto [w, local]                  = mpi::experimental::win_allocate<int>(1, MPI_COMM_WORLD);
-    mpi::experimental::win_view view = w;
+    mpi::experimental::comm_view world = mpi::experimental::comm_world();
+    auto [w, local]                    = mpi::experimental::win_allocate<int>(1, MPI_COMM_WORLD);
+    mpi::experimental::win_view view   = w;
     EXPECT_EQ(mpi::experimental::handle(view), mpi::experimental::handle(w));
     EXPECT_EQ(view.group().size(), world.size());
     view.fence();

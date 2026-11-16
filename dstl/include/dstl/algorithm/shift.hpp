@@ -45,10 +45,12 @@ namespace dstl {
 ///   On ranks where all output elements originate from the original global array this is
 ///   [begin, end). On the rightmost affected rank(s) it covers only the elements with a
 ///   valid source; the remainder are value-initialized.
-template <std::ranges::contiguous_range R, kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+template <
+    std::ranges::contiguous_range                    R,
+    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = kamping::v2::comm_view>
     requires kamping::v2::send_recv_buffer<R>
 std::ranges::borrowed_subrange_t<R>
-shift_left(R&& r, std::ranges::range_difference_t<R> n, Comm const& comm = MPI_COMM_WORLD) {
+shift_left(R&& r, std::ranges::range_difference_t<R> n, Comm const& comm = kamping::v2::comm_world()) {
     using T                 = std::ranges::range_value_t<R>;
     using diff_t            = std::ranges::range_difference_t<R>;
     auto const   first      = std::ranges::begin(r);
@@ -175,10 +177,12 @@ shift_left(R&& r, std::ranges::range_difference_t<R> n, Comm const& comm = MPI_C
 ///   On ranks where all output elements originate from the original global array this is
 ///   [begin, end). On the leftmost affected rank(s) it starts after begin(); the
 ///   preceding elements are value-initialized.
-template <std::ranges::contiguous_range R, kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+template <
+    std::ranges::contiguous_range                    R,
+    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = kamping::v2::comm_view>
     requires kamping::v2::send_recv_buffer<R>
 std::ranges::borrowed_subrange_t<R>
-shift_right(R&& r, std::ranges::range_difference_t<R> n, Comm const& comm = MPI_COMM_WORLD) {
+shift_right(R&& r, std::ranges::range_difference_t<R> n, Comm const& comm = kamping::v2::comm_world()) {
     using T                 = std::ranges::range_value_t<R>;
     using diff_t            = std::ranges::range_difference_t<R>;
     auto const   first      = std::ranges::begin(r);
