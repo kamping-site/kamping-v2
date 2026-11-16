@@ -50,10 +50,6 @@ set(KAMPING_V2_ASSERTION_LEVEL
     CACHE STRING "Assertion level of kamping-v2 (a number, may be a generator expression)."
 )
 
-# The kassert release used by both kassert instances (ours and the one kamping-types configures).
-set(_kamping_v2_kassert_url https://github.com/kamping-site/kassert/archive/refs/tags/v1.1.0.tar.gz)
-set(_kamping_v2_kassert_hash SHA256=20ffb231556772d0652a45b36986425078b3ff17884295d75938f5a8ec5c0ba5)
-
 # kassert, configured as an instance of its own (macro prefix KAMPING_V2_ASSERT, header kamping/v2/kassert.hpp). The
 # variables stay inside the block() so that they do not leak into the kassert instance kamping-types configures.
 if (NOT TARGET kamping_v2::kassert)
@@ -67,8 +63,8 @@ if (NOT TARGET kamping_v2::kassert)
     set(KASSERT_INSTALL ${KAMPING_V2_INSTALL})
     FetchContent_Declare(
         kamping_v2_kassert
-        URL ${_kamping_v2_kassert_url}
-        URL_HASH ${_kamping_v2_kassert_hash}
+        URL https://github.com/kamping-site/kassert/archive/refs/tags/v1.1.0.tar.gz
+        URL_HASH SHA256=20ffb231556772d0652a45b36986425078b3ff17884295d75938f5a8ec5c0ba5
     )
     FetchContent_MakeAvailable(kamping_v2_kassert)
     endblock()
@@ -120,8 +116,8 @@ if (NOT TARGET kamping::types)
     # replaces it with the archive. Keep the version in sync with kamping-types.
     FetchContent_Declare(
         kamping_types_kassert
-        URL ${_kamping_v2_kassert_url}
-        URL_HASH ${_kamping_v2_kassert_hash}
+        URL https://github.com/kamping-site/kassert/archive/refs/tags/v1.1.0.tar.gz
+        URL_HASH SHA256=20ffb231556772d0652a45b36986425078b3ff17884295d75938f5a8ec5c0ba5
     )
     FetchContent_Declare(
         kamping_types
