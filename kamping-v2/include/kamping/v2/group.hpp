@@ -8,6 +8,6 @@
 namespace kamping::v2 {
 using mpi::experimental::group;
 using mpi::experimental::group_accessors;
+using mpi::experimental::group_equality;
 using mpi::experimental::group_view;
-using mpi::experimental::GroupEquality;
 } // namespace kamping::v2

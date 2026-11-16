@@ -18,8 +18,6 @@
 #include "dstl/tags.hpp"
 #include "kamping/v2/collectives/allreduce.hpp"
 #include "kamping/v2/comm.hpp"
-#include "kamping/v2/environment.hpp"
-#include "kamping/v2/kassert.hpp"
 #include "kamping/v2/sentinels.hpp"
 #include "kamping/v2/views/ref_single_view.hpp"
 
@@ -49,12 +47,17 @@ namespace dstl {
 /// A communicator for @ref alltoallv with concurrent communication from several threads: it owns `t` duplicates of
 /// the global communicator, one per thread. Its accessors (`rank()`, `size()`, …) refer to the global communicator.
 /// Only available with OpenMP (see `has_parallel_execution_policies`).
+///
+/// @pre The global communicator provides `thread_level::multiple`: for a communicator of the World Model, MPI was
+/// initialized with it; for one derived from a session, that session provides it.
+//
+// The level is not checked: MPI cannot tell which level applies to a given communicator (a World Model query is wrong
+// for communicators derived from a session, and aborts with Open MPI if only sessions are used).
 class thread_multiple_comm : public kamping::v2::comm_accessors<thread_multiple_comm> {
 public:
     using execution_policy_type = execution_policy::par_comm;
 
-    /// Duplicates `global` once per thread (collective); `global` itself is borrowed. Asserts that MPI was
-    /// initialized with `MPI_THREAD_MULTIPLE`.
+    /// Duplicates `global` once per thread (collective); `global` itself is borrowed.
     ///
     /// The number of threads `t` is the maximum of `flat_max_threads()` over all processes, since it can differ
     /// between them, e.g. with CPU affinity.
@@ -62,10 +65,6 @@ public:
     // `t` must be identical on every rank: both MPI_Comm_dup here and the per-thread MPI_Alltoallv later are
     // collective, so thread `t` on every rank has to participate; hence the MPI_Allreduce before duplicating.
     explicit thread_multiple_comm(kamping::v2::comm_view global) : _global(global) {
-        KAMPING_V2_ASSERT(
-            kamping::v2::environment::thread_level() >= kamping::v2::ThreadLevel::multiple,
-            "thread_multiple_comm<thread_multiple>: the MPI runtime does not provide MPI_THREAD_MULTIPLE"
-        );
         int t = flat_max_threads();
         kamping::v2::allreduce(kamping::v2::inplace, kamping::v2::views::ref_single(t), kamping::ops::max<>{}, _global);
         _thread_comms.reserve(static_cast<std::size_t>(t));

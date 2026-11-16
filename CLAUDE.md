@@ -235,7 +235,7 @@ The same pattern applies to ranks (`to_rank`) and tags (`to_tag`), supporting bo
 - Header-only: all implementation in `.hpp` files under `include/`
 - `#pragma once` for include guards
 - East-side `const` (`int const` not `const int`)
-- CamelCase for types, snake_case for functions/variables
+- snake_case for types (including enums and their enumerators), functions and variables
 - Private members prefixed with `_`: `_member`
 - Doxygen required for all public API
 - No `using namespace` in headers

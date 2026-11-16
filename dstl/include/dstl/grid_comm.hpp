@@ -15,7 +15,6 @@
 #include "dstl/factoring.hpp"
 #include "dstl/tags.hpp"
 #include "kamping/v2/comm.hpp"
-#include "kamping/v2/environment.hpp"
 #include "kamping/v2/kassert.hpp"
 
 /// @file
@@ -63,7 +62,13 @@ namespace dstl {
 /// last dimension groups consecutive ranks, e.g. the processes of a compute node. `Exec` selects how the grid
 /// alltoallv uses threads (see `execution_policy`). The communicator accessors (`rank()`, `size()`, …) refer to the
 /// global communicator.
+///
+/// @pre The global communicator provides the thread support level that `Exec` needs: `thread_level::funneled` for
+/// `par`, `thread_level::multiple` for `par_comm`. For a communicator of the World Model, that is the level MPI was
+/// initialized with; for one derived from a session, the level of that session.
 //
+// The level is not checked: MPI cannot tell which level applies to a given communicator (a World Model query is wrong
+// for communicators derived from a session, and aborts with Open MPI if only sessions are used).
 // Row-major (c_0 most significant) makes the global-rank order coincide with the radix count-tree's leaf order, so
 // grid_alltoallv routes remote-first with no top-level reordering. See the design notes for the full rationale.
 template <is_execution_policy Exec = execution_policy::seq>
@@ -186,7 +191,6 @@ private:
     /// Shared construction: validate the (complete) grid, precompute row-major strides, and split off
     /// one subcommunicator per dimension.
     void build() {
-        check_thread_level();
         auto p = static_cast<std::size_t>(_global.size());
         KAMPING_V2_ASSERT(!_dims.empty(), "grid must have at least one dimension");
         std::size_t product = std::accumulate(_dims.begin(), _dims.end(), std::size_t{1}, std::multiplies<>{});
@@ -217,20 +221,6 @@ private:
             int  color   = rank - static_cast<int>(coord_i * _strides[i]); // shared across the fiber
             int  key     = static_cast<int>(coord_i);
             _subcomms.push_back(_global.split(color, key));
-        }
-    }
-
-    static void check_thread_level() {
-        if constexpr (std::is_same_v<Exec, execution_policy::seq>) {
-            return;
-        } else {
-            using kamping::v2::ThreadLevel;
-            ThreadLevel const required =
-                std::is_same_v<Exec, execution_policy::par_comm> ? ThreadLevel::multiple : ThreadLevel::funneled;
-            KAMPING_V2_ASSERT(
-                kamping::v2::environment::thread_level() >= required,
-                "grid_comm: the MPI runtime does not provide the thread support level required by this execution policy"
-            );
         }
     }
 

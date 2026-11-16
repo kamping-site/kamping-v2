@@ -107,7 +107,7 @@ TEST(GroupAccessorsTest, CompareWorldWithItself) {
     comm_view world = comm_world();
     group     a     = world.group();
     group     b     = world.group();
-    EXPECT_EQ(a.compare(b), GroupEquality::Identical);
+    EXPECT_EQ(a.compare(b), group_equality::identical);
 }
 
 // ── comm (owning) ─────────────────────────────────────────────────────────────

@@ -8,5 +8,5 @@
 
 namespace kamping::v2 {
 using mpi::experimental::environment;
-using mpi::experimental::ThreadLevel;
+using mpi::experimental::thread_level;
 } // namespace kamping::v2

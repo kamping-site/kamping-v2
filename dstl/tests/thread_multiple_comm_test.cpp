@@ -47,7 +47,7 @@ std::size_t expected_thread_comm_count() {
 // thread_multiple_comm exposes the global rank/size and allocates exactly flat_max_threads() duplicated
 // communicators, each the same size as the global communicator.
 TEST(ThreadMultipleCommTest, AllocatesThreadComms) {
-    if (kamping::v2::environment::thread_level() < kamping::v2::ThreadLevel::multiple) {
+    if (kamping::v2::environment::provided_thread_level() < kamping::v2::thread_level::multiple) {
         GTEST_SKIP() << "runtime does not provide MPI_THREAD_MULTIPLE";
     }
     dstl::thread_multiple_comm fc{comm_world()};
@@ -63,7 +63,7 @@ TEST(ThreadMultipleCommTest, AllocatesThreadComms) {
 
 // Repeated construct/destroy must not leak communicators (the move-only mpi::comm frees its dups).
 TEST(ThreadMultipleCommTest, ThreadMultipleFreesThreadComms) {
-    if (kamping::v2::environment::thread_level() < kamping::v2::ThreadLevel::multiple) {
+    if (kamping::v2::environment::provided_thread_level() < kamping::v2::thread_level::multiple) {
         GTEST_SKIP() << "runtime does not provide MPI_THREAD_MULTIPLE";
     }
     auto const expected = expected_thread_comm_count();
