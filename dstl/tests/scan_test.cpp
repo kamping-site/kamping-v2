@@ -31,10 +31,10 @@ std::vector<int> iota_vec(int start, int n) {
 TEST(Reduce, Sum) {
     // Each rank holds [rank*4, rank*4+1, rank*4+2, rank*4+3].
     // Global sum = 0+1+...+(4p-1) = 4p*(4p-1)/2.
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
-    int const                    p   = comm.size();
-    int const                    n   = 4;
-    auto const                   vec = iota_vec(comm.rank() * n, n);
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
+    int const                    p    = comm.size();
+    int const                    n    = 4;
+    auto const                   vec  = iota_vec(comm.rank() * n, n);
 
     int const result   = dstl::reduce(vec, 0, std::plus<int>{}, comm);
     int const expected = n * p * (n * p - 1) / 2;
@@ -43,9 +43,9 @@ TEST(Reduce, Sum) {
 
 TEST(Reduce, WithInit) {
     // init is added to the global sum.
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
-    int const                    n   = 2;
-    auto const                   vec = iota_vec(comm.rank() * n, n);
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
+    int const                    n    = 2;
+    auto const                   vec  = iota_vec(comm.rank() * n, n);
 
     int const total  = n * comm.size() * (n * comm.size() - 1) / 2;
     int const result = dstl::reduce(vec, 100, std::plus<int>{}, comm);
@@ -54,7 +54,7 @@ TEST(Reduce, WithInit) {
 
 TEST(Reduce, EmptyLocal) {
     // All ranks have empty ranges — result should equal init.
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
     std::vector<int> const       empty;
 
     int const result = dstl::reduce(empty, 42, std::plus<int>{}, comm);
@@ -63,9 +63,9 @@ TEST(Reduce, EmptyLocal) {
 
 TEST(Reduce, MakeOpHandle) {
     // make_op handles are neither copyable nor movable; they must be accepted by reference.
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
-    int const                    n   = 4;
-    auto const                   vec = iota_vec(comm.rank() * n, n);
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
+    int const                    n    = 4;
+    auto const                   vec  = iota_vec(comm.rank() * n, n);
 
     auto      op       = kamping::v2::make_op<int>([](int a, int b) { return a + b; }, kamping::v2::commutative);
     int const result   = dstl::reduce(vec, 0, op, comm);
@@ -75,7 +75,7 @@ TEST(Reduce, MakeOpHandle) {
 
 TEST(Reduce, ForwardRangeInput) {
     // Smoke test: input is a std::list (forward_range, not contiguous).
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
     std::list<int> const         vals = {1, 2, 3};
 
     int const result = dstl::reduce(vals, 0, std::plus<int>{}, comm);
@@ -88,10 +88,10 @@ TEST(Reduce, ForwardRangeInput) {
 
 TEST(ReduceToRoot, Sum) {
     // Root receives the global sum; all other ranks get nullopt.
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
-    int const                    n   = 4;
-    auto const                   vec = iota_vec(comm.rank() * n, n);
-    int const                    p   = comm.size();
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
+    int const                    n    = 4;
+    auto const                   vec  = iota_vec(comm.rank() * n, n);
+    int const                    p    = comm.size();
 
     auto const result   = dstl::reduce_to_root(vec, 0, std::plus<int>{}, 0, comm);
     int const  expected = n * p * (n * p - 1) / 2;
@@ -105,9 +105,9 @@ TEST(ReduceToRoot, Sum) {
 }
 
 TEST(ReduceToRoot, MakeOpHandle) {
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
-    int const                    n   = 4;
-    auto const                   vec = iota_vec(comm.rank() * n, n);
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
+    int const                    n    = 4;
+    auto const                   vec  = iota_vec(comm.rank() * n, n);
 
     auto       op       = kamping::v2::make_op<int>([](int a, int b) { return a + b; }, kamping::v2::commutative);
     auto const result   = dstl::reduce_to_root(vec, 0, op, 0, comm);
@@ -123,10 +123,10 @@ TEST(ReduceToRoot, MakeOpHandle) {
 
 TEST(ReduceToRoot, WithInit) {
     // init is added once to the global sum, only on root.
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
-    int const                    n   = 2;
-    auto const                   vec = iota_vec(comm.rank() * n, n);
-    int const                    p   = comm.size();
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
+    int const                    n    = 2;
+    auto const                   vec  = iota_vec(comm.rank() * n, n);
+    int const                    p    = comm.size();
 
     auto const result = dstl::reduce_to_root(vec, 100, std::plus<int>{}, 0, comm);
     int const  total  = n * p * (n * p - 1) / 2;
@@ -141,7 +141,7 @@ TEST(ReduceToRoot, WithInit) {
 
 TEST(ReduceToRoot, NonDefaultRoot) {
     // Last rank is root.
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
     int const                    root = comm.size() - 1;
     auto const                   vec  = iota_vec(comm.rank() * 2, 2);
     int const                    p    = comm.size();
@@ -164,7 +164,7 @@ TEST(ReduceToRoot, NonDefaultRoot) {
 TEST(ExclusiveScan, UniformChunks) {
     // Each rank holds [rank*4, ..., rank*4+3].
     // Global exclusive scan: out[i] = 0+1+...+(global_i - 1).
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
     int const                    rank = comm.rank();
     int const                    n    = 4;
     int const                    base = rank * n;
@@ -181,7 +181,7 @@ TEST(ExclusiveScan, UniformChunks) {
 }
 
 TEST(ExclusiveScan, MakeOpHandle) {
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
     int const                    n    = 4;
     int const                    base = comm.rank() * n;
     auto const                   in   = iota_vec(base, n);
@@ -199,7 +199,7 @@ TEST(ExclusiveScan, MakeOpHandle) {
 TEST(ExclusiveScan, SingleElement) {
     // Each rank holds a single element equal to rank.
     // Exclusive scan: out[i] = 0+1+...+(i-1) = i*(i-1)/2.
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
     int const                    rank = comm.rank();
     std::vector<int>             in   = {rank};
     std::vector<int>             out(1);
@@ -211,7 +211,7 @@ TEST(ExclusiveScan, SingleElement) {
 
 TEST(ExclusiveScan, WithInit) {
     // Non-zero init shifts the entire output.
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
     int const                    rank = comm.rank();
     std::vector<int>             in   = {1};
     std::vector<int>             out(1);
@@ -224,8 +224,8 @@ TEST(ExclusiveScan, WithInit) {
 
 TEST(ExclusiveScan, ForwardRangeInput) {
     // Smoke test: std::list is a forward_range but not contiguous.
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
-    std::list<int>               in = {1, 2, 3};
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
+    std::list<int>               in   = {1, 2, 3};
     std::vector<int>             out(3);
 
     // Does not throw; correctness identical to vector case.
@@ -244,7 +244,7 @@ TEST(ExclusiveScan, ForwardRangeInput) {
 TEST(InclusiveScan, UniformChunks) {
     // Each rank holds [rank*4, ..., rank*4+3].
     // Global inclusive scan: out[i] = 0+1+...+global_i.
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
     int const                    rank = comm.rank();
     int const                    n    = 4;
     int const                    base = rank * n;
@@ -261,7 +261,7 @@ TEST(InclusiveScan, UniformChunks) {
 }
 
 TEST(InclusiveScan, MakeOpHandle) {
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
     int const                    n    = 4;
     int const                    base = comm.rank() * n;
     auto const                   in   = iota_vec(base, n);
@@ -279,7 +279,7 @@ TEST(InclusiveScan, MakeOpHandle) {
 TEST(InclusiveScan, SingleElement) {
     // Each rank holds a single element equal to rank.
     // Inclusive scan: out[i] = 0+1+...+i = i*(i+1)/2.
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
     int const                    rank = comm.rank();
     std::vector<int>             in   = {rank};
     std::vector<int>             out(1);
@@ -291,8 +291,8 @@ TEST(InclusiveScan, SingleElement) {
 
 TEST(InclusiveScan, ForwardRangeInput) {
     // Smoke test: std::list is a forward_range but not contiguous.
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
-    std::list<int>               in = {1, 2, 3};
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
+    std::list<int>               in   = {1, 2, 3};
     std::vector<int>             out(3);
 
     dstl::inclusive_scan(in, out, std::plus<int>{}, comm);

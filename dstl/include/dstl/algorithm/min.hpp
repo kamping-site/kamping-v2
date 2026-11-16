@@ -82,7 +82,7 @@ template <
     std::ranges::forward_range R,
     class Proj                                                                             = std::identity,
     std::indirect_strict_weak_order<std::projected<std::ranges::iterator_t<R>, Proj>> Comp = std::ranges::less,
-    kamping::v2::convertible_to_mpi_handle<MPI_Comm>                                  Comm = MPI_Comm>
+    kamping::v2::convertible_to_mpi_handle<MPI_Comm>                                  Comm = kamping::v2::comm_view>
     requires kamping::v2::has_mpi_type<R> && std::copy_constructible<std::ranges::range_value_t<R>>
 auto min(R&& r, Comp comp, Proj proj, Comm const& comm, std::ranges::range_value_t<R> sentinel)
     -> std::ranges::range_value_t<R> {
@@ -124,10 +124,11 @@ template <
     std::ranges::forward_range R,
     class Proj                                                                             = std::identity,
     std::indirect_strict_weak_order<std::projected<std::ranges::iterator_t<R>, Proj>> Comp = std::ranges::less,
-    kamping::v2::convertible_to_mpi_handle<MPI_Comm>                                  Comm = MPI_Comm>
+    kamping::v2::convertible_to_mpi_handle<MPI_Comm>                                  Comm = kamping::v2::comm_view>
     requires kamping::v2::has_mpi_type<R> && std::numeric_limits<std::ranges::range_value_t<R>>::is_specialized
              && std::copy_constructible<std::ranges::range_value_t<R>>
-auto min(R&& r, Comp comp = {}, Proj proj = {}, Comm const& comm = MPI_COMM_WORLD) -> std::ranges::range_value_t<R> {
+auto min(R&& r, Comp comp = {}, Proj proj = {}, Comm const& comm = kamping::v2::comm_world())
+    -> std::ranges::range_value_t<R> {
     return min(
         std::forward<R>(r),
         std::move(comp),

@@ -14,7 +14,7 @@
 #include "kamping/v2/environment.hpp"
 #include "kamping/v2/views.hpp"
 
-using kamping::v2::comm_view;
+using kamping::v2::comm_world;
 namespace views = kamping::v2::views;
 using dstl_test::build_send;
 using dstl_test::sorted;
@@ -36,7 +36,7 @@ TEST(FlatAlltoallvTest, EqualsFlat) {
     auto [data, counts, displs] = build_send(rank, size);
     std::vector<int> expected   = standard_alltoallv(data, counts, displs);
 
-    dstl::thread_multiple_comm fc{comm_view{MPI_COMM_WORLD}};
+    dstl::thread_multiple_comm fc{comm_world()};
     std::vector<int>           recv;
     dstl::alltoallv(data | views::with_counts(counts) | views::with_displs(displs), recv | views::auto_recv_v, fc);
 
@@ -54,7 +54,7 @@ TEST(FlatAlltoallvTest, OwnedRecvBuffer) {
     auto [data, counts, displs] = build_send(rank, size);
     std::vector<int> expected   = standard_alltoallv(data, counts, displs);
 
-    dstl::thread_multiple_comm fc{comm_view{MPI_COMM_WORLD}};
+    dstl::thread_multiple_comm fc{comm_world()};
     auto                       res = dstl::alltoallv(
         data | views::with_counts(counts) | views::with_displs(displs),
         std::vector<int>{} | views::auto_recv_v,
@@ -75,7 +75,7 @@ TEST(FlatAlltoallvTest, UniformSingleElement) {
     std::vector<int> displs(static_cast<std::size_t>(size));
     std::iota(displs.begin(), displs.end(), 0);
 
-    dstl::thread_multiple_comm fc{comm_view{MPI_COMM_WORLD}};
+    dstl::thread_multiple_comm fc{comm_world()};
     std::vector<int>           recv;
     dstl::alltoallv(data | views::with_counts(counts) | views::with_displs(displs), recv | views::auto_recv_v, fc);
 
@@ -103,7 +103,7 @@ TEST(FlatAlltoallvTest, DeferredSendBuf_SparseFlattenV) {
         per_dest.emplace_back(j, std::vector<int>(static_cast<std::size_t>(rank + 1), rank * 10 + j));
     }
 
-    dstl::thread_multiple_comm fc{comm_view{MPI_COMM_WORLD}};
+    dstl::thread_multiple_comm fc{comm_world()};
     std::vector<int>           recv;
     dstl::alltoallv(per_dest | views::flatten_v(), recv | views::auto_recv_v, fc);
 
@@ -120,7 +120,7 @@ TEST(FlatAlltoallvTest, AllEmpty) {
     std::vector<int> counts(static_cast<std::size_t>(size), 0);
     std::vector<int> displs(static_cast<std::size_t>(size), 0);
 
-    dstl::thread_multiple_comm fc{comm_view{MPI_COMM_WORLD}};
+    dstl::thread_multiple_comm fc{comm_world()};
     std::vector<int>           recv;
     dstl::alltoallv(data | views::with_counts(counts) | views::with_displs(displs), recv | views::auto_recv_v, fc);
     EXPECT_TRUE(recv.empty());

@@ -81,22 +81,19 @@ TEST(SessionTest, ImplicitConversionToView) {
 TEST(SessionTest, GroupFromPsetWorldReturnsNonEmpty) {
     session s;
     auto    g = s.group_from_pset(psets::world);
-    ASSERT_TRUE(g.has_value());
-    EXPECT_GT(g->size(), 0);
+    EXPECT_GT(g.size(), 0);
 }
 
 TEST(SessionTest, GroupFromPsetWorldContainsSelf) {
     session s;
     auto    g = s.group_from_pset(psets::world);
-    ASSERT_TRUE(g.has_value());
-    EXPECT_TRUE(g->contains_self());
+    EXPECT_TRUE(g.contains_self());
 }
 
 TEST(SessionTest, GroupFromPsetSelfHasSizeOne) {
     session s;
     auto    g = s.group_from_pset(psets::self);
-    ASSERT_TRUE(g.has_value());
-    EXPECT_EQ(g->size(), 1);
+    EXPECT_EQ(g.size(), 1);
 }
 
 // Intel MPI does not return an error for invalid pset names,
@@ -111,17 +108,21 @@ TEST(SessionTest, GroupFromPsetSelfHasSizeOne) {
 TEST(SessionTest, CommFromPsetWorldReturnsValidComm) {
     session s;
     auto    c = s.comm_from_pset(psets::world);
-    ASSERT_TRUE(c.has_value());
-    EXPECT_GT(c->size(), 0);
-    EXPECT_GE(c->rank(), 0);
+    EXPECT_GT(c.size(), 0);
+    EXPECT_GE(c.rank(), 0);
+}
+
+TEST(SessionTest, CommFromPsetWithTag) {
+    session s;
+    comm    c = s.comm_from_pset(psets::world, "kamping-v2-test");
+    EXPECT_GT(c.size(), 0);
 }
 
 TEST(SessionTest, CommFromPsetSelfHasSizeOne) {
     session s;
     auto    c = s.comm_from_pset(psets::self);
-    ASSERT_TRUE(c.has_value());
-    EXPECT_EQ(c->size(), 1);
-    EXPECT_EQ(c->rank(), 0);
+    EXPECT_EQ(c.size(), 1);
+    EXPECT_EQ(c.rank(), 0);
 }
 
 // ── psets() range ─────────────────────────────────────────────────────────────

@@ -14,7 +14,7 @@
 #include "kamping/v2/sentinels.hpp"
 #include "kamping/v2/views/ref_single_view.hpp"
 
-using kamping::v2::comm_view;
+using kamping::v2::comm_world;
 
 namespace {
 
@@ -37,7 +37,7 @@ std::size_t expected_thread_comm_count() {
         kamping::v2::inplace,
         kamping::v2::views::ref_single(t),
         kamping::ops::max<>{},
-        comm_view{MPI_COMM_WORLD}
+        comm_world()
     );
     return static_cast<std::size_t>(t);
 }
@@ -50,7 +50,7 @@ TEST(ThreadMultipleCommTest, AllocatesThreadComms) {
     if (kamping::v2::environment::thread_level() < kamping::v2::ThreadLevel::multiple) {
         GTEST_SKIP() << "runtime does not provide MPI_THREAD_MULTIPLE";
     }
-    dstl::thread_multiple_comm fc{comm_view{MPI_COMM_WORLD}};
+    dstl::thread_multiple_comm fc{comm_world()};
     EXPECT_EQ(fc.rank(), world_rank());
     EXPECT_EQ(fc.size(), world_size());
     auto comms = fc.thread_comms();
@@ -68,7 +68,7 @@ TEST(ThreadMultipleCommTest, ThreadMultipleFreesThreadComms) {
     }
     auto const expected = expected_thread_comm_count();
     for (int i = 0; i < 50; ++i) {
-        dstl::thread_multiple_comm fc{comm_view{MPI_COMM_WORLD}};
+        dstl::thread_multiple_comm fc{comm_world()};
         EXPECT_EQ(fc.thread_comms().size(), expected);
     }
     SUCCEED();

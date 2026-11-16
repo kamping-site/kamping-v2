@@ -28,7 +28,7 @@ TEST(CommViewWithPoolTest, Construction) {
     EXPECT_EQ(from_raw.mpi_handle(), MPI_COMM_WORLD);
     EXPECT_EQ(&from_raw.pool(), &pool);
 
-    kamping::v2::comm_view           cv{MPI_COMM_WORLD};
+    kamping::v2::comm_view           cv = kamping::v2::comm_world();
     kamping::v2::comm_view_with_pool from_view{cv, pool};
     EXPECT_EQ(from_view.mpi_handle(), MPI_COMM_WORLD);
     EXPECT_EQ(&from_view.pool(), &pool);
@@ -37,7 +37,7 @@ TEST(CommViewWithPoolTest, Construction) {
 // comm_view_with_pool is copyable and the copy shares the same pool.
 TEST(CommViewWithPoolTest, Copyable) {
     kamping::v2::type_pool           pool;
-    kamping::v2::comm_view_with_pool env{MPI_COMM_WORLD, pool};
+    kamping::v2::comm_view_with_pool env{kamping::v2::comm_world(), pool};
     kamping::v2::comm_view_with_pool copy = env;
     EXPECT_EQ(&copy.pool(), &pool);
     EXPECT_EQ(copy.mpi_handle(), MPI_COMM_WORLD);
@@ -46,7 +46,7 @@ TEST(CommViewWithPoolTest, Copyable) {
 // comm_accessors are forwarded: rank() and size() work.
 TEST(CommViewWithPoolTest, CommAccessors) {
     kamping::v2::type_pool           pool;
-    kamping::v2::comm_view_with_pool env{MPI_COMM_WORLD, pool};
+    kamping::v2::comm_view_with_pool env{kamping::v2::comm_world(), pool};
     EXPECT_GE(env.size(), 1);
     EXPECT_GE(env.rank(), 0);
     EXPECT_LT(env.rank(), env.size());
@@ -55,7 +55,7 @@ TEST(CommViewWithPoolTest, CommAccessors) {
 // views::with_auto_pool accepts comm_view_with_pool directly.
 TEST(CommViewWithPoolTest, WithAutoPoolAcceptsEnv) {
     kamping::v2::type_pool           pool;
-    kamping::v2::comm_view_with_pool env{MPI_COMM_WORLD, pool};
+    kamping::v2::comm_view_with_pool env{kamping::v2::comm_world(), pool};
     std::vector<Payload>             v{{1, 2.0}};
     auto                             view = v | kamping::v2::views::with_auto_pool(env);
     EXPECT_TRUE(pool.find<Payload>().has_value());
@@ -66,7 +66,7 @@ TEST(CommViewWithPoolTest, WithAutoPoolAcceptsEnv) {
 TEST(CommViewWithPoolTest, WithPoolAcceptsEnv) {
     kamping::v2::type_pool           pool;
     MPI_Datatype                     registered = pool.register_type<Payload>();
-    kamping::v2::comm_view_with_pool env{MPI_COMM_WORLD, pool};
+    kamping::v2::comm_view_with_pool env{kamping::v2::comm_world(), pool};
     std::vector<Payload>             v{{1, 2.0}};
     auto                             view = v | kamping::v2::views::with_pool(env);
     EXPECT_EQ(kamping::v2::type(view), registered);
@@ -75,7 +75,7 @@ TEST(CommViewWithPoolTest, WithPoolAcceptsEnv) {
 // Integration: bcast of custom struct via comm_view_with_pool.
 TEST(CommViewWithPoolTest, BcastIntegration) {
     kamping::v2::type_pool           pool;
-    kamping::v2::comm_view_with_pool env{MPI_COMM_WORLD, pool};
+    kamping::v2::comm_view_with_pool env{kamping::v2::comm_world(), pool};
     std::vector<Payload>             v;
     if (env.rank() == 0) {
         v.emplace_back(Payload{7, 3.14});
@@ -90,7 +90,7 @@ TEST(CommViewWithPoolTest, BcastIntegration) {
 // auto_recv<T>(env) and auto_recv_v<T>(env) accept comm_view_with_pool.
 TEST(CommViewWithPoolTest, AutoRecvFactories) {
     kamping::v2::type_pool           pool;
-    kamping::v2::comm_view_with_pool env{MPI_COMM_WORLD, pool};
+    kamping::v2::comm_view_with_pool env{kamping::v2::comm_world(), pool};
 
     auto recv_buf   = kamping::v2::auto_recv<Payload>(env);
     auto recv_buf_v = kamping::v2::auto_recv_v<Payload>(env);

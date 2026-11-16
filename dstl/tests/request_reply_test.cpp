@@ -19,7 +19,7 @@
 #include "kamping/v2/views.hpp"
 
 namespace views = kamping::v2::views;
-using kamping::v2::comm_view;
+using kamping::v2::comm_world;
 
 // A custom request value type. It carries no datatype on the pair-range input, so request_reply requires
 // the MPI_Datatype overload; the datatype is built by registering the type (made known to kamping-types via
@@ -35,11 +35,11 @@ struct kamping::types::mpi_type_traits<MyStruct> : public kamping::types::byte_s
 namespace {
 
 int world_size() {
-    return comm_view{MPI_COMM_WORLD}.size();
+    return comm_world().size();
 }
 
 int world_rank() {
-    return comm_view{MPI_COMM_WORLD}.rank();
+    return comm_world().rank();
 }
 
 /// An interleaved (not destination-grouped) request set: rank r issues `3*size + r` requests, the k-th

@@ -23,7 +23,7 @@ std::vector<int> iota_local(int rank, int local_n) {
 // ── shift_left ────────────────────────────────────────────────────────────────
 
 TEST(ShiftLeft, NoOp) {
-    kamping::v2::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm = kamping::v2::comm_world();
     auto                   data = iota_local(comm.rank(), 4);
     auto                   res  = dstl::shift_left(data, 0, comm);
     EXPECT_EQ(res.begin(), data.begin());
@@ -32,7 +32,7 @@ TEST(ShiftLeft, NoOp) {
 }
 
 TEST(ShiftLeft, ShiftByTwo) {
-    kamping::v2::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm    = kamping::v2::comm_world();
     int const              rank    = comm.rank();
     int const              p       = comm.size();
     int const              local_n = 4;
@@ -60,7 +60,7 @@ TEST(ShiftLeft, ShiftByTwo) {
 }
 
 TEST(ShiftLeft, ShiftByLocalSize) {
-    kamping::v2::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm    = kamping::v2::comm_world();
     int const              rank    = comm.rank();
     int const              p       = comm.size();
     int const              local_n = 4;
@@ -91,7 +91,7 @@ TEST(ShiftLeft, ShiftByLocalSize) {
 // ── shift_right ───────────────────────────────────────────────────────────────
 
 TEST(ShiftRight, NoOp) {
-    kamping::v2::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm = kamping::v2::comm_world();
     auto                   data = iota_local(comm.rank(), 4);
     auto                   res  = dstl::shift_right(data, 0, comm);
     EXPECT_EQ(res.begin(), data.begin());
@@ -100,7 +100,7 @@ TEST(ShiftRight, NoOp) {
 }
 
 TEST(ShiftRight, ShiftByTwo) {
-    kamping::v2::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm    = kamping::v2::comm_world();
     int const              rank    = comm.rank();
     int const              local_n = 4;
     int const              n       = 2;
@@ -128,7 +128,7 @@ TEST(ShiftRight, ShiftByTwo) {
 }
 
 TEST(ShiftRight, ShiftByLocalSize) {
-    kamping::v2::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm    = kamping::v2::comm_world();
     int const              rank    = comm.rank();
     int const              p       = comm.size();
     int const              local_n = 4;
@@ -163,7 +163,7 @@ TEST(ShiftRight, ShiftByLocalSize) {
 // Global sequence: 0 | 1 2 | 3 4 5 | 6 7
 // After shift_left(3): 3 | 4 5 6 | 7 0 0 | 0 0
 TEST(ShiftLeft, IrregularNExceedsLocalSizeOnSomeRanks) {
-    kamping::v2::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm = kamping::v2::comm_world();
     if (comm.size() != 4) {
         GTEST_SKIP() << "requires exactly 4 ranks";
     }
@@ -222,7 +222,7 @@ TEST(ShiftLeft, IrregularNExceedsLocalSizeOnSomeRanks) {
 // rank 2 valid_recv_start = min(3, max(0, 3-3))=0 → res = {begin, end}
 // rank 3 valid_recv_start = 0 → res = {begin, end}
 TEST(ShiftRight, IrregularNExceedsLocalSizeOnSomeRanks) {
-    kamping::v2::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm = kamping::v2::comm_world();
     if (comm.size() != 4) {
         GTEST_SKIP() << "requires exactly 4 ranks";
     }
@@ -263,7 +263,7 @@ TEST(ShiftRight, IrregularNExceedsLocalSizeOnSomeRanks) {
 
 // shift_left where n >= total global size: no effects (matches std::shift_left).
 TEST(ShiftLeft, ShiftByTotalOrMoreIsNoOp) {
-    kamping::v2::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm     = kamping::v2::comm_world();
     int const              rank     = comm.rank();
     int const              p        = comm.size();
     int const              local_n  = 3;
@@ -280,7 +280,7 @@ TEST(ShiftLeft, ShiftByTotalOrMoreIsNoOp) {
 
 // shift_right where n >= total global size: no effects (matches std::shift_right).
 TEST(ShiftRight, ShiftByTotalOrMoreIsNoOp) {
-    kamping::v2::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm     = kamping::v2::comm_world();
     int const              rank     = comm.rank();
     int const              p        = comm.size();
     int const              local_n  = 3;
@@ -299,7 +299,7 @@ TEST(ShiftRight, ShiftByTotalOrMoreIsNoOp) {
 
 // With p=1 the distributed versions must match the sequential std algorithms.
 TEST(ShiftLeft, SingleRankMatchesStd) {
-    kamping::v2::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm = kamping::v2::comm_world();
     if (comm.size() != 1) {
         GTEST_SKIP() << "single-rank only";
     }
@@ -315,7 +315,7 @@ TEST(ShiftLeft, SingleRankMatchesStd) {
 }
 
 TEST(ShiftRight, SingleRankMatchesStd) {
-    kamping::v2::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm = kamping::v2::comm_world();
     if (comm.size() != 1) {
         GTEST_SKIP() << "single-rank only";
     }

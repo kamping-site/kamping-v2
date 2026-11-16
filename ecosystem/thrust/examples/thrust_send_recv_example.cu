@@ -47,7 +47,7 @@ void print_vec(HostVec const& v) {
 
 int main(int argc, char* argv[]) {
     kamping::v2::environment     env(argc, argv);
-    kamping::v2::comm_view const world{MPI_COMM_WORLD};
+    kamping::v2::comm_view const world = kamping::v2::comm_world();
 
     KAMPING_ASSERT(world.size() == 2uz, "This example must be run with exactly 2 ranks.");
 

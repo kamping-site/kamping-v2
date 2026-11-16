@@ -24,7 +24,7 @@ struct kamping::types::mpi_type_traits<Point> : kamping::types::struct_type<Poin
 
 int main(int argc, char* argv[]) {
     v2::environment env(argc, argv);
-    v2::comm_view   comm{MPI_COMM_WORLD};
+    v2::comm_view   comm = v2::comm_world();
 
     std::vector<int> mine(static_cast<std::size_t>(comm.rank()) + 1, comm.rank());
     auto [_, all] = v2::allgatherv(mine, v2::auto_recv_v<int>(), comm);

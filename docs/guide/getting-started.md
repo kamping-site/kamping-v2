@@ -57,8 +57,9 @@ namespace aliases:
 ```
 
 {cpp:class}`kamping::v2::environment` initializes MPI and finalizes it when it goes out of scope.
-{cpp:class}`kamping::v2::comm_view` is a non-owning view of a communicator; any function that expects a communicator
-also accepts a plain `MPI_Comm`.
+{cpp:any}`comm_world() <kamping::v2::comm_world>` returns a {cpp:class}`kamping::v2::comm_view`, a non-owning view, of
+`MPI_COMM_WORLD`; any function that expects a communicator also accepts a plain `MPI_Comm`. With MPI 4, you can use
+sessions instead of the world communicator; see {ref}`world-and-sessions`.
 
 ```{literalinclude} ../../kamping-v2/examples/getting_started_example.cpp
 :language: cpp

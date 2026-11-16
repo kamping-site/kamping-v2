@@ -29,7 +29,7 @@ std::size_t triangular_offset(int rank) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 TEST(Distribution, UniformSizes) {
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view const comm    = kamping::v2::comm_world();
     int const                    p       = comm.size();
     std::size_t const            local_n = 4;
 
@@ -55,8 +55,8 @@ TEST(Distribution, UniformSizes) {
 }
 
 TEST(Distribution, RaggedSizes) {
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
-    int const                    p = comm.size();
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
+    int const                    p    = comm.size();
 
     dstl::distribution const dist(triangular_local_size(comm.rank()), comm);
 
@@ -74,8 +74,8 @@ TEST(Distribution, RaggedSizes) {
 }
 
 TEST(Distribution, ExplicitOffsetsConstructor) {
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
-    int const                    p = comm.size();
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
+    int const                    p    = comm.size();
 
     std::vector<std::size_t> offsets;
     offsets.reserve(static_cast<std::size_t>(p) + 1);
@@ -97,7 +97,7 @@ TEST(Distribution, ExplicitOffsetsConstructor) {
 }
 
 TEST(Distribution, SingleRank) {
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
     if (comm.size() != 1) {
         GTEST_SKIP() << "single-rank only";
     }
@@ -112,8 +112,8 @@ TEST(Distribution, SingleRank) {
 }
 
 TEST(Distribution, LocalGlobalRoundTrip) {
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
-    int const                    p = comm.size();
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
+    int const                    p    = comm.size();
 
     dstl::distribution const dist(triangular_local_size(comm.rank()), comm);
 
@@ -127,8 +127,8 @@ TEST(Distribution, LocalGlobalRoundTrip) {
 }
 
 TEST(Distribution, OwnerAtPartitionBoundaries) {
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
-    int const                    p = comm.size();
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
+    int const                    p    = comm.size();
 
     // Uniform distribution.
     {
@@ -153,7 +153,7 @@ TEST(Distribution, OwnerAtPartitionBoundaries) {
 }
 
 TEST(Distribution, EmptyLocalRangeOnSomeRanks) {
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view const comm    = kamping::v2::comm_world();
     int const                    p       = comm.size();
     std::size_t const            local_n = (comm.rank() == 0) ? 0 : 3;
 
@@ -172,8 +172,8 @@ TEST(Distribution, EmptyLocalRangeOnSomeRanks) {
 }
 
 TEST(Distribution, Counts) {
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
-    int const                    p = comm.size();
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
+    int const                    p    = comm.size();
 
     dstl::distribution const dist(triangular_local_size(comm.rank()), comm);
 
@@ -187,8 +187,8 @@ TEST(Distribution, Counts) {
 }
 
 TEST(Distribution, Displs) {
-    kamping::v2::comm_view const comm{MPI_COMM_WORLD};
-    int const                    p = comm.size();
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
+    int const                    p    = comm.size();
 
     dstl::distribution const dist(triangular_local_size(comm.rank()), comm);
 

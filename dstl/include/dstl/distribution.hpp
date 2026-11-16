@@ -32,8 +32,8 @@ namespace dstl {
 class distribution {
 public:
     /// @brief Builds the distribution by allgathering `local_size` from every rank (one collective).
-    template <kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
-    explicit distribution(std::size_t local_size, Comm const& comm = MPI_COMM_WORLD)
+    template <kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = kamping::v2::comm_view>
+    explicit distribution(std::size_t local_size, Comm const& comm = kamping::v2::comm_world())
         : _offset(static_cast<std::size_t>(kamping::v2::comm_view{kamping::v2::handle(comm)}.size()) + 1) {
         kamping::v2::comm_view const cv{kamping::v2::handle(comm)};
         _offset[static_cast<std::size_t>(cv.rank())] = local_size;
@@ -45,9 +45,11 @@ public:
 
     /// @brief Builds the distribution from an explicit, already globally-agreed offset table
     /// (size comm.size() + 1, monotonically increasing). No communication is performed.
-    template <std::ranges::forward_range Range, kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+    template <
+        std::ranges::forward_range                       Range,
+        kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = kamping::v2::comm_view>
         requires std::ranges::sized_range<Range> && std::convertible_to<std::ranges::range_value_t<Range>, std::size_t>
-    distribution(Range&& offsets, Comm const& comm = MPI_COMM_WORLD)
+    distribution(Range&& offsets, Comm const& comm = kamping::v2::comm_world())
         : _offset(std::ranges::begin(offsets), std::ranges::end(offsets)) {
         kamping::v2::comm_view const cv{kamping::v2::handle(comm)};
         KAMPING_V2_ASSERT(

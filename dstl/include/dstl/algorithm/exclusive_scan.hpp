@@ -42,11 +42,15 @@ namespace dstl {
 template <
     std::ranges::forward_range                       R,
     kamping::v2::recv_buffer                         O,
-    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm,
+    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = kamping::v2::comm_view,
     class BinaryOp                                        = std::plus<>>
     requires kamping::v2::has_mpi_type<R>
 void exclusive_scan(
-    R&& r, O&& out, std::ranges::range_value_t<R> init, BinaryOp const& op = {}, Comm const& comm = MPI_COMM_WORLD
+    R&&                           r,
+    O&&                           out,
+    std::ranges::range_value_t<R> init,
+    BinaryOp const&               op   = {},
+    Comm const&                   comm = kamping::v2::comm_world()
 ) {
     using T                               = std::ranges::range_value_t<R>;
     MPI_Datatype const           mpi_type = kamping::v2::type(r);

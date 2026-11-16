@@ -37,9 +37,9 @@ namespace dstl {
 template <
     kamping::v2::send_buffer                         SBuf,
     kamping::v2::recv_buffer                         RBuf,
-    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm,
+    kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = kamping::v2::comm_view,
     kamping::v2::tag                                 Tag  = int>
-void redistribute(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = MPI_COMM_WORLD, Tag tag = 0) {
+void redistribute(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = kamping::v2::comm_world(), Tag tag = 0) {
     kamping::v2::comm_view cv{kamping::v2::handle(comm)};
     int const              size = cv.size();
     int const              rank = cv.rank();

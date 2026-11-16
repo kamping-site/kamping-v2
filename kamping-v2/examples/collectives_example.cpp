@@ -17,7 +17,7 @@
 
 int main(int argc, char* argv[]) {
     kamping::v2::environment     env(argc, argv);
-    kamping::v2::comm_view const world{MPI_COMM_WORLD};
+    kamping::v2::comm_view const world = kamping::v2::comm_world();
     MPI_Comm_set_errhandler(MPI_COMM_WORLD, MPI_ERRORS_RETURN);
 
     {

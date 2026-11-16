@@ -33,7 +33,7 @@ std::vector<int> descending_block(int start, int n) {
 
 // Rank r holds [r*n, r*n + n): the concatenation is the global iota, hence sorted.
 TEST(IsSorted, GloballySortedAscending) {
-    kamping::v2::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm = kamping::v2::comm_world();
     int const              n    = 4;
     auto                   data = block(comm.rank() * n, n);
     EXPECT_TRUE(dstl::is_sorted(data, comm));
@@ -42,7 +42,7 @@ TEST(IsSorted, GloballySortedAscending) {
 // A single rank's slice being locally unsorted makes the whole range unsorted.
 // The result is global (all_of), so every rank must observe false.
 TEST(IsSorted, LocalViolationOnRankZero) {
-    kamping::v2::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm = kamping::v2::comm_world();
     int const              n    = 4;
     auto                   data = block(comm.rank() * n, n);
     if (comm.rank() == 0) {
@@ -54,7 +54,7 @@ TEST(IsSorted, LocalViolationOnRankZero) {
 // Each rank's slice is locally sorted, but the block order is reversed across
 // ranks so every adjacent rank pair violates the cross-rank boundary.
 TEST(IsSorted, CrossRankBoundaryViolation) {
-    kamping::v2::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm = kamping::v2::comm_world();
     if (comm.size() == 1) {
         GTEST_SKIP() << "needs more than one rank";
     }
@@ -66,7 +66,7 @@ TEST(IsSorted, CrossRankBoundaryViolation) {
 
 // is_sorted is non-strict: equal elements across the boundary are still sorted.
 TEST(IsSorted, EqualElementsAreSorted) {
-    kamping::v2::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm = kamping::v2::comm_world();
     std::vector<int>       data(4, 7); // identical on every rank
     EXPECT_TRUE(dstl::is_sorted(data, comm));
 }
@@ -76,7 +76,7 @@ TEST(IsSorted, EqualElementsAreSorted) {
 // Odd ranks are empty; the non-empty ranks (indexed by rank/2) carry the global
 // iota. with_subset must skip the empty ranks and still report sorted.
 TEST(IsSorted, EmptyRanksGloballySorted) {
-    kamping::v2::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm = kamping::v2::comm_world();
     int const              n    = 4;
     int const              rank = comm.rank();
     std::vector<int>       data;
@@ -89,7 +89,7 @@ TEST(IsSorted, EmptyRanksGloballySorted) {
 // Same empty layout, but the non-empty blocks are in reversed order, so the
 // boundary between the (non-adjacent) non-empty ranks is violated.
 TEST(IsSorted, EmptyRanksCrossViolation) {
-    kamping::v2::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm         = kamping::v2::comm_world();
     int const              p            = comm.size();
     int const              num_nonempty = (p + 1) / 2;
     if (num_nonempty < 2) {
@@ -107,7 +107,7 @@ TEST(IsSorted, EmptyRanksCrossViolation) {
 
 // An entirely empty global range is sorted.
 TEST(IsSorted, AllRanksEmpty) {
-    kamping::v2::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm = kamping::v2::comm_world();
     std::vector<int>       data;
     EXPECT_TRUE(dstl::is_sorted(data, comm));
 }
@@ -117,7 +117,7 @@ TEST(IsSorted, AllRanksEmpty) {
 // Global descending sequence; sorted under std::ranges::greater, unsorted under
 // the default ascending comparator.
 TEST(IsSorted, CustomComparatorDescending) {
-    kamping::v2::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm = kamping::v2::comm_world();
     int const              n    = 4;
     int const              p    = comm.size();
     int const              rank = comm.rank();
@@ -131,7 +131,7 @@ TEST(IsSorted, CustomComparatorDescending) {
 
 // The same descending data is ascending under a negating projection.
 TEST(IsSorted, ProjectionNegate) {
-    kamping::v2::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm = kamping::v2::comm_world();
     int const              n    = 4;
     int const              p    = comm.size();
     int const              rank = comm.rank();
@@ -146,7 +146,7 @@ TEST(IsSorted, ProjectionNegate) {
 
 // With p == 1 the distributed result must match std::ranges::is_sorted.
 TEST(IsSorted, SingleRankMatchesStd) {
-    kamping::v2::comm_view comm{MPI_COMM_WORLD};
+    kamping::v2::comm_view comm = kamping::v2::comm_world();
     if (comm.size() != 1) {
         GTEST_SKIP() << "single-rank only";
     }

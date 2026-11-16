@@ -14,6 +14,14 @@ With `MPI_ERRORS_RETURN` set on a communicator, errors are thrown as `mpi_error`
 
 ## Communicators
 
+The predefined communicators `MPI_COMM_WORLD` and `MPI_COMM_SELF` (see {ref}`world-and-sessions`):
+
+```{doxygenoverloads} kamping::v2::comm_world
+```
+
+```{doxygenoverloads} kamping::v2::comm_self
+```
+
 ```{doxygenclass} kamping::v2::comm_view
 :members:
 ```
@@ -79,6 +87,14 @@ The free functions `dup` and `split` do the same as the members, and can also wr
 
 ```{doxygenclass} kamping::v2::session
 :members:
+```
+
+The predefined process sets of MPI 4:
+
+```{doxygenvariable} kamping::v2::psets::world
+```
+
+```{doxygenvariable} kamping::v2::psets::self
 ```
 
 ## Windows

@@ -16,7 +16,7 @@ namespace v2 = kamping::v2;
 
 namespace {
 v2::comm_view world() {
-    return v2::comm_view{MPI_COMM_WORLD};
+    return v2::comm_world();
 }
 } // namespace
 

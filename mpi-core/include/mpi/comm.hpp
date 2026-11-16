@@ -8,6 +8,7 @@
 
 #include <mpi.h>
 
+#include "kamping/v2/kassert.hpp"
 #include "mpi/error.hpp"
 #include "mpi/group.hpp"
 #include "mpi/handle.hpp"
@@ -120,6 +121,48 @@ public:
 private:
     MPI_Comm _comm;
 };
+
+// ── Predefined communicators ──────────────────────────────────────────────────
+
+namespace detail {
+/// @internal
+/// @return Whether MPI is initialized and not yet finalized, i.e., whether the predefined communicators may be used.
+[[nodiscard]] inline bool predefined_comms_usable() noexcept {
+    int initialized = 0;
+    int finalized   = 0;
+    MPI_Initialized(&initialized);
+    MPI_Finalized(&finalized);
+    return initialized != 0 && finalized == 0;
+}
+} // namespace detail
+
+/// @brief The communicator of all processes started together with the calling one (`MPI_COMM_WORLD`).
+///
+/// MPI must be initialized and not yet finalized. It does not matter who initialized it: an `environment`, a test
+/// main or another library.
+///
+/// @return A non-owning view, since predefined communicators must never be freed.
+[[nodiscard]] inline comm_view comm_world() noexcept {
+    KAMPING_V2_ASSERT(
+        detail::predefined_comms_usable(),
+        "comm_world() requires MPI to be initialized and not yet finalized"
+    );
+    return comm_view{MPI_COMM_WORLD};
+}
+
+/// @brief The communicator containing only the calling process (`MPI_COMM_SELF`).
+///
+/// MPI must be initialized and not yet finalized. It does not matter who initialized it: an `environment`, a test
+/// main or another library.
+///
+/// @return A non-owning view, since predefined communicators must never be freed.
+[[nodiscard]] inline comm_view comm_self() noexcept {
+    KAMPING_V2_ASSERT(
+        detail::predefined_comms_usable(),
+        "comm_self() requires MPI to be initialized and not yet finalized"
+    );
+    return comm_view{MPI_COMM_SELF};
+}
 
 // ── comm ─────────────────────────────────────────────────────────────────────
 

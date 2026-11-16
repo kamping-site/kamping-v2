@@ -61,7 +61,7 @@ TEST_F(CacheTest, CreatesOncePerObject) {
 
 TEST_F(CacheTest, AcceptsHandleWrappers) {
     comm_cache                   c;
-    mpi::experimental::comm_view world{MPI_COMM_WORLD};
+    mpi::experimental::comm_view world = mpi::experimental::comm_world();
     tracked&                     value = c.get_or_create(world, [] { return tracked(1); });
     EXPECT_EQ(c.find(MPI_COMM_WORLD), &value);
 }

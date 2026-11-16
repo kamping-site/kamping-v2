@@ -24,7 +24,7 @@ TEST(IBarrierTest, core_ibarrier) {
     }
     {
         kamping::v2::request   req;
-        kamping::v2::comm_view world{MPI_COMM_WORLD};
+        kamping::v2::comm_view world = kamping::v2::comm_world();
         mpi::experimental::ibarrier(world, req);
         req.wait();
     }
@@ -40,7 +40,7 @@ TEST(IBarrierTest, ibarrier_does_not_complete_before_all_ranks_entered) {
     // The ibarrier must be the only collective on `world` here: all ranks have to call collectives on a
     // communicator in the same order, so rank 0 releases the others with point-to-point messages instead.
     kamping::v2::request   req;
-    kamping::v2::comm_view world{MPI_COMM_WORLD};
+    kamping::v2::comm_view world = kamping::v2::comm_world();
     if (world.rank() == 0) {
         mpi::experimental::ibarrier(world, req);
         if (world.size() > 1) {
