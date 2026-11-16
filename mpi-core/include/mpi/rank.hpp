@@ -60,6 +60,8 @@ class periodic_rank {
     int _rank;
     int _size;
 
+    // The arithmetic is done in 64 bits: `_rank + offset % _size` can reach `2 * size - 2`, which overflows an `int`
+    // for `size > INT_MAX / 2`.
     static constexpr int wrap(std::int64_t rank, int size) {
         auto r = rank % size;
         return static_cast<int>(r < 0 ? r + size : r);
@@ -149,6 +151,8 @@ public:
 /// The rank only stores the size of the communicator, not the communicator itself. A position equal to the value of
 /// `MPI_PROC_NULL` has no special meaning: it is outside of `[0, size)` like any other negative position.
 class nonperiodic_rank {
+    // 64 bits, since the position may leave the range of `int`: `r + INT_MAX` must stay outside of `[0, size)` instead
+    // of overflowing, and `(r + k) - k` must be `r` again.
     std::int64_t _position;
     int          _size;
 

@@ -51,9 +51,13 @@ an offset. They can be passed wherever a rank is expected. A `periodic_rank` wra
 a `nonperiodic_rank` beyond the ends stands for `MPI_PROC_NULL`, so communication with a missing neighbor is skipped:
 
 ```cpp
-auto const me = v2::periodic_rank(comm);
+auto const me = comm.periodic_rank();
 v2::sendrecv_replace(block, me - 1, me + 1, comm);  // shift the blocks one rank to the left
 ```
+
+Every communicator type has the members `periodic_rank()` and `nonperiodic_rank()` for the rank of the calling
+process, and `periodic_rank(r)` / `nonperiodic_rank(r)` for the rank `r`. The constructors do the same and also take
+a raw `MPI_Comm` or any other communicator wrapper: `v2::periodic_rank(comm)`, `v2::nonperiodic_rank(r, comm)`.
 
 ```{doxygenclass} kamping::v2::periodic_rank
 :members:

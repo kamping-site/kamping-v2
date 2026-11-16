@@ -85,6 +85,19 @@ TEST_F(RankTest, ConstructedFromCommunicator) {
     EXPECT_EQ(n.size(), size);
 }
 
+TEST_F(RankTest, CommunicatorMembers) {
+    EXPECT_EQ(comm.periodic_rank(), periodic_rank(comm));
+    EXPECT_EQ(comm.nonperiodic_rank(), nonperiodic_rank(comm));
+    EXPECT_EQ(comm.periodic_rank(-1).value(), size - 1);
+    EXPECT_TRUE(comm.nonperiodic_rank(size).is_proc_null());
+
+    // Owning communicators get the members, too.
+    comm_view const world(MPI_COMM_WORLD);
+    auto const      dup = world.dup();
+    EXPECT_EQ((dup.periodic_rank() + size).value(), me);
+    EXPECT_EQ(dup.nonperiodic_rank(me).value(), me);
+}
+
 // A given rank in a communicator: periodic ranks are wrapped, nonperiodic ones keep their position.
 TEST_F(RankTest, ConstructedFromRankAndCommunicator) {
     EXPECT_EQ(periodic_rank(size + 1, comm), periodic_rank::with_size(1, size));
