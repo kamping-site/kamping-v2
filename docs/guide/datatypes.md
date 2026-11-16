@@ -41,10 +41,10 @@ auto [_, all] = v2::allgatherv(points | views::with_auto_pool(env),
 
 Some datatypes describe a layout rather than a C++ type, such as a column of a matrix or the block of a distributed
 matrix that one process owns. Build them with the type constructors, which wrap the MPI ones: `type_contiguous`,
-`type_vector`, `type_create_hvector`, `type_create_struct`, `type_create_subarray`, `type_create_darray`,
-`type_create_resized` and `type_dup`. Each returns the new datatype as an `uncommitted_datatype`, which frees it at
-the end of its lifetime. `std::move(u).commit()`, or `.commit()` on the returned temporary, commits it and turns it
-into a `datatype`:
+`type_vector`, `type_create_hvector`, `type_create_struct`, `type_create_subarray`, `type_create_darray` and
+`type_create_resized`. Each returns the new datatype as an `uncommitted_datatype`, which frees it at the end of its
+lifetime. `std::move(u).commit()`, or `.commit()` on the returned temporary, commits it and turns it into a
+`datatype`:
 
 ```cpp
 std::array const gsizes{n, n};               // an n x n matrix in blocks
@@ -66,7 +66,8 @@ call and writes the new datatype into a last argument, a raw `MPI_Datatype` or a
 `views::with_type` borrows a `datatype` passed as an lvalue. A temporary is moved into the view instead, so
 `views::with_type(std::move(u).commit())` frees the datatype once the view is gone. A `type_pool` can also take a
 `datatype` with `pool.register_type<T>(std::move(dt))`. If you build a datatype with a raw MPI call,
-`datatype::commit(raw)` takes ownership of it and commits it.
+`datatype::commit(raw)` takes ownership of it and commits it. `dt.dup()` copies a datatype and keeps its committed
+state: the copy of a `datatype` is a `datatype`.
 
 A `datatype` is always committed. Datatypes that only serve as building blocks for other datatypes need not be
 committed, but still have to be freed. The `uncommitted_datatype` that the constructors return does both:

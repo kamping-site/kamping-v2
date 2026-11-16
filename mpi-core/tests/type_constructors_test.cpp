@@ -244,7 +244,8 @@ TEST(TypeConstructorsTest, Darray) {
 
 TEST(TypeConstructorsTest, Dup) {
     auto const original = type_contiguous(3, MPI_INT).commit();
-    auto const copy     = type_dup(original).commit();
+    // The copy of a datatype is a datatype: MPI_Type_dup keeps the committed state.
+    datatype const copy = type_dup(original);
     EXPECT_NE(copy.mpi_handle(), original.mpi_handle());
     EXPECT_EQ(copy.size(), original.size());
     std::array<int, 3> const send{7, 8, 9};
@@ -254,4 +255,13 @@ TEST(TypeConstructorsTest, Dup) {
     type_dup(MPI_INT, raw);
     EXPECT_EQ(datatype_view(raw).size(), static_cast<int>(sizeof(int)));
     MPI_Type_free(&raw);
+}
+
+TEST(TypeConstructorsTest, DupOfViewOrUncommitted) {
+    auto const                 building_block = type_contiguous(3, MPI_INT);
+    uncommitted_datatype const u              = type_dup(building_block);
+    EXPECT_EQ(u.size(), building_block.size());
+
+    uncommitted_datatype const v = type_dup(datatype_view(MPI_INT));
+    EXPECT_EQ(v.size(), static_cast<int>(sizeof(int)));
 }

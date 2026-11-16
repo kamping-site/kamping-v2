@@ -354,31 +354,4 @@ template <convertible_to_mpi_handle<MPI_Datatype> Datatype>
     return newtype;
 }
 
-// ── MPI_Type_dup ───────────────────────────────────────────────────────────────────────────────────────────────────
-
-/// @brief A copy of `oldtype` (`MPI_Type_dup`).
-///
-/// The copy of a committed datatype is committed as well.
-/// @param newtype Output: receives the new datatype.
-/// @throws mpi_error if `MPI_Type_dup` fails.
-template <convertible_to_mpi_handle<MPI_Datatype> Datatype, convertible_to_mpi_handle_ptr<MPI_Datatype> NewDatatype>
-void type_dup(Datatype const& oldtype, NewDatatype& newtype) {
-    int err = MPI_Type_dup(mpi::experimental::handle(oldtype), mpi::experimental::handle_ptr(newtype));
-    detail::check_type_constructor(err);
-}
-
-/// @brief A copy of `oldtype` (`MPI_Type_dup`).
-///
-/// Returned as an `uncommitted_datatype` like the result of every other constructor, even though MPI commits the copy
-/// of a committed datatype; `std::move(u).commit()` turns it into a `datatype`. The member `dup()` of `datatype`
-/// returns the copy as a `datatype` directly.
-/// @return The new datatype, owned.
-/// @throws mpi_error if `MPI_Type_dup` fails.
-template <convertible_to_mpi_handle<MPI_Datatype> Datatype>
-[[nodiscard]] uncommitted_datatype type_dup(Datatype const& oldtype) {
-    uncommitted_datatype newtype;
-    type_dup(oldtype, newtype);
-    return newtype;
-}
-
 } // namespace mpi::experimental

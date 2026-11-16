@@ -51,6 +51,11 @@ committed, such as a building block for another datatype; `std::move(u).commit()
 ```{doxygenconcept} kamping::v2::buffer_datatype
 ```
 
+The free function `type_dup` does the same as the `dup()` members, and can also write into a raw handle.
+
+```{doxygenoverloads} kamping::v2::type_dup
+```
+
 ## Type constructors
 
 The type constructors wrap the MPI ones. Each has two forms: the full form mirrors the MPI call and writes the new
@@ -77,9 +82,6 @@ including an `uncommitted_datatype`. Array arguments are contiguous ranges, and 
 ```
 
 ```{doxygenoverloads} kamping::v2::type_create_resized
-```
-
-```{doxygenoverloads} kamping::v2::type_dup
 ```
 
 ```{doxygenenum} kamping::v2::array_order
