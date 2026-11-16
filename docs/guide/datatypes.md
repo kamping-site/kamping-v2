@@ -54,9 +54,19 @@ v2::send(matrix | views::with_type(block) | views::with_count(1), 0, comm);
 `views::with_type(v2::datatype::commit(raw))` frees the datatype once the view is gone. A `type_pool` can also
 take a `datatype` with `pool.register_type<T>(std::move(dt))`.
 
-Datatypes that only serve as building blocks for other datatypes, such as the vector in
-`MPI_Type_create_resized(vector, ...)`, need not be committed, but still have to be freed. `datatype::from_native`
-takes ownership of a datatype without committing it.
+A `datatype` is always committed. Datatypes that only serve as building blocks for other datatypes need not be
+committed, but still have to be freed. An `uncommitted_datatype` owns such a datatype; `views::with_type` rejects it
+at compile time, and `std::move(u).commit()` turns it into a `datatype`:
+
+```cpp
+MPI_Datatype raw_column;
+MPI_Type_vector(n, 1, n, MPI_DOUBLE, &raw_column);                     // one matrix column
+auto const column = v2::uncommitted_datatype::from_native(raw_column); // freed, never committed
+
+MPI_Datatype raw_resized;
+MPI_Type_create_resized(column.mpi_handle(), 0, sizeof(double), &raw_resized);
+auto const column_type = v2::datatype::commit(raw_resized);            // consecutive columns
+```
 
 ## Types without a datatype
 

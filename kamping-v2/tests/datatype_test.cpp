@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Karlsruhe Institute of Technology
 // SPDX-License-Identifier: BSL-1.0
 
+#include <concepts>
 #include <functional>
 #include <type_traits>
 #include <utility>
@@ -67,6 +68,16 @@ TEST(WithTypeDatatypeTest, LvalueHandlesAreBorrowed) {
     EXPECT_EQ(v2::type(raw), MPI_INT);
 }
 
+TEST(WithTypeDatatypeTest, UncommittedDatatypeIsRejected) {
+    using fn = kamping::v2::detail::with_type_fn;
+    static_assert(std::invocable<fn, std::vector<int>&, v2::datatype const&>);
+    static_assert(std::invocable<fn, std::vector<int>&, v2::datatype>);
+    static_assert(std::invocable<fn, std::vector<int>&, MPI_Datatype>);
+    static_assert(!std::invocable<fn, std::vector<int>&, v2::uncommitted_datatype const&>);
+    static_assert(!std::invocable<fn, std::vector<int>&, v2::uncommitted_datatype>);
+    static_assert(!std::invocable<fn, std::vector<int>&, std::reference_wrapper<v2::uncommitted_datatype const>>);
+}
+
 TEST(WithTypeDatatypeTest, TemporaryDatatypeIsOwnedByTheView) {
     std::vector<int> v(3);
 
@@ -110,9 +121,10 @@ TEST(TypePoolDatatypeTest, RegisterOwnedDatatype) {
     EXPECT_NE(second.mpi_handle(), MPI_DATATYPE_NULL); // NOLINT(bugprone-use-after-move)
 }
 
-TEST(TypePoolDatatypeTest, RegisterUncommittedDatatypeCommitsIt) {
+TEST(TypePoolDatatypeTest, RegisterCommittedBuildingBlockResult) {
     v2::type_pool pool;
-    MPI_Datatype  dt = pool.register_type<Unregistered>(v2::datatype::from_native(make_int3()));
+    auto          u  = v2::uncommitted_datatype::from_native(make_int3());
+    MPI_Datatype  dt = pool.register_type<Unregistered>(std::move(u).commit());
 
     v2::comm_view const comm(MPI_COMM_WORLD);
     std::vector<int>    v(3, -1);
@@ -121,17 +133,4 @@ TEST(TypePoolDatatypeTest, RegisterUncommittedDatatypeCommitsIt) {
     }
     v2::bcast(v | views::with_type(dt) | views::with_count(1), 0, comm);
     EXPECT_EQ(v, (std::vector<int>{7, 8, 9}));
-}
-
-TEST(TypePoolDatatypeTest, RegisterRawDatatypeCommitsIt) {
-    v2::type_pool pool;
-    MPI_Datatype  dt = pool.register_type<Unregistered>(make_int3());
-
-    v2::comm_view const comm(MPI_COMM_WORLD);
-    std::vector<int>    v(3, -1);
-    if (comm.rank() == 0) {
-        v = {4, 5, 6};
-    }
-    v2::bcast(v | views::with_type(dt) | views::with_count(1), 0, comm);
-    EXPECT_EQ(v, (std::vector<int>{4, 5, 6}));
 }

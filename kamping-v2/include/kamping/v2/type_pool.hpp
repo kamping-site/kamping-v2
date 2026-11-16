@@ -94,19 +94,15 @@ public:
     /// @brief Registers an owned datatype for `T`, without requiring a `kamping::types::mpi_type_traits<T>`
     /// specialization.
     ///
-    /// Like the `MPI_Datatype` overload, but takes a `datatype`, e.g. one from `datatype::from_native`. The pool
-    /// takes ownership and commits it (a no-op if already committed). If `T` is already registered, the existing
-    /// datatype is kept and `dt` stays with the caller, who frees it when it goes out of scope.
+    /// Like the `MPI_Datatype` overload, but takes a `datatype`, which is committed already. If `T` is already
+    /// registered, the existing datatype is kept and `dt` stays with the caller, who frees it when it goes out of
+    /// scope.
     /// @tparam T The lookup key; no trait requirement.
     /// @param dt The datatype to register for `T`.
     /// @return The committed `MPI_Datatype` now owned by the pool for `T`.
     template <typename T>
     MPI_Datatype register_type(datatype&& dt) {
-        std::type_index idx = std::type_index(typeid(T));
-        auto            it  = _types.find(idx);
-        if (it == _types.end()) {
-            it = _types.emplace(idx, datatype::commit(dt.release())).first;
-        }
+        auto [it, inserted] = _types.try_emplace(std::type_index(typeid(T)), std::move(dt));
         return it->second.mpi_handle();
     }
 

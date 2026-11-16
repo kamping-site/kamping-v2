@@ -6,7 +6,9 @@
 #include <mpi/datatype.hpp>
 
 namespace kamping::v2 {
+using mpi::experimental::buffer_datatype;
 using mpi::experimental::datatype;
 using mpi::experimental::datatype_accessors;
 using mpi::experimental::datatype_view;
+using mpi::experimental::uncommitted_datatype;
 } // namespace kamping::v2

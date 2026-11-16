@@ -13,6 +13,7 @@
 #include "kamping/v2/views/adaptor.hpp"
 #include "kamping/v2/views/all.hpp"
 #include "kamping/v2/views/view_interface.hpp"
+#include "mpi/datatype.hpp"
 #include "mpi/handle.hpp"
 
 namespace kamping::v2 {
@@ -58,11 +59,11 @@ namespace detail {
 struct with_type_fn {
     // An rvalue of a move-only handle (an owning `datatype`) is moved into the view, which then owns it, like `all()`
     // does for rvalue ranges. Everything else is borrowed: the view stores the raw `MPI_Datatype`. A move-only lvalue
-    // bound by a partial application arrives as a `std::reference_wrapper` (see `adaptor`).
+    // bound by a partial application arrives as a `std::reference_wrapper` (see `adaptor`). An `uncommitted_datatype`
+    // is rejected: it is not a `buffer_datatype`.
     template <typename R, typename T>
-        requires mpi::experimental::
-            convertible_to_mpi_handle<std::unwrap_reference_t<std::remove_cvref_t<T>>, MPI_Datatype>
-        auto operator()(R&& r, T&& type) const {
+        requires mpi::experimental::buffer_datatype<std::unwrap_reference_t<std::remove_cvref_t<T>>>
+    auto operator()(R&& r, T&& type) const {
         using handle_t = std::unwrap_reference_t<std::remove_cvref_t<T>>;
         if constexpr (!std::is_lvalue_reference_v<T> && !std::is_copy_constructible_v<handle_t>) {
             return with_type_view<kamping::v2::all_t<R>, handle_t>(std::forward<R>(r), std::move(type));
@@ -80,9 +81,9 @@ namespace kamping::v2::views {
 
 /// Overrides the MPI datatype: `buf | views::with_type(dt)`.
 ///
-/// `dt` is an `MPI_Datatype` or a datatype handle such as `datatype` or `datatype_view`. A handle passed as an lvalue
-/// is borrowed and must outlive the use of the buffer. A temporary `datatype` is moved into the view, which frees it
-/// when it is destroyed:
+/// `dt` is an `MPI_Datatype` or a datatype handle such as `datatype` or `datatype_view` (see `buffer_datatype`); an
+/// `uncommitted_datatype` is rejected at compile time. A handle passed as an lvalue is borrowed and must outlive the
+/// use of the buffer. A temporary `datatype` is moved into the view, which frees it when it is destroyed:
 ///
 /// @code
 /// send(matrix | views::with_type(datatype::commit(block)) | views::with_count(1), 0, comm);
