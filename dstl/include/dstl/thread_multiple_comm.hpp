@@ -8,7 +8,7 @@
 #include <type_traits>
 #include <vector>
 
-#ifdef _OPENMP
+#ifdef DSTL_HAS_OPENMP
     #include <omp.h>
 #endif
 
@@ -35,19 +35,20 @@
 /// (see DSTL-Flat-Alltoallv-Design.md §0/§9), not as a thread_multiple_comm or alltoallv overload.
 ///
 
+// thread_multiple_comm implements the par_comm policy, so it exists only in a build with OpenMP (see
+// has_parallel_execution_policies).
+#ifdef DSTL_HAS_OPENMP
+
 namespace dstl {
 
-/// Number of OpenMP threads the thread_multiple exchange parallelizes over (1 without OpenMP).
+/// Number of OpenMP threads the thread_multiple exchange parallelizes over.
 [[nodiscard]] inline int flat_max_threads() noexcept {
-#ifdef _OPENMP
     return omp_get_max_threads();
-#else
-    return 1;
-#endif
 }
 
 /// A communicator for @ref alltoallv with concurrent communication from several threads: it owns `t` duplicates of
 /// the global communicator, one per thread. Its accessors (`rank()`, `size()`, …) refer to the global communicator.
+/// Only available with OpenMP (see `has_parallel_execution_policies`).
 class thread_multiple_comm : public kamping::v2::comm_accessors<thread_multiple_comm> {
 public:
     using execution_policy_type = execution_policy::par_comm;
@@ -102,3 +103,5 @@ private:
 };
 
 } // namespace dstl
+
+#endif // DSTL_HAS_OPENMP

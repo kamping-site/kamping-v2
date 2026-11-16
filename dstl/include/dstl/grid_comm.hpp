@@ -66,8 +66,14 @@ namespace dstl {
 //
 // Row-major (c_0 most significant) makes the global-rank order coincide with the radix count-tree's leaf order, so
 // grid_alltoallv routes remote-first with no top-level reordering. See the design notes for the full rationale.
-template <is_execution_policy Exec = execution_policy::par>
+template <is_execution_policy Exec = execution_policy::seq>
 class grid_comm : public kamping::v2::comm_accessors<grid_comm<Exec>> {
+    static_assert(
+        detail::execution_policy_available<Exec>,
+        "dstl::grid_comm: the execution policies par and par_comm need OpenMP; configure with "
+        "KAMPING_V2_ENABLE_OPENMP=ON or use execution_policy::seq."
+    );
+
 public:
     using execution_policy_type = Exec;
 

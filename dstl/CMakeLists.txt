@@ -46,23 +46,21 @@ target_sources(
 )
 target_link_libraries(dstl INTERFACE kamping::v2)
 
-# Optional OpenMP acceleration for the re-bin kernels of the parallel execution policies. Without it, those policies
-# regroup the elements sequentially (correctness is unaffected). KAMPING_V2_ENABLE_OPENMP selects whether OpenMP is used
-# if found (AUTO), required (ON) or not used (OFF).
-set(KAMPING_V2_DSTL_USES_OPENMP OFF)
-if (KAMPING_V2_ENABLE_OPENMP STREQUAL "AUTO")
-    find_package(OpenMP QUIET COMPONENTS CXX)
-    if (OpenMP_CXX_FOUND)
-        set(KAMPING_V2_DSTL_USES_OPENMP ON)
+# OpenMP for the parallel execution policies par and par_comm. Without it, only seq is available: dstl rejects the
+# parallel policies at compile time and leaves out thread_multiple_comm. The definition DSTL_HAS_OPENMP (not _OPENMP,
+# which depends on the flags of the code including dstl) tells the headers which case applies.
+if (KAMPING_V2_ENABLE_OPENMP)
+    find_package(OpenMP COMPONENTS CXX)
+    if (NOT OpenMP_CXX_FOUND)
+        message(
+            FATAL_ERROR
+                "dstl: OpenMP not found. Install it (e.g. libomp) or configure with -DKAMPING_V2_ENABLE_OPENMP=OFF to "
+                "build dstl with the sequential execution policy only."
+        )
     endif ()
-elseif (KAMPING_V2_ENABLE_OPENMP)
-    find_package(OpenMP REQUIRED COMPONENTS CXX)
-    set(KAMPING_V2_DSTL_USES_OPENMP ON)
-endif ()
-if (KAMPING_V2_DSTL_USES_OPENMP)
     target_link_libraries(dstl INTERFACE OpenMP::OpenMP_CXX)
+    target_compile_definitions(dstl INTERFACE DSTL_HAS_OPENMP)
 endif ()
-message(STATUS "dstl: OpenMP ${KAMPING_V2_DSTL_USES_OPENMP} (KAMPING_V2_ENABLE_OPENMP=${KAMPING_V2_ENABLE_OPENMP})")
 
 if (KAMPING_V2_INSTALL)
     install(

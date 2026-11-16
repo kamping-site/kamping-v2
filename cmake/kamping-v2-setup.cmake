@@ -23,11 +23,10 @@ option(KAMPING_V2_ENABLE_REFLECTION "Derive MPI datatypes for plain structs via 
 option(KAMPING_V2_REFLECTION_USE_SYSTEM_BOOST_FOR_PFR
        "Use Boost.PFR from a system-installed Boost instead of a standalone install or building from source." OFF
 )
-set(KAMPING_V2_ENABLE_OPENMP
-    AUTO
-    CACHE STRING "Use OpenMP in the dstl parallel execution policies: AUTO (if found), ON (required) or OFF."
+option(KAMPING_V2_ENABLE_OPENMP
+       "Use OpenMP in dstl, which the parallel execution policies par and par_comm need. If OFF, only seq is available."
+       ON
 )
-set_property(CACHE KAMPING_V2_ENABLE_OPENMP PROPERTY STRINGS AUTO ON OFF)
 option(KAMPING_V2_ENABLE_CEREAL "Build the Cereal serialization adapter." OFF)
 option(KAMPING_V2_ENABLE_KOKKOS "Build the Kokkos adapter." OFF)
 option(KAMPING_V2_ENABLE_KOKKOS_COMM "Let the Kokkos adapter use KokkosComm." OFF)
