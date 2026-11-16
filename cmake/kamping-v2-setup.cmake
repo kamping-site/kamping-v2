@@ -63,8 +63,8 @@ if (NOT TARGET kamping_v2::kassert)
     set(KASSERT_INSTALL ${KAMPING_V2_INSTALL})
     FetchContent_Declare(
         kamping_v2_kassert
-        GIT_REPOSITORY https://github.com/kamping-site/kassert
-        GIT_TAG v1.1.0
+        URL https://github.com/kamping-site/kassert/archive/refs/tags/v1.1.0.tar.gz
+        URL_HASH SHA256=20ffb231556772d0652a45b36986425078b3ff17884295d75938f5a8ec5c0ba5
     )
     FetchContent_MakeAvailable(kamping_v2_kassert)
     endblock()
@@ -74,8 +74,8 @@ endif ()
 # must exist before kamping-types is made available, so that kamping-types skips its own FetchContent.
 FetchContent_Declare(
     pfr
-    GIT_REPOSITORY https://github.com/boostorg/pfr
-    GIT_TAG 2.2.0
+    URL https://github.com/boostorg/pfr/archive/refs/tags/2.2.0.tar.gz
+    URL_HASH SHA256=6f490ec1383de5855dcf801c23f0a967f888eb6e1440b6ca0bf36c12d4ae7ac7
     SYSTEM FIND_PACKAGE_ARGS 2.2.0
 )
 if (KAMPING_V2_ENABLE_REFLECTION
@@ -100,21 +100,29 @@ endif ()
 # with FetchContent_MakeAvailable(KaTestrophe), so it is downloaded only when tests are built.
 FetchContent_Declare(
     KaTestrophe
-    GIT_REPOSITORY https://github.com/kamping-site/KaTestrophe.cmake
-    GIT_TAG v1.1.0
+    URL https://github.com/kamping-site/KaTestrophe.cmake/archive/refs/tags/v1.1.0.tar.gz
+    URL_HASH SHA256=9ee8fbd551085c7f3800a269cff46ca66be16437ff488eb946ed6e557f9a343b
 )
 
-# kamping-types (MPI datatype construction), maintained in the KaMPIng (v1) repository.
+# kamping-types (MPI datatype construction), maintained in the KaMPIng (v1) repository. All dependencies are fetched as
+# release archives rather than git clones: a clone of the v1 repository carries its whole history (~44 MB vs. 0.4 MB).
 if (NOT TARGET kamping::types)
     block()
     set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
     set(KAMPING_TYPES_ENABLE_REFLECTION ${KAMPING_V2_ENABLE_REFLECTION})
     set(KAMPING_TYPES_BUILD_EXAMPLES OFF)
     set(KASSERT_INSTALL ${KAMPING_V2_INSTALL})
+    # kamping-types declares its own kassert instance as a git clone; the first declaration of a name wins, so this one
+    # replaces it with the archive. Keep the version in sync with kamping-types.
+    FetchContent_Declare(
+        kamping_types_kassert
+        URL https://github.com/kamping-site/kassert/archive/refs/tags/v1.1.0.tar.gz
+        URL_HASH SHA256=20ffb231556772d0652a45b36986425078b3ff17884295d75938f5a8ec5c0ba5
+    )
     FetchContent_Declare(
         kamping_types
-        GIT_REPOSITORY https://github.com/kamping-site/kamping
-        GIT_TAG v0.3.2
+        URL https://github.com/kamping-site/kamping/archive/refs/tags/v0.3.2.tar.gz
+        URL_HASH SHA256=9ba53746930c44f456b7a853d59b1cc73dd894b254a833f23c93b6941eb9e208
         SOURCE_SUBDIR kamping-types
     )
     FetchContent_MakeAvailable(kamping_types)
