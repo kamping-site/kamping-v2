@@ -69,6 +69,7 @@ target_sources(
               include/mpi/status.hpp
               include/mpi/status_vector.hpp
               include/mpi/thread_level.hpp
+              include/mpi/type_constructors.hpp
               include/mpi/win.hpp
 )
 set_target_properties(mpi_core PROPERTIES EXPORT_NAME core)

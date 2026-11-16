@@ -217,7 +217,8 @@ template <typename T>
 concept type_committable = requires(T& t) { mpi::experimental::type_commit(t); };
 } // namespace
 
-// The owning types commit themselves and expose no writable handle; views hold only a copy.
+// The owning types commit themselves: a datatype exposes no writable handle, and an uncommitted_datatype, whose
+// writable handle receives the result of a type constructor, is rejected explicitly. Views hold only a copy.
 static_assert(type_committable<MPI_Datatype>);
 static_assert(type_committable<my_type>);
 static_assert(!type_committable<datatype>);
