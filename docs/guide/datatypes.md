@@ -37,6 +37,39 @@ auto [_, all] = v2::allgatherv(points | views::with_auto_pool(env),
                                v2::auto_recv_v<point>(env), env);
 ```
 
+## One-off datatypes
+
+Some datatypes describe a layout rather than a C++ type, such as the block of a distributed matrix that one process
+owns. Build them with the MPI type constructors and hand them to a `datatype`. `datatype::commit` commits the
+datatype, and the `datatype` frees it at the end of its lifetime:
+
+```cpp
+MPI_Datatype raw;
+MPI_Type_create_darray(comm.size(), comm.rank(), 2, gsizes, distribs, dargs, psizes,
+                       MPI_ORDER_C, MPI_DOUBLE, &raw);
+auto const block = v2::datatype::commit(raw);
+
+v2::send(matrix | views::with_type(block) | views::with_count(1), 0, comm);
+```
+
+`views::with_type` borrows a `datatype` passed as an lvalue. A temporary is moved into the view instead, so
+`views::with_type(v2::datatype::commit(raw))` frees the datatype once the view is gone. A `type_pool` can also
+take a `datatype` with `pool.register_type<T>(std::move(dt))`.
+
+A `datatype` is always committed. Datatypes that only serve as building blocks for other datatypes need not be
+committed, but still have to be freed. An `uncommitted_datatype` owns such a datatype; `views::with_type` rejects it
+at compile time, and `std::move(u).commit()` turns it into a `datatype`:
+
+```cpp
+MPI_Datatype raw_column;
+MPI_Type_vector(n, 1, n, MPI_DOUBLE, &raw_column);                     // one matrix column
+auto const column = v2::uncommitted_datatype::from_native(raw_column); // freed, never committed
+
+MPI_Datatype raw_resized;
+MPI_Type_create_resized(column.mpi_handle(), 0, sizeof(double), &raw_resized);
+auto const column_type = v2::datatype::commit(raw_resized);            // consecutive columns
+```
+
 ## Types without a datatype
 
 Types that cannot be described by a datatype, such as a `std::map` or a tree, can be serialized with the Cereal

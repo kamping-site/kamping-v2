@@ -39,6 +39,7 @@ target_sources(
               include/kamping/v2/comm_op.hpp
               include/kamping/v2/comm_view_with_pool.hpp
               include/kamping/v2/completion.hpp
+              include/kamping/v2/datatype.hpp
               include/kamping/v2/environment.hpp
               include/kamping/v2/error.hpp
               include/kamping/v2/group.hpp

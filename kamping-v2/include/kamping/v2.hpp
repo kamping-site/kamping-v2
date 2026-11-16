@@ -12,6 +12,7 @@
 #include "kamping/v2/comm.hpp"                // IWYU pragma: export
 #include "kamping/v2/comm_view_with_pool.hpp" // IWYU pragma: export
 #include "kamping/v2/completion.hpp"          // IWYU pragma: export
+#include "kamping/v2/datatype.hpp"            // IWYU pragma: export
 #include "kamping/v2/environment.hpp"         // IWYU pragma: export
 #include "kamping/v2/error.hpp"               // IWYU pragma: export
 #include "kamping/v2/group.hpp"               // IWYU pragma: export

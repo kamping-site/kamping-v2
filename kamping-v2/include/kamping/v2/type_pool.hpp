@@ -13,7 +13,7 @@
 #include <mpi.h>
 
 #include "kamping/types/mpi_type_traits.hpp"
-#include "kamping/types/scoped_datatype.hpp"
+#include "kamping/v2/datatype.hpp"
 #include "kamping/v2/kassert.hpp"
 #include "kamping/v2/views/adaptor.hpp"
 #include "kamping/v2/views/payload.hpp"
@@ -31,7 +31,7 @@ namespace kamping::v2 {
 /// The pool is move-only: copying is disabled because `MPI_Datatype` handles are not duplicable.
 class type_pool {
 private:
-    std::unordered_map<std::type_index, types::ScopedDatatype> _types;
+    std::unordered_map<std::type_index, datatype> _types;
 
 public:
     type_pool()                            = default;
@@ -56,9 +56,9 @@ public:
             std::type_index idx = std::type_index(typeid(T));
             auto            it  = _types.find(idx);
             if (it == _types.end()) {
-                it = _types.emplace(idx, kamping::types::mpi_type_traits<T>::data_type()).first;
+                it = _types.emplace(idx, datatype::commit(kamping::types::mpi_type_traits<T>::data_type())).first;
             }
-            return it->second.data_type();
+            return it->second.mpi_handle();
         }
     }
 
@@ -66,17 +66,15 @@ public:
     /// `kamping::types::mpi_type_traits<T>` specialization.
     ///
     /// `T` is used purely as the lookup key (`std::type_index(typeid(T))`) — e.g. a byte-blob
-    /// type for a struct that has no trait specialization written for it. The pool wraps `dt`
-    /// in a `types::ScopedDatatype`, which commits it (a no-op if already committed) and frees
-    /// it on pool destruction; the pool owns the handle from this point on, the caller must not
-    /// free it separately.
+    /// type for a struct that has no trait specialization written for it. The pool takes
+    /// ownership of `dt` with `datatype::commit`, which commits it (a no-op if already committed),
+    /// and frees it on pool destruction; the caller must not free it separately.
     ///
     /// Idempotent: if `T` is already registered (by this overload or the trait-based one above),
     /// the existing handle is kept and `dt` is freed immediately, so calling this repeatedly with a
     /// freshly built datatype does not leak.
     ///
-    /// @pre `dt` must not be a predefined/named handle (e.g. `MPI_INT`) — freeing it (either via
-    /// `ScopedDatatype` on first registration, or directly here on a redundant one) would be
+    /// @pre `dt` must not be a predefined/named handle (e.g. `MPI_INT`) — freeing it would be
     /// invalid. This overload is for derived (contiguous/struct) types only.
     /// @tparam T The lookup key; no trait requirement.
     /// @param dt The (possibly uncommitted) `MPI_Datatype` to register for `T`.
@@ -86,11 +84,26 @@ public:
         std::type_index idx = std::type_index(typeid(T));
         auto            it  = _types.find(idx);
         if (it == _types.end()) {
-            it = _types.emplace(idx, dt).first;
+            it = _types.emplace(idx, datatype::commit(dt)).first;
         } else if (dt != MPI_DATATYPE_NULL) {
             MPI_Type_free(&dt);
         }
-        return it->second.data_type();
+        return it->second.mpi_handle();
+    }
+
+    /// @brief Registers an owned datatype for `T`, without requiring a `kamping::types::mpi_type_traits<T>`
+    /// specialization.
+    ///
+    /// Like the `MPI_Datatype` overload, but takes a `datatype`, which is committed already. If `T` is already
+    /// registered, the existing datatype is kept and `dt` stays with the caller, who frees it when it goes out of
+    /// scope.
+    /// @tparam T The lookup key; no trait requirement.
+    /// @param dt The datatype to register for `T`.
+    /// @return The committed `MPI_Datatype` now owned by the pool for `T`.
+    template <typename T>
+    MPI_Datatype register_type(datatype&& dt) {
+        auto [it, inserted] = _types.try_emplace(std::type_index(typeid(T)), std::move(dt));
+        return it->second.mpi_handle();
     }
 
     /// @brief Looks up the `MPI_Datatype` for `T` without registering it.
@@ -114,7 +127,7 @@ public:
                 if (it == _types.end()) {
                     return std::nullopt;
                 }
-                return it->second.data_type();
+                return it->second.mpi_handle();
             }
         } else {
             std::type_index idx = std::type_index(typeid(T));
@@ -122,7 +135,7 @@ public:
             if (it == _types.end()) {
                 return std::nullopt;
             }
-            return it->second.data_type();
+            return it->second.mpi_handle();
         }
     }
 };

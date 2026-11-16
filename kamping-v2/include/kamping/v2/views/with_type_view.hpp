@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: BSL-1.0
 
 #pragma once
+#include <concepts>
+#include <functional>
 #include <ranges>
+#include <type_traits>
 #include <utility>
 
 #include <mpi.h>
@@ -10,14 +13,19 @@
 #include "kamping/v2/views/adaptor.hpp"
 #include "kamping/v2/views/all.hpp"
 #include "kamping/v2/views/view_interface.hpp"
+#include "mpi/datatype.hpp"
+#include "mpi/handle.hpp"
 
 namespace kamping::v2 {
 
 /// Overrides the MPI datatype (`mpi_type()`) of the wrapped buffer.
-template <typename Base>
-class with_type_view : public view_interface<with_type_view<Base>> {
-    Base         _base;
-    MPI_Datatype _type;
+///
+/// `Type` is `MPI_Datatype` when the datatype is borrowed, or a move-only handle (such as `datatype`) that the view
+/// owns.
+template <typename Base, typename Type = MPI_Datatype>
+class with_type_view : public view_interface<with_type_view<Base, Type>> {
+    Base _base;
+    Type _type;
 
 public:
     constexpr Base const& base() const& noexcept {
@@ -30,20 +38,42 @@ public:
         return std::move(_base);
     }
 
-    template <typename R>
-    with_type_view(R&& base, MPI_Datatype type) : _base(kamping::v2::all(std::forward<R>(base))),
-                                                  _type(type) {}
+    template <typename R, typename T>
+    with_type_view(R&& base, T&& type) : _base(kamping::v2::all(std::forward<R>(base))),
+                                         _type(std::forward<T>(type)) {}
 
-    constexpr auto mpi_type() const {
-        return _type;
+    constexpr MPI_Datatype mpi_type() const {
+        return mpi::experimental::handle(_type);
     }
 };
 
 template <typename R>
 with_type_view(R&&, MPI_Datatype) -> with_type_view<kamping::v2::all_t<R>>;
 
-template <typename Base>
-inline constexpr bool enable_borrowed_buffer<with_type_view<Base>> = enable_borrowed_buffer<Base>;
+// A view that owns its datatype must not be treated as borrowed: the datatype is freed with the view.
+template <typename Base, typename Type>
+inline constexpr bool enable_borrowed_buffer<with_type_view<Base, Type>> =
+    enable_borrowed_buffer<Base> && std::same_as<Type, MPI_Datatype>;
+
+namespace detail {
+struct with_type_fn {
+    // An rvalue of a move-only handle (an owning `datatype`) is moved into the view, which then owns it, like `all()`
+    // does for rvalue ranges. Everything else is borrowed: the view stores the raw `MPI_Datatype`. A move-only lvalue
+    // bound by a partial application arrives as a `std::reference_wrapper` (see `adaptor`). An `uncommitted_datatype`
+    // is rejected: it is not a `buffer_datatype`.
+    template <typename R, typename T>
+        requires mpi::experimental::buffer_datatype<std::unwrap_reference_t<std::remove_cvref_t<T>>>
+    auto operator()(R&& r, T&& type) const {
+        using handle_t = std::unwrap_reference_t<std::remove_cvref_t<T>>;
+        if constexpr (!std::is_lvalue_reference_v<T> && !std::is_copy_constructible_v<handle_t>) {
+            return with_type_view<kamping::v2::all_t<R>, handle_t>(std::forward<R>(r), std::move(type));
+        } else {
+            handle_t const& h = type;
+            return with_type_view<kamping::v2::all_t<R>>(std::forward<R>(r), mpi::experimental::handle(h));
+        }
+    }
+};
+} // namespace detail
 
 } // namespace kamping::v2
 
@@ -51,13 +81,18 @@ namespace kamping::v2::views {
 
 /// Overrides the MPI datatype: `buf | views::with_type(dt)`.
 ///
-/// @code{.signature}
-/// auto with_type(MPI_Datatype type);
-/// template <typename Buf> auto with_type(Buf&& buf, MPI_Datatype type);
+/// `dt` is an `MPI_Datatype` or a datatype handle such as `datatype` or `datatype_view` (see `buffer_datatype`); an
+/// `uncommitted_datatype` is rejected at compile time. A handle passed as an lvalue is borrowed and must outlive the
+/// use of the buffer. A temporary `datatype` is moved into the view, which frees it when it is destroyed:
+///
+/// @code
+/// send(matrix | views::with_type(datatype::commit(block)) | views::with_count(1), 0, comm);
 /// @endcode
-inline constexpr kamping::v2::adaptor<1, decltype([](auto&& r, MPI_Datatype type) {
-                                          return kamping::v2::with_type_view(std::forward<decltype(r)>(r), type);
-                                      })>
-    with_type{};
+///
+/// @code{.signature}
+/// template <typename Type> auto with_type(Type&& type);
+/// template <typename Buf, typename Type> auto with_type(Buf&& buf, Type&& type);
+/// @endcode
+inline constexpr kamping::v2::adaptor<1, kamping::v2::detail::with_type_fn> with_type{};
 
 } // namespace kamping::v2::views
