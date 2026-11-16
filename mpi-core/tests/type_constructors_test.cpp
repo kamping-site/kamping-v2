@@ -142,6 +142,53 @@ TEST(TypeConstructorsTest, Hvector) {
     EXPECT_EQ(selected_ints(m.data(), dt, 6), (std::vector<int>{0, 1, 3, 4, 6, 7}));
 }
 
+TEST(TypeConstructorsTest, Indexed) {
+    // The upper triangle of the 4 x 4 matrix: row i holds 4 - i elements, starting at column i.
+    std::array const blocklengths{4, 3, 2, 1};
+    std::array const displacements{0, 5, 10, 15};
+    auto const       dt = type_indexed(blocklengths, displacements, MPI_INT).commit();
+    EXPECT_EQ(dt.size(), 10 * static_cast<int>(sizeof(int)));
+    auto const m = iota16();
+    EXPECT_EQ(selected_ints(m.data(), dt, 10), (std::vector<int>{0, 1, 2, 3, 5, 6, 7, 10, 11, 15}));
+}
+
+TEST(TypeConstructorsTest, Hindexed) {
+    std::array const              blocklengths{2, 1};
+    std::array<MPI_Aint, 2> const displacements{3 * int_size, 9 * int_size};
+    auto const                    dt = type_create_hindexed(blocklengths, displacements, MPI_INT).commit();
+    auto const                    m  = iota16();
+    EXPECT_EQ(selected_ints(m.data(), dt, 3), (std::vector<int>{3, 4, 9}));
+}
+
+TEST(TypeConstructorsTest, IndexedBlock) {
+    std::array const displacements{0, 5, 7};
+    auto const       dt = type_create_indexed_block(2, displacements, MPI_INT).commit();
+    EXPECT_EQ(dt.size(), 6 * static_cast<int>(sizeof(int)));
+    auto const m = iota16();
+    EXPECT_EQ(selected_ints(m.data(), dt, 6), (std::vector<int>{0, 1, 5, 6, 7, 8}));
+}
+
+TEST(TypeConstructorsTest, HindexedBlock) {
+    std::array<MPI_Aint, 3> const displacements{12 * int_size, 2 * int_size, 0};
+    auto const                    dt = type_create_hindexed_block(1, displacements, MPI_INT).commit();
+    auto const                    m  = iota16();
+    // The blocks are sent in the order of the displacements, not in memory order.
+    EXPECT_EQ(selected_ints(m.data(), dt, 3), (std::vector<int>{12, 2, 0}));
+}
+
+TEST(TypeConstructorsTest, IndexedFullFormAndEmpty) {
+    MPI_Datatype                  raw = MPI_DATATYPE_NULL;
+    std::array<int, 0> const      none{};
+    std::array<MPI_Aint, 0> const none_bytes{};
+    type_indexed(none, none, MPI_INT, raw);
+    EXPECT_EQ(datatype_view(raw).size(), 0);
+    MPI_Type_free(&raw);
+
+    uncommitted_datatype u;
+    type_create_hindexed_block(1, none_bytes, MPI_INT, u);
+    EXPECT_EQ(u.size(), 0);
+}
+
 TEST(TypeConstructorsTest, Resized) {
     auto const dt = type_create_resized(MPI_INT, -int_size, 4 * int_size);
     EXPECT_EQ(dt.lower_bound(), -int_size);

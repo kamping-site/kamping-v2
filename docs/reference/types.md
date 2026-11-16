@@ -72,6 +72,18 @@ including an `uncommitted_datatype`. Array arguments are contiguous ranges, and 
 ```{doxygenoverloads} kamping::v2::type_create_hvector
 ```
 
+```{doxygenoverloads} kamping::v2::type_indexed
+```
+
+```{doxygenoverloads} kamping::v2::type_create_hindexed
+```
+
+```{doxygenoverloads} kamping::v2::type_create_indexed_block
+```
+
+```{doxygenoverloads} kamping::v2::type_create_hindexed_block
+```
+
 ```{doxygenoverloads} kamping::v2::type_create_struct
 ```
 

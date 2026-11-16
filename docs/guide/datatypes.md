@@ -41,7 +41,8 @@ auto [_, all] = v2::allgatherv(points | views::with_auto_pool(env),
 
 Some datatypes describe a layout rather than a C++ type, such as a column of a matrix or the block of a distributed
 matrix that one process owns. Build them with the type constructors, which wrap the MPI ones: `type_contiguous`,
-`type_vector`, `type_create_hvector`, `type_create_struct`, `type_create_subarray`, `type_create_darray` and
+`type_vector`, `type_create_hvector`, `type_indexed`, `type_create_hindexed`, `type_create_indexed_block`,
+`type_create_hindexed_block`, `type_create_struct`, `type_create_subarray`, `type_create_darray` and
 `type_create_resized`. Each returns the new datatype as an `uncommitted_datatype`, which frees it at the end of its
 lifetime. `std::move(u).commit()`, or `.commit()` on the returned temporary, commits it and turns it into a
 `datatype`:

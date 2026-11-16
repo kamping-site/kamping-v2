@@ -135,6 +135,163 @@ type_create_hvector(int count, int blocklength, MPI_Aint stride, Datatype const&
     return newtype;
 }
 
+// ── MPI_Type_indexed / MPI_Type_create_hindexed ────────────────────────────────────────────────────────────────────
+
+/// @brief Blocks of `oldtype` of different lengths at different offsets (`MPI_Type_indexed`).
+///
+/// Block `i` holds `blocklengths[i]` copies of `oldtype` and starts `displacements[i]` elements of `oldtype` after the
+/// start of the datatype. Both arrays must have the same length, the number of blocks.
+/// @param newtype Output: receives the new, uncommitted datatype.
+/// @throws mpi_error if `MPI_Type_indexed` fails.
+template <convertible_to_mpi_handle<MPI_Datatype> Datatype, convertible_to_mpi_handle_ptr<MPI_Datatype> NewDatatype>
+void type_indexed(
+    std::span<int const> blocklengths, std::span<int const> displacements, Datatype const& oldtype, NewDatatype& newtype
+) {
+    KAMPING_V2_ASSERT(
+        blocklengths.size() == displacements.size(),
+        "type_indexed: blocklengths and displacements must have the same length"
+    );
+    int err = MPI_Type_indexed(
+        detail::checked_int_count(blocklengths.size()),
+        blocklengths.data(),
+        displacements.data(),
+        mpi::experimental::handle(oldtype),
+        mpi::experimental::handle_ptr(newtype)
+    );
+    detail::check_type_constructor(err);
+}
+
+/// @brief Blocks of `oldtype` of different lengths at different offsets (`MPI_Type_indexed`).
+///
+/// Block `i` holds `blocklengths[i]` copies of `oldtype` and starts `displacements[i]` elements of `oldtype` after the
+/// start of the datatype. Both arrays must have the same length, the number of blocks.
+///
+/// @code
+/// // The upper triangle of an n x n row-major matrix: row i holds n - i elements, starting at column i.
+/// std::vector<int> blocklengths(n), displacements(n);
+/// for (int i = 0; i < n; ++i) {
+///     blocklengths[i]  = n - i;
+///     displacements[i] = i * n + i;
+/// }
+/// auto const upper = type_indexed(blocklengths, displacements, MPI_DOUBLE).commit();
+/// @endcode
+/// @return The new datatype, owned and not committed.
+/// @throws mpi_error if `MPI_Type_indexed` fails.
+template <convertible_to_mpi_handle<MPI_Datatype> Datatype>
+[[nodiscard]] uncommitted_datatype
+type_indexed(std::span<int const> blocklengths, std::span<int const> displacements, Datatype const& oldtype) {
+    uncommitted_datatype newtype;
+    type_indexed(blocklengths, displacements, oldtype, newtype);
+    return newtype;
+}
+
+/// @brief Like `type_indexed`, but `displacements` are given in bytes (`MPI_Type_create_hindexed`).
+/// @param newtype Output: receives the new, uncommitted datatype.
+/// @throws mpi_error if `MPI_Type_create_hindexed` fails.
+template <convertible_to_mpi_handle<MPI_Datatype> Datatype, convertible_to_mpi_handle_ptr<MPI_Datatype> NewDatatype>
+void type_create_hindexed(
+    std::span<int const>      blocklengths,
+    std::span<MPI_Aint const> displacements,
+    Datatype const&           oldtype,
+    NewDatatype&              newtype
+) {
+    KAMPING_V2_ASSERT(
+        blocklengths.size() == displacements.size(),
+        "type_create_hindexed: blocklengths and displacements must have the same length"
+    );
+    int err = MPI_Type_create_hindexed(
+        detail::checked_int_count(blocklengths.size()),
+        blocklengths.data(),
+        displacements.data(),
+        mpi::experimental::handle(oldtype),
+        mpi::experimental::handle_ptr(newtype)
+    );
+    detail::check_type_constructor(err);
+}
+
+/// @brief Like `type_indexed`, but `displacements` are given in bytes (`MPI_Type_create_hindexed`).
+/// @return The new datatype, owned and not committed.
+/// @throws mpi_error if `MPI_Type_create_hindexed` fails.
+template <convertible_to_mpi_handle<MPI_Datatype> Datatype>
+[[nodiscard]] uncommitted_datatype type_create_hindexed(
+    std::span<int const> blocklengths, std::span<MPI_Aint const> displacements, Datatype const& oldtype
+) {
+    uncommitted_datatype newtype;
+    type_create_hindexed(blocklengths, displacements, oldtype, newtype);
+    return newtype;
+}
+
+// ── MPI_Type_create_indexed_block / MPI_Type_create_hindexed_block ─────────────────────────────────────────────────
+
+/// @brief Blocks of `blocklength` copies of `oldtype` each at different offsets (`MPI_Type_create_indexed_block`).
+///
+/// Block `i` starts `displacements[i]` elements of `oldtype` after the start of the datatype; the length of
+/// `displacements` is the number of blocks.
+/// @param newtype Output: receives the new, uncommitted datatype.
+/// @throws mpi_error if `MPI_Type_create_indexed_block` fails.
+template <convertible_to_mpi_handle<MPI_Datatype> Datatype, convertible_to_mpi_handle_ptr<MPI_Datatype> NewDatatype>
+void type_create_indexed_block(
+    int blocklength, std::span<int const> displacements, Datatype const& oldtype, NewDatatype& newtype
+) {
+    int err = MPI_Type_create_indexed_block(
+        detail::checked_int_count(displacements.size()),
+        blocklength,
+        displacements.data(),
+        mpi::experimental::handle(oldtype),
+        mpi::experimental::handle_ptr(newtype)
+    );
+    detail::check_type_constructor(err);
+}
+
+/// @brief Blocks of `blocklength` copies of `oldtype` each at different offsets (`MPI_Type_create_indexed_block`).
+///
+/// Block `i` starts `displacements[i]` elements of `oldtype` after the start of the datatype; the length of
+/// `displacements` is the number of blocks.
+///
+/// @code
+/// std::array const selected{0, 5, 7};  // the elements 0, 5 and 7 of an array
+/// auto const       gather = type_create_indexed_block(1, selected, MPI_INT).commit();
+/// @endcode
+/// @return The new datatype, owned and not committed.
+/// @throws mpi_error if `MPI_Type_create_indexed_block` fails.
+template <convertible_to_mpi_handle<MPI_Datatype> Datatype>
+[[nodiscard]] uncommitted_datatype
+type_create_indexed_block(int blocklength, std::span<int const> displacements, Datatype const& oldtype) {
+    uncommitted_datatype newtype;
+    type_create_indexed_block(blocklength, displacements, oldtype, newtype);
+    return newtype;
+}
+
+/// @brief Like `type_create_indexed_block`, but `displacements` are given in bytes
+/// (`MPI_Type_create_hindexed_block`).
+/// @param newtype Output: receives the new, uncommitted datatype.
+/// @throws mpi_error if `MPI_Type_create_hindexed_block` fails.
+template <convertible_to_mpi_handle<MPI_Datatype> Datatype, convertible_to_mpi_handle_ptr<MPI_Datatype> NewDatatype>
+void type_create_hindexed_block(
+    int blocklength, std::span<MPI_Aint const> displacements, Datatype const& oldtype, NewDatatype& newtype
+) {
+    int err = MPI_Type_create_hindexed_block(
+        detail::checked_int_count(displacements.size()),
+        blocklength,
+        displacements.data(),
+        mpi::experimental::handle(oldtype),
+        mpi::experimental::handle_ptr(newtype)
+    );
+    detail::check_type_constructor(err);
+}
+
+/// @brief Like `type_create_indexed_block`, but `displacements` are given in bytes
+/// (`MPI_Type_create_hindexed_block`).
+/// @return The new datatype, owned and not committed.
+/// @throws mpi_error if `MPI_Type_create_hindexed_block` fails.
+template <convertible_to_mpi_handle<MPI_Datatype> Datatype>
+[[nodiscard]] uncommitted_datatype
+type_create_hindexed_block(int blocklength, std::span<MPI_Aint const> displacements, Datatype const& oldtype) {
+    uncommitted_datatype newtype;
+    type_create_hindexed_block(blocklength, displacements, oldtype, newtype);
+    return newtype;
+}
+
 // ── MPI_Type_create_struct ─────────────────────────────────────────────────────────────────────────────────────────
 
 /// @brief A datatype made of blocks of different datatypes (`MPI_Type_create_struct`).
