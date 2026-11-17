@@ -175,11 +175,12 @@ TEST(CartTest, Sub) {
     comm const all = cart_sub(grid, std::vector<int>{1, 1});
     EXPECT_EQ(all.size(), grid.size());
 
+    // The output-argument form, keeping one dimension. (Keeping none is left out: MPICH and Open MPI differ there.)
     MPI_Comm                  raw = MPI_COMM_NULL;
-    std::array<bool, 2> const none{false, false};
-    cart_sub(grid, none, raw);
+    std::array<bool, 2> const keep_row{false, true};
+    cart_sub(grid, keep_row, raw);
     int size = 0;
     MPI_Comm_size(raw, &size);
-    EXPECT_EQ(size, 1);
+    EXPECT_EQ(size, cols);
     MPI_Comm_free(&raw);
 }
