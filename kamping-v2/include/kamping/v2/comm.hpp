@@ -9,8 +9,10 @@ namespace kamping::v2 {
 using mpi::experimental::comm;
 using mpi::experimental::comm_accessors;
 using mpi::experimental::comm_self;
+using mpi::experimental::comm_type;
 using mpi::experimental::comm_view;
 using mpi::experimental::comm_world;
 using mpi::experimental::dup;
 using mpi::experimental::split;
+using mpi::experimental::split_type;
 } // namespace kamping::v2

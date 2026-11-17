@@ -65,6 +65,7 @@ target_sources(
               include/mpi/request.hpp
               include/mpi/request_vector.hpp
               include/mpi/sentinels.hpp
+              include/mpi/special_values.hpp
               include/mpi/session.hpp
               include/mpi/status.hpp
               include/mpi/status_vector.hpp

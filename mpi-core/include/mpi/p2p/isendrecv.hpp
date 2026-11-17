@@ -8,6 +8,7 @@
 #include "mpi/buffer.hpp"
 #include "mpi/error.hpp"
 #include "mpi/handle.hpp"
+#include "mpi/special_values.hpp"
 
 #if MPI_VERSION >= 4
 
@@ -18,9 +19,9 @@ namespace mpi::experimental {
 template <
     send_buffer                                SBuf,
     recv_buffer                                RBuf,
-    rank                                       Dest,
-    rank                                       Source,
-    tag                                        SendTag,
+    destination                                Dest,
+    sender                                     Source,
+    message_tag                                SendTag,
     tag                                        RecvTag,
     convertible_to_mpi_handle<MPI_Comm>        Comm,
     convertible_to_mpi_handle_ptr<MPI_Request> Request>

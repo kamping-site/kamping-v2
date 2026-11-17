@@ -38,16 +38,12 @@ struct dims_create {
 };
 
 /// One dimension per hardware level: a two-dimensional grid of nodes × processes per node, derived from
-/// `MPI_Comm_split_type(MPI_COMM_TYPE_SHARED)`. Falls back to `dims_create{2}` if the nodes have different numbers of
+/// `split_type(comm_type::shared)`. Falls back to `dims_create{2}` if the nodes have different numbers of
 /// processes.
 struct topology_aware {
     std::vector<std::size_t> operator()(kamping::v2::comm_view global) const {
-        auto     p      = static_cast<std::size_t>(global.size());
-        MPI_Comm shared = MPI_COMM_NULL;
-        MPI_Comm_split_type(global.mpi_handle(), MPI_COMM_TYPE_SHARED, 0, MPI_INFO_NULL, &shared);
-        int local_size = 0;
-        MPI_Comm_size(shared, &local_size);
-        MPI_Comm_free(&shared);
+        auto p          = static_cast<std::size_t>(global.size());
+        int  local_size = global.split_type(kamping::v2::comm_type::shared).size();
         // Require a homogeneous decomposition: every node must hold the same number of ranks.
         int min_size = 0;
         int max_size = 0;

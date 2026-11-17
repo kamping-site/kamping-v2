@@ -7,6 +7,7 @@
 
 #include "mpi/error.hpp"
 #include "mpi/handle.hpp"
+#include "mpi/special_values.hpp"
 
 namespace mpi::experimental {
 
@@ -14,7 +15,7 @@ namespace mpi::experimental {
 ///
 /// @param status Optional: filled with the status of the message. Defaults to `MPI_STATUS_IGNORE`.
 template <
-    rank                                      Source,
+    sender                                    Source,
     tag                                       Tag,
     convertible_to_mpi_handle<MPI_Comm>       Comm,
     convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>

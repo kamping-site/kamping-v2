@@ -38,12 +38,23 @@ The predefined communicators `MPI_COMM_WORLD` and `MPI_COMM_SELF` (see {ref}`wor
 :members:
 ```
 
-The free functions `dup` and `split` do the same as the members, and can also write into an existing `comm`:
+The free functions `dup`, `split` and `split_type` do the same as the members, and can also write into an existing
+`comm`. A process that passes `undefined` instead of a color or split type takes part in the split, but gets a null
+`comm`:
 
 ```{doxygenoverloads} kamping::v2::dup
 ```
 
 ```{doxygenoverloads} kamping::v2::split
+```
+
+```{doxygenoverloads} kamping::v2::split_type
+```
+
+```{doxygenenum} kamping::v2::comm_type
+```
+
+```{doxygenvariable} kamping::v2::undefined
 ```
 
 ## Groups
@@ -122,6 +133,9 @@ The predefined process sets of MPI 4:
 ```
 
 ```{doxygenoverloads} kamping::v2::fence
+```
+
+```{doxygenenum} kamping::v2::win_assert
 ```
 
 ## Caching state on MPI objects

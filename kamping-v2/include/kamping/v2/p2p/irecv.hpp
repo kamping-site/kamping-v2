@@ -7,6 +7,7 @@
 
 #include <mpi.h>
 
+#include "kamping/v2/handle.hpp"
 #include "kamping/v2/infer.hpp"
 #include "kamping/v2/iresult.hpp"
 #include "kamping/v2/p2p/recv.hpp"
@@ -32,7 +33,7 @@ namespace kamping::v2 {
 template <
     mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Request> Request,
     mpi::experimental::recv_buffer                                RBuf,
-    mpi::experimental::rank                                       Source,
+    mpi::experimental::sender                                     Source,
     mpi::experimental::tag                                        Tag,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>        Comm>
 auto irecv(Request&& request, RBuf&& rbuf, Source source, Tag tag, Comm const& comm) -> RBuf {
@@ -51,14 +52,14 @@ auto irecv(Request&& request, RBuf&& rbuf, Source source, Tag tag, Comm const& c
 template <
     mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Request> Request,
     mpi::experimental::recv_buffer                                RBuf,
-    mpi::experimental::rank                                       Source,
+    mpi::experimental::sender                                     Source,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>        Comm>
 auto irecv(Request&& request, RBuf&& rbuf, Source source, Comm const& comm) -> RBuf {
     return kamping::v2::irecv(
         std::forward<Request>(request),
         std::forward<RBuf>(rbuf),
         std::move(source),
-        MPI_ANY_TAG,
+        mpi::experimental::any_tag,
         comm
     );
 }
@@ -72,8 +73,8 @@ auto irecv(Request&& request, RBuf&& rbuf, Comm const& comm) -> RBuf {
     return kamping::v2::irecv(
         std::forward<Request>(request),
         std::forward<RBuf>(rbuf),
-        MPI_ANY_SOURCE,
-        MPI_ANY_TAG,
+        mpi::experimental::any_source,
+        mpi::experimental::any_tag,
         comm
     );
 }
@@ -83,7 +84,7 @@ auto irecv(Request&& request, RBuf&& rbuf, Comm const& comm) -> RBuf {
 /// @return An iresult owning the request (and the buffer, if passed as rvalue); complete it with `wait()` or `test()`.
 template <
     mpi::experimental::recv_buffer                         RBuf,
-    mpi::experimental::rank                                Source,
+    mpi::experimental::sender                              Source,
     mpi::experimental::tag                                 Tag,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
 auto irecv(RBuf&& rbuf, Source source, Tag tag, Comm const& comm) -> iresult<RBuf> {
@@ -95,16 +96,21 @@ auto irecv(RBuf&& rbuf, Source source, Tag tag, Comm const& comm) -> iresult<RBu
 /// Like the overload above, receiving with any tag.
 template <
     mpi::experimental::recv_buffer                         RBuf,
-    mpi::experimental::rank                                Source,
+    mpi::experimental::sender                              Source,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
 auto irecv(RBuf&& rbuf, Source source, Comm const& comm) -> iresult<RBuf> {
-    return kamping::v2::irecv(std::forward<RBuf>(rbuf), std::move(source), MPI_ANY_TAG, comm);
+    return kamping::v2::irecv(std::forward<RBuf>(rbuf), std::move(source), mpi::experimental::any_tag, comm);
 }
 
 /// Like the overload above, receiving from any source with any tag.
 template <mpi::experimental::recv_buffer RBuf, mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
 auto irecv(RBuf&& rbuf, Comm const& comm) -> iresult<RBuf> {
-    return kamping::v2::irecv(std::forward<RBuf>(rbuf), MPI_ANY_SOURCE, MPI_ANY_TAG, comm);
+    return kamping::v2::irecv(
+        std::forward<RBuf>(rbuf),
+        mpi::experimental::any_source,
+        mpi::experimental::any_tag,
+        comm
+    );
 }
 
 } // namespace kamping::v2

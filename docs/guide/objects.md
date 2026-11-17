@@ -81,7 +81,9 @@ struct mpi::experimental::handle_traits<my_comm> {
 };
 ```
 
-Ranks and tags accept any integer type, and tags also scoped enumerations, which makes message kinds type-safe:
+Ranks and tags accept any integer type, scoped enumerations, and types with an `mpi_rank()` / `mpi_tag()` member,
+such as `periodic_rank` or the special values `any_source`, `any_tag` and `proc_null`. Scoped enumerations as tags
+make message kinds type-safe:
 
 ```cpp
 enum class msg : int { data, done };

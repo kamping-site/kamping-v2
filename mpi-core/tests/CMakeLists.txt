@@ -30,6 +30,10 @@ add_executable(test_core_info info_test.cpp)
 target_link_libraries(test_core_info PRIVATE mpi::core kamping_v2_warnings KaTestrophe::main)
 katestrophe_add_mpi_test(test_core_info CORES 1)
 
+add_executable(test_core_special_values special_values_test.cpp)
+target_link_libraries(test_core_special_values PRIVATE mpi::core kamping_v2_warnings KaTestrophe::main)
+katestrophe_add_mpi_test(test_core_special_values CORES 1 2 4)
+
 add_executable(test_core_win win_test.cpp)
 target_link_libraries(test_core_win PRIVATE mpi::core kamping_v2_warnings KaTestrophe::main)
 katestrophe_add_mpi_test(test_core_win CORES 1 2 4)

@@ -7,6 +7,7 @@
 
 #include <mpi.h>
 
+#include "kamping/v2/handle.hpp"
 #include "kamping/v2/infer.hpp"
 #include "kamping/v2/p2p/constants.hpp"
 #include "mpi/handle.hpp"
@@ -24,9 +25,9 @@ namespace kamping::v2 {
 /// @return The buffer (owned if passed as rvalue, borrowed otherwise).
 template <
     mpi::experimental::send_recv_buffer                          SRBuf,
-    mpi::experimental::rank                                      Dest,
-    mpi::experimental::rank                                      Source,
-    mpi::experimental::tag                                       SendTag,
+    mpi::experimental::destination                               Dest,
+    mpi::experimental::sender                                    Source,
+    mpi::experimental::message_tag                               SendTag,
     mpi::experimental::tag                                       RecvTag,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>       Comm,
     mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>
@@ -63,8 +64,8 @@ auto sendrecv_replace(
 /// Like the overload above, sending with @ref DEFAULT_SEND_TAG and receiving with any tag.
 template <
     mpi::experimental::send_recv_buffer                          SRBuf,
-    mpi::experimental::rank                                      Dest,
-    mpi::experimental::rank                                      Source,
+    mpi::experimental::destination                               Dest,
+    mpi::experimental::sender                                    Source,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>       Comm,
     mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>
 auto sendrecv_replace(
@@ -75,7 +76,7 @@ auto sendrecv_replace(
         std::move(dest),
         DEFAULT_SEND_TAG,
         std::move(source),
-        MPI_ANY_TAG,
+        mpi::experimental::any_tag,
         comm,
         std::forward<Status>(status)
     );
@@ -84,7 +85,7 @@ auto sendrecv_replace(
 /// Like the overload above, receiving from any source.
 template <
     mpi::experimental::send_recv_buffer                          SRBuf,
-    mpi::experimental::rank                                      Dest,
+    mpi::experimental::destination                               Dest,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>       Comm,
     mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>
 auto sendrecv_replace(SRBuf&& send_recv_buf, Dest dest, Comm const& comm, Status&& status = MPI_STATUS_IGNORE)
@@ -93,8 +94,8 @@ auto sendrecv_replace(SRBuf&& send_recv_buf, Dest dest, Comm const& comm, Status
         std::forward<SRBuf>(send_recv_buf),
         std::move(dest),
         DEFAULT_SEND_TAG,
-        MPI_ANY_SOURCE,
-        MPI_ANY_TAG,
+        mpi::experimental::any_source,
+        mpi::experimental::any_tag,
         comm,
         std::forward<Status>(status)
     );

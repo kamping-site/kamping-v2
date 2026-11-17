@@ -8,6 +8,7 @@
 
 #include <mpi.h>
 
+#include "kamping/v2/handle.hpp"
 #include "kamping/v2/iresult.hpp"
 #include "kamping/v2/p2p/constants.hpp"
 #include "kamping/v2/p2p/send_mode.hpp"
@@ -29,8 +30,8 @@ template <
     is_send_mode                                                  SendMode,
     mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Request> Request,
     mpi::experimental::send_buffer                                SBuf,
-    mpi::experimental::rank                                       Dest,
-    mpi::experimental::tag                                        Tag,
+    mpi::experimental::destination                                Dest,
+    mpi::experimental::message_tag                                Tag,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>        Comm>
 auto isend(SendMode&&, Request&& request, SBuf&& sbuf, Dest dest, Tag tag, Comm const& comm) -> SBuf {
     using mode_t = std::remove_cvref_t<SendMode>;
@@ -51,7 +52,7 @@ template <
     is_send_mode                                                  SendMode,
     mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Request> Request,
     mpi::experimental::send_buffer                                SBuf,
-    mpi::experimental::rank                                       Dest,
+    mpi::experimental::destination                                Dest,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>        Comm>
 auto isend(SendMode&& mode, Request&& request, SBuf&& sbuf, Dest dest, Comm const& comm) -> SBuf {
     return kamping::v2::isend(
@@ -69,8 +70,8 @@ auto isend(SendMode&& mode, Request&& request, SBuf&& sbuf, Dest dest, Comm cons
 template <
     is_send_mode                                           SendMode,
     mpi::experimental::send_buffer                         SBuf,
-    mpi::experimental::rank                                Dest,
-    mpi::experimental::tag                                 Tag,
+    mpi::experimental::destination                         Dest,
+    mpi::experimental::message_tag                         Tag,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
 auto isend(SendMode&& mode, SBuf&& sbuf, Dest dest, Tag tag, Comm const& comm) -> iresult<SBuf> {
     iresult<SBuf> res{std::forward<SBuf>(sbuf)};
@@ -82,7 +83,7 @@ auto isend(SendMode&& mode, SBuf&& sbuf, Dest dest, Tag tag, Comm const& comm) -
 template <
     is_send_mode                                           SendMode,
     mpi::experimental::send_buffer                         SBuf,
-    mpi::experimental::rank                                Dest,
+    mpi::experimental::destination                         Dest,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
 auto isend(SendMode&& mode, SBuf&& sbuf, Dest dest, Comm const& comm) -> iresult<SBuf> {
     return kamping::v2::isend(mode, std::forward<SBuf>(sbuf), std::move(dest), DEFAULT_SEND_TAG, comm);
@@ -93,8 +94,8 @@ auto isend(SendMode&& mode, SBuf&& sbuf, Dest dest, Comm const& comm) -> iresult
 template <
     mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Request> Request,
     mpi::experimental::send_buffer                                SBuf,
-    mpi::experimental::rank                                       Dest,
-    mpi::experimental::tag                                        Tag,
+    mpi::experimental::destination                                Dest,
+    mpi::experimental::message_tag                                Tag,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>        Comm>
 auto isend(Request&& request, SBuf&& sbuf, Dest dest, Tag tag, Comm const& comm) -> SBuf {
     return kamping::v2::isend(
@@ -111,7 +112,7 @@ auto isend(Request&& request, SBuf&& sbuf, Dest dest, Tag tag, Comm const& comm)
 template <
     mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Request> Request,
     mpi::experimental::send_buffer                                SBuf,
-    mpi::experimental::rank                                       Dest,
+    mpi::experimental::destination                                Dest,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>        Comm>
 auto isend(Request&& request, SBuf&& sbuf, Dest dest, Comm const& comm) -> SBuf {
     return kamping::v2::isend(
@@ -128,8 +129,8 @@ auto isend(Request&& request, SBuf&& sbuf, Dest dest, Comm const& comm) -> SBuf 
 /// @return An iresult owning the request (and the buffer, if passed as rvalue); complete it with `wait()` or `test()`.
 template <
     mpi::experimental::send_buffer                         SBuf,
-    mpi::experimental::rank                                Dest,
-    mpi::experimental::tag                                 Tag,
+    mpi::experimental::destination                         Dest,
+    mpi::experimental::message_tag                         Tag,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
 auto isend(SBuf&& sbuf, Dest dest, Tag tag, Comm const& comm) -> iresult<SBuf> {
     return kamping::v2::isend(send_mode::standard, std::forward<SBuf>(sbuf), std::move(dest), std::move(tag), comm);
@@ -138,7 +139,7 @@ auto isend(SBuf&& sbuf, Dest dest, Tag tag, Comm const& comm) -> iresult<SBuf> {
 /// Like the overload above, with @ref DEFAULT_SEND_TAG.
 template <
     mpi::experimental::send_buffer                         SBuf,
-    mpi::experimental::rank                                Dest,
+    mpi::experimental::destination                         Dest,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
 auto isend(SBuf&& sbuf, Dest dest, Comm const& comm) -> iresult<SBuf> {
     return kamping::v2::isend(send_mode::standard, std::forward<SBuf>(sbuf), std::move(dest), DEFAULT_SEND_TAG, comm);

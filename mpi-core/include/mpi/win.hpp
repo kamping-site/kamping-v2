@@ -25,6 +25,21 @@ namespace mpi::experimental {
 //   Level 2: RAII convenience; returns an owning `win` (defined after `win`).
 // Synchronization is also available as a member via win_accessors.
 
+/// @brief Assertions about an RMA epoch that let MPI optimize its synchronization (`MPI_MODE_*`). Combine them with
+/// `|`; `win_assert{}` asserts nothing.
+enum class win_assert : int {
+    nocheck   = MPI_MODE_NOCHECK, ///< The matching calls on other processes have already completed (lock, start).
+    nostore   = MPI_MODE_NOSTORE, ///< The local window was not updated by local stores since the last synchronization.
+    noput     = MPI_MODE_NOPUT,   ///< The local window will not be updated by puts or accumulates until the next one.
+    noprecede = MPI_MODE_NOPRECEDE, ///< The fence does not complete any locally issued RMA calls.
+    nosucceed = MPI_MODE_NOSUCCEED  ///< The fence does not start any locally issued RMA calls.
+};
+
+/// @brief The union of the assertions `a` and `b`.
+[[nodiscard]] constexpr win_assert operator|(win_assert a, win_assert b) noexcept {
+    return static_cast<win_assert>(static_cast<int>(a) | static_cast<int>(b));
+}
+
 /// @brief Collective: synchronize an active-target epoch (`MPI_Win_fence`).
 ///
 /// @tparam Win Any type satisfying `convertible_to_mpi_handle<MPI_Win>`.
@@ -37,6 +52,14 @@ void fence(Win const& w, int assertion = 0) {
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);
     }
+}
+
+/// @brief Collective: synchronize an active-target epoch (`MPI_Win_fence`) with typed assertions, e.g.
+/// `fence(w, win_assert::noprecede | win_assert::nostore)`.
+/// @throws mpi_error if `MPI_Win_fence` fails.
+template <convertible_to_mpi_handle<MPI_Win> Win = MPI_Win>
+void fence(Win const& w, win_assert assertion) {
+    mpi::experimental::fence(w, static_cast<int>(assertion));
 }
 
 /// @brief Collective: allocate a window exposing `count` elements of `T` on each process (`MPI_Win_allocate`).
@@ -100,6 +123,15 @@ public:
     /// Delegates to the free function `mpi::experimental::fence`.
     /// @throws mpi_error if `MPI_Win_fence` fails.
     void fence(int assertion = 0) const {
+        mpi::experimental::fence(underlying(), assertion);
+    }
+
+    /// @brief Collective: synchronize an active-target epoch (`MPI_Win_fence`) with typed assertions, e.g.
+    /// `w.fence(win_assert::noprecede | win_assert::nostore)`.
+    ///
+    /// Delegates to the free function `mpi::experimental::fence`.
+    /// @throws mpi_error if `MPI_Win_fence` fails.
+    void fence(win_assert assertion) const {
         mpi::experimental::fence(underlying(), assertion);
     }
 };

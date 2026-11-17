@@ -12,8 +12,8 @@
 
 namespace mpi::experimental {
 
-/// CRTP mixin providing the read accessors `.source()`, `.tag()` and `.count()` shared by all status types. `Derived`
-/// must implement `MPI_Status const* status_ptr() const`.
+/// CRTP mixin providing the read accessors `.source()`, `.tag()`, `.from_proc_null()` and `.count()` shared by all
+/// status types. `Derived` must implement `MPI_Status const* status_ptr() const`.
 template <typename Derived>
 class status_accessors {
     [[nodiscard]] MPI_Status const* ptr() const {
@@ -29,6 +29,12 @@ public:
     /// @return The tag.
     [[nodiscard]] int tag() const {
         return ptr()->MPI_TAG;
+    }
+
+    /// @return Whether the message came from the null process (`proc_null`). Such a receive transfers nothing:
+    /// `source()` is `MPI_PROC_NULL`, `tag()` is `MPI_ANY_TAG` and the count is zero.
+    [[nodiscard]] bool from_proc_null() const {
+        return ptr()->MPI_SOURCE == MPI_PROC_NULL;
     }
 
     /// @param datatype The MPI datatype.

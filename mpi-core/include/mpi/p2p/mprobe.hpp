@@ -7,6 +7,7 @@
 
 #include "mpi/error.hpp"
 #include "mpi/handle.hpp"
+#include "mpi/special_values.hpp"
 
 namespace mpi::experimental {
 
@@ -14,7 +15,7 @@ namespace mpi::experimental {
 ///
 /// The message is removed from the matching queue and must be received through `message` with `mrecv()` or `imrecv()`.
 template <
-    rank                                       Source,
+    sender                                     Source,
     tag                                        Tag,
     convertible_to_mpi_handle_ptr<MPI_Message> Message,
     convertible_to_mpi_handle<MPI_Comm>        Comm,
