@@ -17,6 +17,7 @@
 
 #include "kamping/v2/views/adaptor.hpp"
 #include "kamping/v2/views/resize_view.hpp"
+#include "mpi/builtin_types.hpp"
 
 namespace kamping::v2 {
 
@@ -157,9 +158,9 @@ public:
     /// Returns the MPI_Datatype corresponding to the view's scalar type.
     /// Only available for builtin types
     MPI_Datatype mpi_type() const noexcept
-        requires kamping::types::is_builtin_type_v<scalar_type>
+        requires mpi::experimental::builtin_mpi_type<scalar_type>
     {
-        return kamping::types::builtin_type<scalar_type>().data_type();
+        return mpi::experimental::builtin_datatype<scalar_type>();
     }
 
     /// Send-side pointer. Deep copy to intermediate kokkos view lazily on first call;

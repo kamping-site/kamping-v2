@@ -168,6 +168,10 @@ rules above keep every overload set unambiguous: forms differ in their number of
 that is never an `int` (a buffer, a request in first position, a status pointer). The same reason excludes a
 `reduce(s, r, root, comm)` form: a root cannot be told apart from an `MPI_Op`.
 
+**Defaults of tag-typed arguments.** The argument against default arguments only concerns values that can be
+confused with a handle, rank or tag. A trailing argument of a tag type, which is never an `int`, may have a default,
+e.g. the commutativity of `make_op` (`non_commutative`).
+
 **Descriptors.** Where MPI takes parallel arrays (block lengths and displacements, sizes and starts per dimension),
 v2 takes one descriptor per entry instead, e.g. `type_indexed({{0, 4}, {5, 3}}, MPI_INT)` with
 `block{displacement, length}`. Descriptors are plain aggregates, so designated initializers work. Their fields follow
@@ -393,7 +397,7 @@ void allgatherv(SBuf&& sbuf, RBuf&& rbuf, MPI_Comm comm) {
 
 ## Reduction Operations (`make_op`)
 
-Reduce-like collectives (`reduce`, `allreduce`, `scan`, `exscan`) take an **operation** argument alongside their buffers. Operations follow the same **core-layer, traits-dispatched** design as buffers and handles — everything lives in `mpi-core/include/mpi/ops.hpp` (`mpi::experimental`), with the `kamping::v2` layer only re-exporting the user-facing names.
+Reduce-like collectives (`reduce`, `allreduce`, `scan`, `exscan`) take an **operation** argument alongside their buffers. Operations follow the same **core-layer, traits-dispatched** design as buffers and handles — everything lives in `mpi-core/include/mpi/ops.hpp` (dispatch, predefined operations) and `mpi-core/include/mpi/op.hpp` (operation objects), in `mpi::experimental`, with the `kamping::v2` layer only re-exporting the user-facing names (`kamping/v2/ops.hpp`).
 
 ### Operation dispatch (`as_mpi_op`)
 
@@ -402,52 +406,46 @@ Reduce-like collectives (`reduce`, `allreduce`, `scan`, `exscan`) take an **oper
 Every reduce-like wrapper resolves its operation argument to a raw `MPI_Op` via `mpi::experimental::as_mpi_op(op, sbuf, rbuf)`, with a 3-tier priority mirroring the buffer/handle accessors:
 
 1. **`op_traits<Op, SBuf, RBuf>` specialization** — non-intrusive, for op types you don't own
-2. **Builtin `MPI_Op` handle** — anything convertible to `MPI_Op` via `handle()` passes through (raw `MPI_SUM`, and the scoped op handles below)
-3. **Builtin range op** — maps a functor like `std::plus<>` on the buffer's element type to a predefined constant (`MPI_SUM`, …) via `kamping::types::mpi_operation_traits`
+2. **`MPI_Op` handle** — anything convertible to `MPI_Op` via `handle()` passes through (raw `MPI_SUM`, and the operation objects below)
+3. **Predefined op of a functor** — maps a functor like `std::plus<>` on the buffer's element type to a predefined constant (`MPI_SUM`, …) via the concept `builtin_op<Op, T>` and `builtin_op_handle<Op, T>()`
+
+The functors are the standard ones (`std::plus`, `std::multiplies`, `std::logical_and`, `std::bit_and`, …, also named `ops::plus` etc.) and `ops::max`, `ops::min`, `ops::logical_xor`, which the standard library lacks. Which functor applies to which builtin type follows the groups of MPI 4.1, Section 6.9.2 (`detail::builtin_category` in `mpi/builtin_types.hpp`). Enumerations are builtin types for transfer, but have no predefined operations, so `std::plus<>` on an enum never silently becomes `MPI_SUM`.
 
 The `valid_op<Op, SBuf, RBuf>` concept is simply "`as_mpi_op(op, sbuf, rbuf)` is well-formed"; reduce-like wrappers constrain their `Op` template parameter on it and pass `op` by `const&` throughout (so a move-only op handle is never copied).
 
-### `make_op` — constructing user-defined operations
+### Operation objects
 
-For operations that aren't builtin, `mpi::experimental::make_op(...)` (re-exported as `kamping::v2::make_op`) creates an RAII `MPI_Op` from the kamping-types dependency. It is a **thin factory** — the element-wise reduction logic lives in `kamping::types::ScopedFunctorOp` / `ScopedCallbackOp`, not here — that does a single `MPI_Op_create` ("one MPI call, no inference"), which is why it belongs in the core layer next to `as_mpi_op` rather than in the bindings layer.
+**File:** `mpi-core/include/mpi/op.hpp`
 
-Two overloads:
+User-defined operations are handles like `datatype`:
 
-```cpp
-// (a) default-constructible binary functor / captureless lambda → ScopedFunctorOp.
-//     Element type T is explicit; the functor must be callable as T(T const&, T const&).
-auto op = kamping::v2::make_op<int>([](int a, int b) { return a + b; });
+| Type | Ownership | Created by |
+|---|---|---|
+| `op` | owning, move-only | `make_op(callback[, commutativity])` (`MPI_Op_create`), `op::from_native`, or moved from a `functor_op` |
+| `functor_op<T, F>` | owning, move-only, keeps the functor | `make_op<T>(functor[, commutativity])` |
+| `op_view` | non-owning | implicit from `MPI_Op`, `op const&`, `functor_op const&` (not from temporaries) |
 
-// (b) raw MPI callback void(void*, void*, int*, MPI_Datatype*) → ScopedCallbackOp.
-//     No element type needed — the callback is already type-erased.
-auto op = kamping::v2::make_op(&my_mpi_callback);
-
-kamping::v2::reduce(data, recv, op, /*root=*/0, comm);
-```
-
-**Commutativity** is an optional trailing argument (`kamping::v2::commutative` / `non_commutative`, re-exported from `kamping::ops`), defaulting to `non_commutative` — the correctness-safe choice, since MPI never reorders a non-commutative op. Opt in for performance:
+All have `mpi_handle()`, so `as_mpi_op` tier 2 picks them up in every reduce-like collective with **no per-collective wiring**. The owning ones have `free()` and `release()` like the other handles.
 
 ```cpp
-auto op = kamping::v2::make_op<int>(std::plus<int>{}, kamping::v2::commutative);
+// default-constructible binary functor / captureless lambda; element type T is explicit
+auto sum = kamping::v2::make_op<int>([](int a, int b) { return a + b; });
+// raw MPI callback void(void*, void*, int*, MPI_Datatype*)
+auto cb = kamping::v2::make_op(&my_mpi_callback, kamping::v2::commutative);
+
+kamping::v2::reduce(data, recv, sum, /*root=*/0, comm);
 ```
 
-Overload (a) is constrained on `is_default_constructible_v<Op> && is_invocable_r_v<T, Op, T const&, T const&>`, so a bad functor is a clean overload-resolution failure instead of a hard error inside the dependency. Stateful (capturing) lambdas are intentionally unsupported — they are neither default-constructible nor convertible to a raw callback; wrap the state in a functor, or build the callback yourself and use overload (b).
+**Commutativity** is a tag (`kamping::v2::commutative` / `non_commutative`), since it selects the code that creates the op. `make_op` defaults to `non_commutative`, the correctness-safe choice, in both forms. `make_op` is a C++ factory, not a mirror of `MPI_Op_create`, so it has one name for both forms; a default is fine here because a tag can never be confused with a handle (see "Arguments and defaults").
 
-### Making the result flow through collectives
+`make_op` is constrained on `reduction_functor<F, T>` (default-constructible `F`, callable as `T(T const&, T const&)`), so a bad functor is a clean overload-resolution failure. Stateful (capturing) lambdas are intentionally unsupported: MPI calls the operation through a plain function that default-constructs `F`. The callback replaces each element by destroying and constructing it in place, so `T` need not be assignable (e.g. `std::pair<K const, V>`).
 
-`make_op` returns `ScopedFunctorOp` / `ScopedCallbackOp`, which expose their `MPI_Op` via `.get()` but have no `mpi_handle()` member. Two `handle_traits` specializations (also in `mpi-core/include/mpi/ops.hpp`) bridge that gap:
+**Local application.** Generic code (e.g. dstl's `reduce` and scans) uses the same object for the local and the distributed part, so operation objects are callable on single values:
 
-```cpp
-template <bool Commutative, typename T, typename Op>
-struct mpi::experimental::handle_traits<kamping::types::ScopedFunctorOp<Commutative, T, Op>> {
-    static MPI_Op handle(kamping::types::ScopedFunctorOp<Commutative, T, Op> const& op) noexcept {
-        return op.get();
-    }
-};
-// ... and the analogous ScopedCallbackOp specialization.
-```
+- `functor_op` calls its functor directly — no MPI call.
+- `op` and `op_view` (via the CRTP mixin `op_accessors`) call `reduce_local` (`MPI_Reduce_local`) on one element: `o(a, b)` for builtin `T`, `o(a, b, dt)` with an explicit datatype otherwise. This is an MPI call per application, so code that folds many values should prefer a `functor_op`.
 
-This makes any scoped op satisfy `convertible_to_mpi_handle<MPI_Op>`, so `as_mpi_op` tier 2 picks it up automatically — the op flows into every reduce-like collective with **no per-collective wiring**, however it was constructed.
+`reduce_local(inbuf, inoutbuf, op)` is the core wrapper of `MPI_Reduce_local` (`inoutbuf[i] = inbuf[i] op inoutbuf[i]`) and accepts any `valid_op`. It lives in `op.hpp`, which includes `ops.hpp`, so the dispatch does not depend on the operation objects.
 
 ### Adding a custom operation type non-intrusively
 

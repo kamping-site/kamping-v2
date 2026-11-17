@@ -50,7 +50,7 @@ auto reduce(
 
     auto first = std::ranges::begin(r);
     auto last  = std::ranges::end(r);
-    // op is passed by reference: handles from make_op are neither copyable nor movable.
+    // op is passed by reference: ops from make_op are not copyable.
     T result = (first == last) ? T{} : std::reduce(std::next(first), last, *first, std::cref(op));
 
     kamping::v2::allreduce(

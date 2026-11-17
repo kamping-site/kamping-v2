@@ -62,7 +62,7 @@ TEST(Reduce, EmptyLocal) {
 }
 
 TEST(Reduce, MakeOpHandle) {
-    // make_op handles are neither copyable nor movable; they must be accepted by reference.
+    // ops from make_op are not copyable; they must be accepted by reference.
     kamping::v2::comm_view const comm = kamping::v2::comm_world();
     int const                    n    = 4;
     auto const                   vec  = iota_vec(comm.rank() * n, n);

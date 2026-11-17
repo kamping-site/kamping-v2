@@ -4,7 +4,7 @@
 #include <cstddef>
 
 #include <gtest/gtest.h>
-#include <kamping/types/reduce_ops.hpp>
+#include <kamping/v2/ops.hpp>
 #include <mpi.h>
 
 #include "dstl/thread_multiple_comm.hpp"
@@ -36,7 +36,7 @@ std::size_t expected_thread_comm_count() {
     kamping::v2::allreduce(
         kamping::v2::inplace,
         kamping::v2::views::ref_single(t),
-        kamping::ops::max<>{},
+        kamping::v2::ops::max<>{},
         comm_world()
     );
     return static_cast<std::size_t>(t);

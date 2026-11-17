@@ -422,12 +422,11 @@ TEST(ValueTypeEndToEndTest, FlattenedIntPairPayloadSurvivesWithAutoPool) {
 
 static_assert(kamping::v2::builtin_mpi_type<int>);
 static_assert(kamping::v2::builtin_mpi_type<int const&>);
-static_assert(kamping::v2::is_builtin_type_v<double>);
+static_assert(kamping::v2::builtin_mpi_type<kamping::v2::unpacked_bool>);
 static_assert(!kamping::v2::builtin_mpi_type<MyStruct>);
 static_assert(!kamping::v2::builtin_mpi_type<TraitlessStruct>);
-static_assert(!kamping::v2::is_builtin_type_v<MyStruct>);
 
 TEST(BuiltinTypeTest, DataTypeIsThePredefinedMpiType) {
-    EXPECT_EQ(kamping::v2::builtin_type<double>::data_type(), MPI_DOUBLE);
-    EXPECT_EQ(kamping::v2::builtin_type<int>::data_type(), MPI_INT);
+    EXPECT_EQ(kamping::v2::builtin_datatype<double>(), MPI_DOUBLE);
+    EXPECT_EQ(kamping::v2::builtin_datatype<int>(), MPI_INT);
 }

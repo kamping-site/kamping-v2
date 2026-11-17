@@ -10,7 +10,6 @@
 #include <limits>
 #include <ranges>
 
-#include <kamping/types/reduce_ops.hpp>
 #include <mpi.h>
 
 #include "kamping/v2/buffer.hpp"
@@ -32,12 +31,11 @@ namespace detail {
 /// Comp and Proj are default-constructed on every invocation — matching make_op()'s contract
 /// that only stateless functors survive the trip through MPI_Op_create.
 ///
-/// ScopedFunctorOp (which make_op<T>() below builds on) combines by copy-construction, not
-/// assignment, so T only needs to be copy-constructible here -- e.g.
-/// std::pair<const K, V> (a std::map's/flat_hash_map's value type) works despite having a
-/// deleted operator=. Deliberately not gated on std::is_trivially_copyable_v<T> either: even an
-/// ordinary std::pair<int, int> is never trivially copyable (see
-/// https://stackoverflow.com/q/58283694), so requiring it would reject the common case.
+/// make_op<T>() (used below) replaces an element by destroying and constructing it in place, not by assignment, so T
+/// only needs to be copy-constructible here -- e.g. std::pair<const K, V> (a std::map's/flat_hash_map's value type)
+/// works despite having a deleted operator=. Deliberately not gated on std::is_trivially_copyable_v<T> either: even an
+/// ordinary std::pair<int, int> is never trivially copyable (see https://stackoverflow.com/q/58283694), so requiring
+/// it would reject the common case.
 template <typename T, typename Comp, typename Proj>
 struct max_combine {
     T operator()(T const& a, T const& b) const {
@@ -50,7 +48,7 @@ struct max_combine {
 /// MPI_Op_create overhead.
 template <typename T, typename Comp, typename Proj>
 concept has_builtin_max = std::same_as<Comp, std::ranges::less> && std::same_as<Proj, std::identity>
-                          && kamping::types::mpi_operation_traits<kamping::ops::max<>, T>::is_builtin;
+                          && kamping::v2::builtin_op<kamping::v2::ops::max<>, T>;
 
 } // namespace detail
 
@@ -102,7 +100,7 @@ auto max(R&& r, Comp comp, Proj proj, Comm const& comm, std::ranges::range_value
         kamping::v2::allreduce(
             kamping::v2::inplace,
             kamping::v2::views::ref_single(local_max) | kamping::v2::views::with_type(mpi_type),
-            kamping::ops::max<>{},
+            kamping::v2::ops::max<>{},
             comm
         );
     } else {

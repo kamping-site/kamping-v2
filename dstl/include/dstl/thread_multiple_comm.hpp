@@ -12,7 +12,7 @@
     #include <omp.h>
 #endif
 
-#include <kamping/types/reduce_ops.hpp>
+#include <kamping/v2/ops.hpp>
 #include <mpi.h>
 
 #include "dstl/tags.hpp"
@@ -66,7 +66,12 @@ public:
     // collective, so thread `t` on every rank has to participate; hence the MPI_Allreduce before duplicating.
     explicit thread_multiple_comm(kamping::v2::comm_view global) : _global(global) {
         int t = flat_max_threads();
-        kamping::v2::allreduce(kamping::v2::inplace, kamping::v2::views::ref_single(t), kamping::ops::max<>{}, _global);
+        kamping::v2::allreduce(
+            kamping::v2::inplace,
+            kamping::v2::views::ref_single(t),
+            kamping::v2::ops::max<>{},
+            _global
+        );
         _thread_comms.reserve(static_cast<std::size_t>(t));
         for (int i = 0; i < t; ++i) {
             _thread_comms.push_back(_global.dup());

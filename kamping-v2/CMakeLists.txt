@@ -92,7 +92,7 @@ target_sources(
               include/kamping/v2/win.hpp
 )
 set_target_properties(kamping_v2 PROPERTIES EXPORT_NAME v2)
-target_link_libraries(kamping_v2 INTERFACE mpi::core)
+target_link_libraries(kamping_v2 INTERFACE mpi::core kamping::types)
 
 if (KAMPING_V2_INSTALL)
     install(

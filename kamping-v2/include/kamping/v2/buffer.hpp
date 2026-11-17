@@ -8,13 +8,14 @@
 /// To adapt a type you don't own, specialize `mpi::experimental::buffer_traits` (a specialization must name the
 /// namespace the template is declared in).
 ///
-/// The mapping of builtin C++ types to predefined MPI datatypes is re-exported from kamping-types: `builtin_type<T>`,
-/// `is_builtin_type_v<T>`, the concept `builtin_mpi_type<T>` and `builtin_datatype<T>()`, which returns the datatype
-/// (e.g. for the type constructors or raw MPI calls).
+/// The mapping of builtin C++ types to predefined MPI datatypes is re-exported as well: the concept
+/// `builtin_mpi_type<T>`, `builtin_datatype<T>()`, which returns the datatype (e.g. for the type constructors or raw
+/// MPI calls), and `unpacked_bool`, a `bool` for containers that MPI can send.
 
 #pragma once
 
 #include "mpi/buffer.hpp"
+#include "mpi/builtin_types.hpp"
 #include "mpi/mpi_span.hpp"
 
 namespace kamping::v2 {
@@ -29,9 +30,8 @@ using mpi::experimental::type;
 using mpi::experimental::buffer_traits;
 
 // Builtin type mapping
-using kamping::types::builtin_type;
-using kamping::types::is_builtin_type_v;
 using mpi::experimental::builtin_datatype;
+using mpi::experimental::unpacked_bool;
 
 // Concepts
 using mpi::experimental::builtin_mpi_type;

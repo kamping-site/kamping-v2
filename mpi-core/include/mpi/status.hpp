@@ -5,9 +5,9 @@
 
 #include <optional>
 
-#include <kamping/types/builtin_types.hpp>
 #include <mpi.h>
 
+#include "mpi/builtin_types.hpp"
 #include "mpi/error.hpp"
 
 namespace mpi::experimental {
@@ -57,9 +57,9 @@ public:
     /// @return The number of top-level elements of type `T` in the message. In cases where MPI_Get_count
     /// would return MPI_UNDEFINED, `std::nullopt` is returned.
     template <typename T>
-        requires kamping::types::is_builtin_type_v<T>
+        requires builtin_mpi_type<T>
     [[nodiscard]] std::optional<int> count() const {
-        return count(kamping::types::builtin_type<T>::data_type());
+        return count(mpi::experimental::builtin_datatype<T>());
     }
 };
 
