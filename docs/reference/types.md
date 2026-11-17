@@ -4,10 +4,12 @@
 
 C++ types with a predefined MPI datatype, such as `int` (`MPI_INT`) or `double` (`MPI_DOUBLE`), need no datatype
 handling: contiguous ranges of them are buffers as they are. The mapping comes from kamping-types and is re-exported in
-`kamping::v2`. `builtin_type<T>::data_type()` returns the predefined datatype of `T`, e.g. for raw MPI calls, and
-`is_builtin_type_v<T>` tells whether there is one. Predefined datatypes are never committed or freed.
+`kamping::v2`. Predefined datatypes are never committed or freed.
 
 ```{doxygenconcept} kamping::v2::builtin_mpi_type
+```
+
+```{doxygenoverloads} kamping::v2::builtin_datatype
 ```
 
 ## Derived datatypes
@@ -58,10 +60,8 @@ The free function `type_dup` does the same as the `dup()` members, and can also 
 
 ## Type constructors
 
-The type constructors wrap the MPI ones. Each has two forms: the full form mirrors the MPI call and writes the new
-datatype into its last argument, a raw `MPI_Datatype` or an empty `uncommitted_datatype`; the short form returns it
-as an `uncommitted_datatype`. The new datatype is never committed. Base datatypes can be any datatype handle,
-including an `uncommitted_datatype`. Array arguments are contiguous ranges, and their length is MPI's count.
+The type constructors return an owned `uncommitted_datatype`. Each core form also has a variant that writes into a
+last output argument. Where MPI takes parallel arrays, v2 adds forms that take one descriptor per block or dimension.
 
 ```{doxygenoverloads} kamping::v2::type_contiguous
 ```
@@ -97,6 +97,37 @@ including an `uncommitted_datatype`. Array arguments are contiguous ranges, and 
 ```
 
 ```{doxygenenum} kamping::v2::array_order
+```
+
+### Descriptors
+
+```{doxygenstruct} kamping::v2::block
+:members:
+```
+
+```{doxygenstruct} kamping::v2::hblock
+:members:
+```
+
+```{doxygenstruct} kamping::v2::struct_field
+:members:
+```
+
+```{doxygenstruct} kamping::v2::subarray_dim
+:members:
+```
+
+```{doxygenstruct} kamping::v2::darray_dim
+:members:
+```
+
+```{doxygenenum} kamping::v2::distribution
+```
+
+### Struct builder
+
+```{doxygenclass} kamping::v2::struct_builder
+:members:
 ```
 
 ## Committing by hand

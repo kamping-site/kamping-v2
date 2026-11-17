@@ -168,6 +168,12 @@ rules above keep every overload set unambiguous: forms differ in their number of
 that is never an `int` (a buffer, a request in first position, a status pointer). The same reason excludes a
 `reduce(s, r, root, comm)` form: a root cannot be told apart from an `MPI_Op`.
 
+**Descriptors.** Where MPI takes parallel arrays (block lengths and displacements, sizes and starts per dimension),
+v2 takes one descriptor per entry instead, e.g. `type_indexed({{0, 4}, {5, 3}}, MPI_INT)` with
+`block{displacement, length}`. Descriptors are plain aggregates, so designated initializers work. Their fields follow
+the C++ analog where there is one (`subspan(offset, count)`, `strided_slice{offset, extent, stride}`), otherwise
+MPI's argument order; fields that can be left out come last. The core keeps MPI's parallel arrays.
+
 ---
 
 ## Adding a New Collective

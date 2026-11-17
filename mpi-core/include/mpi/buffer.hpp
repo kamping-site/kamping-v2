@@ -51,9 +51,18 @@ concept count_range =
 
 /// A type with a predefined MPI datatype, e.g. `int` (`MPI_INT`) or `double` (`MPI_DOUBLE`), ignoring cv- and reference
 /// qualifiers. Contiguous ranges of such types are buffers without further adaption. The datatype itself is
-/// `kamping::types::builtin_type<T>::data_type()`; it is predefined, so it needs no commit and is never freed.
+/// `builtin_datatype<T>()`.
 template <typename T>
 concept builtin_mpi_type = kamping::types::is_builtin_type_v<std::remove_cvref_t<T>>;
+
+/// @brief The predefined MPI datatype of `T`, e.g. `MPI_DOUBLE` for `double`.
+///
+/// Predefined datatypes are never committed or freed, so the result can be used anywhere a datatype is expected:
+/// `type_vector(n, 1, n, builtin_datatype<double>())`.
+template <builtin_mpi_type T>
+[[nodiscard]] MPI_Datatype builtin_datatype() {
+    return kamping::types::builtin_type<std::remove_cvref_t<T>>::data_type();
+}
 
 // ──────────────────────────────────────────────────────────────────────────────
 // detail — implementation helpers for the accessor dispatch, not public API.

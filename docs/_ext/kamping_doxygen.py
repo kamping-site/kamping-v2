@@ -616,7 +616,7 @@ class _DoxygenFunctionGroup(_DoxygenObject, CPPFunctionObject):
         # consecutive overloads with the same description share one label
         groups: list[tuple[list[int], list[nodes.Node]]] = []
         for number, (body, _) in enumerate(bodies, start=1):
-            if groups and nodes.Element("", *groups[-1][1]).astext() == nodes.Element("", *body).astext():
+            if groups and _same_text(groups[-1][1], body):
                 groups[-1][0].append(number)
             else:
                 groups.append(([number], body))
@@ -642,7 +642,7 @@ class _DoxygenFunctionGroup(_DoxygenObject, CPPFunctionObject):
         for number, (_, returned) in enumerate(bodies, start=1):
             if not returned:
                 continue
-            match = next((r for r in returns if nodes.Element("", *r[1]).astext() == nodes.Element("", *returned).astext()), None)
+            match = next((r for r in returns if _same_text(r[1], returned)), None)
             if match:
                 match[0].append(number)
             else:
@@ -663,6 +663,17 @@ class _DoxygenFunctionGroup(_DoxygenObject, CPPFunctionObject):
         content_node[0:0] = out
 
 
+def _same_text(a: list[nodes.Node], b: list[nodes.Node]) -> bool:
+    """Whether two descriptions read the same, ignoring whitespace (``@copydoc`` adds trailing spaces)."""
+    words = lambda body: nodes.Element("", *body).astext().split()
+    return words(a) == words(b)
+
+
+def _location(member: ET.Element) -> tuple[str, int]:
+    location = member.find("location")
+    return (location.get("file") or "", int(location.get("line") or 0))
+
+
 class DoxygenOverloads(SphinxDirective):
     """All overloads of the function named by the argument, in source order."""
 
@@ -678,8 +689,14 @@ class DoxygenOverloads(SphinxDirective):
         namespace, short = split_qualified(qualified)
         reexport_header = None
         if namespace == "kamping::v2" and short in reexports(self.env):
+            # the re-exported core overloads, together with overloads that v2 adds under the same name
             reexport_header = reexports(self.env)[short]
-            members = functions.get(f"mpi::experimental::{short}", [])
+            # Doxygen also lists the re-exported core overloads under the v2 name, defined as mpi::experimental::X
+            members = functions.get(f"mpi::experimental::{short}", []) + [
+                m
+                for m in functions.get(qualified, [])
+                if not (m.findtext("definition") or "").endswith(f"mpi::experimental::{short}")
+            ]
         else:
             members = functions.get(qualified, [])
         if not members:
@@ -689,9 +706,7 @@ class DoxygenOverloads(SphinxDirective):
             "doxygenoverloads", [qualified], {}, self.content, self.lineno, self.content_offset, self.block_text,
             self.state, self.state_machine,
         )
-        directive.members = sorted(
-            members, key=lambda m: (m.find("location").get("file"), int(m.find("location").get("line")))
-        )
+        directive.members = sorted(members, key=_location)
         directive.reexport_header = reexport_header
         return directive.run()
 

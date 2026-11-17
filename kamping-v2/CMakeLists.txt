@@ -66,6 +66,7 @@ target_sources(
               include/kamping/v2/sentinels.hpp
               include/kamping/v2/session.hpp
               include/kamping/v2/status.hpp
+              include/kamping/v2/type_constructors.hpp
               include/kamping/v2/type_pool.hpp
               include/kamping/v2/views.hpp
               include/kamping/v2/views/adaptor.hpp
