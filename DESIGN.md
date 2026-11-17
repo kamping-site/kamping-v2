@@ -445,6 +445,8 @@ kamping::v2::reduce(data, recv, sum, /*root=*/0, comm);
 - `functor_op` calls its functor directly — no MPI call.
 - `op` and `op_view` (via the CRTP mixin `op_accessors`) call `reduce_local` (`MPI_Reduce_local`) on one element: `o(a, b)` for builtin `T`, `o(a, b, dt)` with an explicit datatype otherwise. This is an MPI call per application, so code that folds many values should prefer a `functor_op`.
 
+**`as_local_op<T>(op[, dt])`** is the local counterpart of `as_mpi_op`: it turns any operation into a C++ callable `T(T const&, T const&)` — `std::cref(op)` if `op` is callable, otherwise a wrapper that applies its `MPI_Op` through `reduce_local` with `dt` (default: `builtin_datatype<T>()`). The concept `reduction_op<Op, T>` means that both accessors are defined: a predefined functor on `T`, or anything with an `MPI_Op` handle. dstl's `reduce` and scans are constrained with it and fold locally through `as_local_op`, so they accept raw `MPI_Op`s and `op`s on derived types as well.
+
 `reduce_local(inbuf, inoutbuf, op)` is the core wrapper of `MPI_Reduce_local` (`inoutbuf[i] = inbuf[i] op inoutbuf[i]`) and accepts any `valid_op`. It lives in `op.hpp`, which includes `ops.hpp`, so the dispatch does not depend on the operation objects.
 
 ### Adding a custom operation type non-intrusively

@@ -119,10 +119,10 @@ static_assert(reduction_op<ops::max<>, double const&>);
 static_assert(reduction_op<functor_op<int, std::plus<>>, int>);
 static_assert(reduction_op<op, int>);
 static_assert(reduction_op<op_view, double>);
-static_assert(!reduction_op<op, pinned>); // op(a, b) needs a builtin type; op(a, b, dt) takes the datatype
+static_assert(reduction_op<op, pinned>); // applied locally through reduce_local, given the datatype
 static_assert(!reduction_op<std::minus<>, int>);
 static_assert(!reduction_op<std::plus<>, color>);
-static_assert(!reduction_op<MPI_Op, int>);
+static_assert(reduction_op<MPI_Op, int>); // likewise, with the builtin datatype
 static_assert(!reduction_op<decltype([](int a, int b) { return a + b; }), int>);
 
 TEST(OpTest, builtin_op_handle) {
@@ -268,4 +268,28 @@ TEST(OpTest, reduce_local) {
     auto const keep_first = make_op<int>([](int a, int /* b */) { return a; });
     mpi::experimental::reduce_local(in, inout, keep_first);
     EXPECT_EQ(inout, in);
+}
+
+TEST(OpTest, as_local_op) {
+    // A callable operation is applied directly.
+    std::plus<> const plus;
+    auto const        local_plus = as_local_op<int>(plus);
+    static_assert(std::same_as<std::remove_const_t<decltype(local_plus)>, std::reference_wrapper<std::plus<> const>>);
+    EXPECT_EQ(local_plus(1, 2), 3);
+
+    // An MPI_Op is applied through MPI_Reduce_local.
+    EXPECT_EQ(as_local_op<int>(MPI_PROD)(3, 4), 12);
+    std::vector<int> const values{1, 2, 3, 4};
+    EXPECT_EQ(std::reduce(values.begin(), values.end(), 0, as_local_op<int>(MPI_SUM)), 10);
+
+    // A derived type, with its datatype.
+    MPI_Datatype pinned_type = MPI_DATATYPE_NULL;
+    int          err         = MPI_Type_contiguous(1, MPI_INT, &pinned_type);
+    ASSERT_EQ(err, MPI_SUCCESS);
+    err = MPI_Type_commit(&pinned_type);
+    ASSERT_EQ(err, MPI_SUCCESS);
+    op const     max_op = make_op<pinned>(pinned_max{}, commutative);
+    pinned const result = as_local_op<pinned>(max_op, pinned_type)(pinned{3}, pinned{7});
+    EXPECT_EQ(result.value, 7);
+    MPI_Type_free(&pinned_type);
 }

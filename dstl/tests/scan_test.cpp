@@ -13,7 +13,9 @@
 #include "dstl/algorithm/inclusive_scan.hpp"
 #include "dstl/algorithm/reduce.hpp"
 #include "kamping/v2/comm.hpp"
+#include "kamping/v2/datatype.hpp"
 #include "kamping/v2/ops.hpp"
+#include "kamping/v2/views/with_type_view.hpp"
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -49,7 +51,7 @@ static_assert(scannable_with<std::plus<>>);
 static_assert(scannable_with<sum_op>);
 static_assert(!reducible_with<std::minus<>>);     // no predefined operation
 static_assert(!reducible_with<capturing_lambda>); // not an MPI operation
-static_assert(!reducible_with<MPI_Op>);           // not callable; use op_view
+static_assert(reducible_with<MPI_Op>);            // applied locally through MPI_Reduce_local
 static_assert(!scannable_with<capturing_lambda>);
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -329,4 +331,57 @@ TEST(InclusiveScan, ForwardRangeInput) {
     EXPECT_EQ(out[0], prefix + 1);
     EXPECT_EQ(out[1], prefix + 3);
     EXPECT_EQ(out[2], prefix + 6);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Operations that are only MPI operations, applied locally through MPI_Reduce_local
+// ─────────────────────────────────────────────────────────────────────────────
+
+namespace {
+struct int_pair {
+    int a;
+    int b;
+};
+
+// Adds int_pairs component-wise.
+void add_pairs(void* invec, void* inoutvec, int* len, MPI_Datatype* /* datatype */) {
+    auto const* in    = static_cast<int_pair const*>(invec);
+    auto*       inout = static_cast<int_pair*>(inoutvec);
+    for (int i = 0; i < *len; ++i) {
+        inout[i].a += in[i].a;
+        inout[i].b += in[i].b;
+    }
+}
+} // namespace
+
+TEST(Reduce, RawMpiOp) {
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
+    int const                    n    = 4;
+    auto const                   vec  = iota_vec(comm.rank() * n, n);
+
+    int const result   = dstl::reduce(vec, 0, MPI_SUM, comm);
+    int const expected = n * comm.size() * (n * comm.size() - 1) / 2;
+    EXPECT_EQ(result, expected);
+}
+
+TEST(InclusiveScan, CallbackOpOnDerivedType) {
+    kamping::v2::comm_view const comm      = kamping::v2::comm_world();
+    auto const                   pair_type = kamping::v2::type_contiguous(2, MPI_INT).commit();
+    auto const                   add       = kamping::v2::make_op(&add_pairs, kamping::v2::commutative);
+
+    // Each rank holds three pairs {1, rank}; the inclusive scan counts the pairs and sums the ranks before them.
+    std::vector<int_pair> const in(3, int_pair{1, comm.rank()});
+    std::vector<int_pair>       out(3);
+    dstl::inclusive_scan(
+        in | kamping::v2::views::with_type(pair_type),
+        out | kamping::v2::views::with_type(pair_type),
+        add,
+        comm
+    );
+
+    int const ranks_before = comm.rank() * (comm.rank() - 1) / 2;
+    for (int i = 0; i < 3; ++i) {
+        EXPECT_EQ(out[static_cast<std::size_t>(i)].a, 3 * comm.rank() + i + 1);
+        EXPECT_EQ(out[static_cast<std::size_t>(i)].b, 3 * ranks_before + (i + 1) * comm.rank());
+    }
 }

@@ -49,10 +49,12 @@ void inclusive_scan(R&& r, O&& out, BinaryOp const& op = {}, Comm const& comm = 
     using T                               = std::ranges::range_value_t<R>;
     MPI_Datatype const           mpi_type = kamping::v2::type(r);
     kamping::v2::comm_view const cv{kamping::v2::handle(comm)};
+    // Applies op locally: op itself if it is callable, otherwise its MPI_Op through MPI_Reduce_local.
+    auto const local_op = kamping::v2::as_local_op<T>(op, mpi_type);
 
     T rank_prefix{};
     with_subset(cv, !std::ranges::empty(r), [&](kamping::v2::comm_view sub_comm) {
-        std::inclusive_scan(std::ranges::begin(r), std::ranges::end(r), std::ranges::begin(out), std::cref(op));
+        std::inclusive_scan(std::ranges::begin(r), std::ranges::end(r), std::ranges::begin(out), local_op);
         T const local_total = *std::prev(std::ranges::end(out));
 
         if (sub_comm.size() > 1) {
@@ -68,7 +70,7 @@ void inclusive_scan(R&& r, O&& out, BinaryOp const& op = {}, Comm const& comm = 
         // All other ranks shift their output up by the cumulative prefix from previous ranks.
         if (sub_comm.rank() > 0) {
             for (auto& x: out) {
-                x = op(rank_prefix, x);
+                x = local_op(rank_prefix, x);
             }
         }
     });

@@ -41,6 +41,7 @@ using mpi::experimental::ops::multiplies;
 using mpi::experimental::ops::plus;
 } // namespace ops
 
+using mpi::experimental::as_local_op;
 using mpi::experimental::builtin_op;
 using mpi::experimental::builtin_op_handle;
 using mpi::experimental::commutative;

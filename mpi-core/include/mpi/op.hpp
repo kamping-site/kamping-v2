@@ -4,6 +4,7 @@
 #pragma once
 
 #include <concepts>
+#include <functional>
 #include <memory>
 #include <type_traits>
 #include <utility>
@@ -369,5 +370,75 @@ template <typename T, typename F, commutativity_tag Commutativity = non_commutat
 [[nodiscard]] functor_op<T, std::remove_cvref_t<F>> make_op(F&& f, Commutativity commutativity = {}) {
     return functor_op<T, std::remove_cvref_t<F>>(std::forward<F>(f), commutativity);
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// as_local_op() — the local counterpart of as_mpi_op()
+// ──────────────────────────────────────────────────────────────────────────────
+
+namespace detail {
+// Op can be called on two Ts and returns a T.
+template <typename Op, typename T>
+concept locally_callable = std::is_invocable_r_v<T, Op const&, T const&, T const&>;
+
+// Applies an MPI_Op to single values described by a datatype, through reduce_local.
+template <typename T>
+class reduce_local_op {
+public:
+    reduce_local_op(MPI_Op o, MPI_Datatype dt) noexcept : _op(o), _dt(dt) {}
+
+    T operator()(T const& lhs, T const& rhs) const {
+        return op_view{_op}(lhs, rhs, _dt);
+    }
+
+private:
+    MPI_Op       _op;
+    MPI_Datatype _dt;
+};
+} // namespace detail
+
+/// @return A callable that combines two values of type `T` with `op`, for applying an operation locally: `op` itself
+/// (as `std::cref(op)`) if it is callable as `T(T const&, T const&)`.
+///
+/// The local counterpart of `as_mpi_op`: generic code that combines values locally and then across processes, such as
+/// dstl's `reduce`, calls `as_local_op` for the local part and passes `op` to the collective. A callable operation,
+/// e.g. `std::plus<>` or a `functor_op`, is applied directly; the result refers to `op`, which must outlive it.
+template <typename T, typename Op>
+    requires detail::locally_callable<Op, T>
+[[nodiscard]] auto as_local_op(Op const& op, datatype_view /* dt */) noexcept {
+    return std::cref(op);
+}
+
+/// @return A callable that combines two values of type `T` with the `MPI_Op` of `op`, through `reduce_local`
+/// (`MPI_Reduce_local`), with `dt` as the datatype of one `T`.
+///
+/// For operations that are not callable in C++, e.g. a raw `MPI_Op` or an `op` on a derived type. Each call is an MPI
+/// call. The result refers to the operation, which must outlive it.
+/// @pre `dt` describes one `T` and is committed.
+template <typename T, typename Op>
+    requires(!detail::locally_callable<Op, T>) && convertible_to_mpi_handle<Op, MPI_Op>
+[[nodiscard]] auto as_local_op(Op const& op, datatype_view dt) noexcept {
+    return detail::reduce_local_op<T>(mpi::experimental::handle(op), dt.mpi_handle());
+}
+
+/// @return `as_local_op<T>(op, builtin_datatype<T>())`, for a builtin `T`.
+template <typename T, typename Op>
+    requires builtin_mpi_type<T> && (detail::locally_callable<Op, T> || convertible_to_mpi_handle<Op, MPI_Op>)
+[[nodiscard]] auto as_local_op(Op const& op) noexcept {
+    return mpi::experimental::as_local_op<T>(op, mpi::experimental::builtin_datatype<T>());
+}
+
+/// `Op` combines values of type `T` both locally and as MPI reduction operation, ignoring cv- and reference qualifiers
+/// of `T`: `as_mpi_op` and `as_local_op` are defined for it. That is, `Op` is
+///
+/// - a function object of a predefined operation on `T` (`builtin_op`, e.g. `std::plus<>` on `int`), or
+/// - anything with an `MPI_Op` handle: a raw `MPI_Op`, `op`, `op_view` or `functor_op`. If it is not callable on `T`,
+///   `as_local_op` applies it through `reduce_local`, given the datatype of `T`.
+///
+/// For algorithms that combine values locally and then across processes with the same operation, e.g. dstl's `reduce`
+/// and scans. Operations that are only valid through an `op_traits` specialization for particular buffer types are not
+/// covered.
+template <typename Op, typename T>
+concept reduction_op = convertible_to_mpi_handle<std::remove_cvref_t<Op>, MPI_Op>
+                       || (builtin_op<Op, T> && detail::locally_callable<Op, std::remove_cvref_t<T>>);
 
 } // namespace mpi::experimental

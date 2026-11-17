@@ -217,22 +217,6 @@ template <typename Op, typename T>
     return MPI_OP_NULL;
 }
 
-/// `Op` combines values of type `T` both locally and as MPI reduction operation, ignoring cv- and reference qualifiers
-/// of `T`: it is callable as `T(T const&, T const&)`, and it is a predefined operation on `T` (`builtin_op`, e.g.
-/// `std::plus<>` on `int`) or an operation object with an `MPI_Op` handle (`functor_op` from `make_op`, or `op` and
-/// `op_view` for builtin `T`).
-///
-/// For algorithms that combine values locally and then across processes with the same operation, e.g. dstl's `reduce`
-/// and scans. A raw `MPI_Op` is not callable; wrap it in an `op_view`. Operations that are only valid through an
-/// `op_traits` specialization for particular buffer types are not covered.
-template <typename Op, typename T>
-concept reduction_op = std::is_invocable_r_v<
-                           std::remove_cvref_t<T>,
-                           Op const&,
-                           std::remove_cvref_t<T> const&,
-                           std::remove_cvref_t<T> const&>
-                       && (builtin_op<Op, T> || convertible_to_mpi_handle<std::remove_cvref_t<Op>, MPI_Op>);
-
 // ──────────────────────────────────────────────────────────────────────────────
 // Public customization point.
 // ──────────────────────────────────────────────────────────────────────────────

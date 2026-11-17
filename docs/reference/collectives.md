@@ -83,6 +83,9 @@ combine values locally.
 ```{doxygenconcept} kamping::v2::reduction_op
 ```
 
+```{doxygenoverloads} kamping::v2::as_local_op
+```
+
 ```{doxygenoverloads} kamping::v2::builtin_op_handle
 ```
 

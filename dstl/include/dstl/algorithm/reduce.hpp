@@ -51,8 +51,9 @@ auto reduce(
 
     auto first = std::ranges::begin(r);
     auto last  = std::ranges::end(r);
-    // op is passed by reference: ops from make_op are not copyable.
-    T result = (first == last) ? T{} : std::reduce(std::next(first), last, *first, std::cref(op));
+    // Applies op locally: op itself if it is callable, otherwise its MPI_Op through MPI_Reduce_local.
+    auto const local_op = kamping::v2::as_local_op<T>(op, mpi_type);
+    T          result   = (first == last) ? T{} : std::reduce(std::next(first), last, *first, local_op);
 
     kamping::v2::allreduce(
         kamping::v2::inplace,
@@ -61,7 +62,7 @@ auto reduce(
         comm
     );
 
-    return op(init, result);
+    return local_op(init, result);
 }
 
 /// @brief Reduces the globally distributed range to a scalar on the root rank.
@@ -89,9 +90,10 @@ auto reduce_to_root(
     using T                     = std::ranges::range_value_t<R>;
     MPI_Datatype const mpi_type = kamping::v2::type(r);
 
-    auto first  = std::ranges::begin(r);
-    auto last   = std::ranges::end(r);
-    T    result = (first == last) ? T{} : std::reduce(std::next(first), last, *first, std::cref(op));
+    auto       first    = std::ranges::begin(r);
+    auto       last     = std::ranges::end(r);
+    auto const local_op = kamping::v2::as_local_op<T>(op, mpi_type);
+    T          result   = (first == last) ? T{} : std::reduce(std::next(first), last, *first, local_op);
 
     kamping::v2::comm_view cv{kamping::v2::handle(comm)};
 
@@ -103,7 +105,7 @@ auto reduce_to_root(
             root,
             comm
         );
-        return op(init, result);
+        return local_op(init, result);
     } else {
         kamping::v2::reduce(
             kamping::v2::views::ref_single(result) | kamping::v2::views::with_type(mpi_type),
