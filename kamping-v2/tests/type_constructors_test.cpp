@@ -9,6 +9,7 @@
 #include <ranges>
 #include <span>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -246,4 +247,167 @@ TEST(V2TypeConstructorsTest, DarrayWithUndistributedDimension) {
     std::vector<int> expected(4);
     std::iota(expected.begin(), expected.end(), 4 * rank);
     EXPECT_EQ(selected_ints(global.data(), dt, 4), expected);
+}
+
+// ── type_create_struct / struct_builder ───────────────────────────────────────────────────────────────────────────
+
+namespace {
+/// Sends `n` elements of `send` to this process over MPI_COMM_SELF and receives them into `recv`, both with `dt`.
+template <typename T>
+void roundtrip(T const* send, T* recv, int n, MPI_Datatype dt) {
+    int err = MPI_Sendrecv(send, n, dt, 0, 0, recv, n, dt, 0, 0, MPI_COMM_SELF, MPI_STATUS_IGNORE);
+    EXPECT_EQ(err, MPI_SUCCESS);
+}
+
+struct vec2 {
+    float x, y;
+};
+
+struct base {
+    int tag = 0;
+};
+
+struct particle : base {
+    char                 kind = 0;
+    double               pos[3]{};
+    std::array<short, 2> flags{};
+    vec2                 velocity{};
+    std::vector<int>     neighbors; // not sent
+};
+
+/// A class with private members and no default constructor, which describes itself.
+class account {
+public:
+    account(int id, double balance) : _id(id), _balance(balance) {}
+    int id() const {
+        return _id;
+    }
+    double balance() const {
+        return _balance;
+    }
+    static v2::uncommitted_datatype mpi_datatype() {
+        account const sample(0, 0.0);
+        return v2::struct_builder<account>(sample).field(&account::_id).field(&account::_balance).build();
+    }
+
+private:
+    int    _id;
+    double _balance;
+};
+} // namespace
+
+// Only builtin members are deduced: other members need a datatype, arrays need array_field.
+template <typename Member>
+concept deduced_field = requires(v2::struct_builder<particle>& b, Member m) { b.field(m); };
+template <typename Member>
+concept deduced_array_field = requires(v2::struct_builder<particle>& b, Member m) { b.array_field(m); };
+static_assert(deduced_field<char particle::*>);
+static_assert(deduced_field<int base::*>);
+static_assert(!deduced_field<vec2 particle::*>);
+static_assert(!deduced_field<double (particle::*)[3]>);
+static_assert(deduced_array_field<double (particle::*)[3]>);
+static_assert(deduced_array_field<std::array<short, 2> particle::*>);
+static_assert(!deduced_array_field<char particle::*>);
+// Members of unrelated classes are rejected.
+static_assert(!deduced_field<float vec2::*>);
+// A builder owns datatypes: move-only.
+static_assert(std::is_nothrow_move_constructible_v<v2::struct_builder<particle>>);
+static_assert(!std::is_copy_constructible_v<v2::struct_builder<particle>>);
+
+TEST(V2TypeConstructorsTest, StructFromDescriptors) {
+    struct record {
+        int    id;
+        double value[2];
+    };
+    auto const dt =
+        v2::type_create_resized(
+            v2::type_create_struct({{offsetof(record, id), 1, MPI_INT}, {offsetof(record, value), 2, MPI_DOUBLE}}),
+            0,
+            sizeof(record)
+        )
+            .commit();
+    EXPECT_EQ(dt.size(), static_cast<int>(sizeof(int) + 2 * sizeof(double)));
+    std::array<record, 2> const send{{{1, {1.5, 2.5}}, {2, {3.5, 4.5}}}};
+    std::array<record, 2>       recv{};
+    roundtrip(send.data(), recv.data(), 2, dt.mpi_handle());
+    EXPECT_EQ(recv[1].id, 2);
+    EXPECT_EQ(recv[1].value[1], 4.5);
+}
+
+TEST(V2TypeConstructorsTest, StructBuilderSendsTheChosenMembers) {
+    auto const vec2_type = v2::struct_builder<vec2>{}.field(&vec2::x).field(&vec2::y).build();
+    auto const dt        = v2::struct_builder<particle>{}
+                               .field(&particle::tag) // a member of the base class
+                               .field(&particle::kind)
+                               .array_field(&particle::pos)
+                               .array_field(&particle::flags)
+                               .field(&particle::velocity, vec2_type)
+                               .build()
+                               .commit();
+    EXPECT_EQ(dt.extent(), static_cast<MPI_Aint>(sizeof(particle)));
+    EXPECT_EQ(
+        dt.size(),
+        static_cast<int>(sizeof(int) + 1 + 3 * sizeof(double) + 2 * sizeof(short) + 2 * sizeof(float))
+    );
+
+    std::array<particle, 2> send;
+    for (std::size_t i = 0; i < 2; ++i) {
+        auto const k      = static_cast<int>(i);
+        send[i].tag       = k + 1;
+        send[i].kind      = static_cast<char>('a' + k);
+        send[i].pos[2]    = 3.0 * k;
+        send[i].flags[1]  = static_cast<short>(7 + k);
+        send[i].velocity  = {static_cast<float>(k), 2.0f * static_cast<float>(k)};
+        send[i].neighbors = {1, 2, 3};
+    }
+    std::array<particle, 2> recv;
+    roundtrip(send.data(), recv.data(), 2, dt.mpi_handle());
+    EXPECT_EQ(recv[1].tag, 2);
+    EXPECT_EQ(recv[1].kind, 'b');
+    EXPECT_EQ(recv[1].pos[2], 3.0);
+    EXPECT_EQ(recv[1].flags[1], 8);
+    EXPECT_EQ(recv[1].velocity.y, 2.0f);
+    EXPECT_TRUE(recv[1].neighbors.empty());
+}
+
+TEST(V2TypeConstructorsTest, StructBuilderOwnsTemporaryDatatypes) {
+    // The datatype of `velocity` is a temporary that the builder keeps alive until it is destroyed; the builder is
+    // used in separate statements and moved.
+    v2::struct_builder<particle> b;
+    b.field(&particle::velocity, v2::type_contiguous(2, MPI_FLOAT));
+    b.array_field(&particle::pos, v2::type_contiguous(1, MPI_DOUBLE));
+    auto       moved = std::move(b);
+    auto const dt    = moved.build().commit();
+    EXPECT_EQ(dt.size(), static_cast<int>(2 * sizeof(float) + 3 * sizeof(double)));
+
+    particle send;
+    send.velocity = {4.0f, 5.0f};
+    send.pos[1]   = 6.0;
+    particle recv;
+    roundtrip(&send, &recv, 1, dt.mpi_handle());
+    EXPECT_EQ(recv.velocity.y, 5.0f);
+    EXPECT_EQ(recv.pos[1], 6.0);
+}
+
+TEST(V2TypeConstructorsTest, StructBuilderFromSample) {
+    auto const                   dt = account::mpi_datatype().commit();
+    std::array<account, 2> const send{account(1, 10.5), account(2, 20.5)};
+    std::array<account, 2>       recv{account(0, 0.0), account(0, 0.0)};
+    roundtrip(send.data(), recv.data(), 2, dt.mpi_handle());
+    EXPECT_EQ(recv[1].id(), 2);
+    EXPECT_EQ(recv[1].balance(), 20.5);
+}
+
+TEST(V2TypeConstructorsTest, StructBuilderFieldOfSample) {
+    // Generic code visits the members of a sample object, as struct_type does with Boost.PFR.
+    vec2                     sample{};
+    v2::struct_builder<vec2> b(sample);
+    b.field_of_sample(sample.x, MPI_FLOAT).field_of_sample(sample.y, MPI_FLOAT);
+    auto const dt = b.build().commit();
+
+    std::array<vec2, 2> const send{{{1.0f, 2.0f}, {3.0f, 4.0f}}};
+    std::array<vec2, 2>       recv{};
+    roundtrip(send.data(), recv.data(), 2, dt.mpi_handle());
+    EXPECT_EQ(recv[1].x, 3.0f);
+    EXPECT_EQ(recv[1].y, 4.0f);
 }

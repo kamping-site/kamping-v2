@@ -3,18 +3,24 @@
 
 #pragma once
 
+#include <array>
+#include <climits>
 #include <concepts>
 #include <cstddef>
+#include <functional>
 #include <initializer_list>
+#include <memory>
 #include <optional>
 #include <ranges>
 #include <span>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
 #include <mpi.h>
 
 #include "kamping/v2/kassert.hpp"
+#include "mpi/buffer.hpp"
 #include "mpi/datatype.hpp"
 #include "mpi/handle.hpp"
 #include "mpi/range_concepts.hpp"
@@ -51,6 +57,13 @@ struct block {
 struct hblock {
     MPI_Aint displacement; ///< Offset in bytes.
     int      length;       ///< Number of elements.
+};
+
+/// @brief A block of `type_create_struct`: `length` elements of `type`, `displacement` bytes from the start.
+struct struct_field {
+    MPI_Aint                         displacement; ///< Offset in bytes.
+    int                              length;       ///< Number of elements.
+    mpi::experimental::datatype_view type;         ///< Datatype of the elements.
 };
 
 /// @brief A dimension of `type_create_subarray`: the `subsize` elements from index `start` of `size` elements.
@@ -110,6 +123,47 @@ struct block_arrays {
     }
 };
 
+/// The parallel arrays MPI expects for the fields of a struct.
+struct struct_arrays {
+    std::vector<int>          lengths;
+    std::vector<MPI_Aint>     displacements;
+    std::vector<MPI_Datatype> types;
+
+    explicit struct_arrays(std::span<struct_field const> fields) {
+        for (auto const& f: fields) {
+            lengths.push_back(f.length);
+            displacements.push_back(f.displacement);
+            types.push_back(f.type.mpi_handle());
+        }
+    }
+};
+
+/// The element type and length of a one-dimensional array member: a C array or a `std::array`.
+template <typename M>
+struct array_member_traits {};
+template <typename E, std::size_t N>
+struct array_member_traits<E[N]> {
+    using element_type                  = E;
+    static constexpr std::size_t length = N;
+};
+template <typename E, std::size_t N>
+struct array_member_traits<std::array<E, N>> {
+    using element_type                  = E;
+    static constexpr std::size_t length = N;
+};
+
+/// A one-dimensional array member (C array or `std::array`), ignoring cv-qualifiers.
+template <typename M>
+concept array_member = requires { typename array_member_traits<std::remove_cv_t<M>>::element_type; };
+
+/// Whether `count` elements of `dt` (one every `extent` bytes) lie within a member of `size` bytes.
+inline bool fits_into_member(MPI_Datatype dt, int count, std::size_t size) {
+    MPI_Aint lb = 0, extent = 0, true_lb = 0, true_extent = 0;
+    MPI_Type_get_extent(dt, &lb, &extent);
+    MPI_Type_get_true_extent(dt, &true_lb, &true_extent);
+    return true_lb >= 0
+           && true_lb + static_cast<MPI_Aint>(count - 1) * extent + true_extent <= static_cast<MPI_Aint>(size);
+}
 /// The parallel arrays MPI expects for the dimensions of a subarray.
 struct subarray_arrays {
     std::vector<int> sizes, subsizes, starts;
@@ -236,6 +290,225 @@ template <mpi::experimental::sized_integer_range R, mpi::experimental::convertib
 [[nodiscard]] mpi::experimental::uncommitted_datatype type_create_hindexed_block(R&& offsets, Datatype const& oldtype) {
     return kamping::v2::type_create_hindexed_block(1, std::forward<R>(offsets), oldtype);
 }
+
+// ── MPI_Type_create_struct ─────────────────────────────────────────────────────────────────────────────────────────
+
+/// @brief `type_create_struct` with one `struct_field` per block: `type_create_struct({{0, 1, MPI_INT}, {8, 2,
+/// MPI_DOUBLE}})`.
+/// @return The new datatype, owned and not committed.
+/// @throws mpi_error if `MPI_Type_create_struct` fails.
+[[nodiscard]] inline mpi::experimental::uncommitted_datatype type_create_struct(std::span<struct_field const> fields) {
+    detail::struct_arrays const arrays(fields);
+    return mpi::experimental::type_create_struct(arrays.lengths, arrays.displacements, arrays.types);
+}
+
+/// @brief `type_create_struct` with one `struct_field` per block: `type_create_struct({{0, 1, MPI_INT}, {8, 2,
+/// MPI_DOUBLE}})`.
+/// @return The new datatype, owned and not committed.
+/// @throws mpi_error if `MPI_Type_create_struct` fails.
+[[nodiscard]] inline mpi::experimental::uncommitted_datatype
+type_create_struct(std::initializer_list<struct_field> fields) {
+    return kamping::v2::type_create_struct(std::span<struct_field const>(fields.begin(), fields.size()));
+}
+
+/// @brief Builds the datatype of a class `T` from its members, one field at a time.
+///
+/// For classes that `struct_type` cannot reflect (constructors, private members, base classes) or of which only some
+/// members are sent. The datatype of a builtin member is deduced; any other member is given its datatype explicitly.
+/// `build()` returns the datatype, resized to `sizeof(T)` so that arrays of `T` work.
+///
+/// @code
+/// struct particle {
+///     int                   id;
+///     std::array<double, 3> pos;
+///     cell                  where;
+///     std::string           name;  // not sent
+/// };
+/// auto const particle_type = v2::struct_builder<particle>{}
+///                                .field(&particle::id)
+///                                .array_field(&particle::pos)
+///                                .field(&particle::where, cell_type)
+///                                .build()
+///                                .commit();
+/// @endcode
+///
+/// Field offsets are taken from an object of `T`: one the builder default-constructs, or a sample object passed to the
+/// constructor, which must outlive the calls that add fields. A datatype passed as a temporary `uncommitted_datatype`
+/// or `datatype` is owned by the builder and freed with it; other datatypes must stay valid until `build()`. Move-only.
+template <typename T>
+class struct_builder {
+public:
+    /// @brief A builder that takes field offsets from a default-constructed `T`.
+    struct_builder()
+        requires std::default_initializable<T>
+        : _owned_sample(std::make_unique<T>()),
+          _sample(_owned_sample.get()) {}
+
+    /// @brief A builder that takes field offsets from `sample`, which must outlive the calls that add fields.
+    explicit struct_builder(T const& sample) : _sample(std::addressof(sample)) {}
+
+    /// @brief Adds a member of builtin type `M`, e.g. `int` or `double`, as one element of its predefined datatype.
+    template <mpi::experimental::builtin_mpi_type M, typename C>
+        requires std::is_base_of_v<C, T>
+    struct_builder& field(M C::* member) & {
+        add(member_of_sample(member), mpi::experimental::builtin_datatype<M>(), 1, sizeof(M));
+        return *this;
+    }
+
+    /// @copydoc field(M C::*) &
+    template <mpi::experimental::builtin_mpi_type M, typename C>
+        requires std::is_base_of_v<C, T>
+    struct_builder&& field(M C::* member) && {
+        return std::move(field(member));
+    }
+
+    /// @brief Adds a member of any type as one element of `dt`, which describes the whole member.
+    template <typename M, typename C, typename Datatype>
+        requires std::is_base_of_v<C, T> && (!std::is_function_v<M>)
+                 && mpi::experimental::convertible_to_mpi_handle<std::remove_cvref_t<Datatype>, MPI_Datatype>
+    struct_builder& field(M C::* member, Datatype&& dt) & {
+        add(member_of_sample(member), keep(std::forward<Datatype>(dt)), 1, sizeof(M));
+        return *this;
+    }
+
+    /// @copydoc field(M C::*, Datatype&&) &
+    template <typename M, typename C, typename Datatype>
+        requires std::is_base_of_v<C, T> && (!std::is_function_v<M>)
+                 && mpi::experimental::convertible_to_mpi_handle<std::remove_cvref_t<Datatype>, MPI_Datatype>
+    struct_builder&& field(M C::* member, Datatype&& dt) && {
+        return std::move(field(member, std::forward<Datatype>(dt)));
+    }
+
+    /// @brief Adds an array member (a C array or `std::array`) of a builtin type as a block of all its elements.
+    template <detail::array_member M, typename C>
+        requires std::is_base_of_v<C, T>
+                 && mpi::experimental::builtin_mpi_type<
+                     typename detail::array_member_traits<std::remove_cv_t<M>>::element_type>
+    struct_builder& array_field(M C::* member) & {
+        using traits = detail::array_member_traits<std::remove_cv_t<M>>;
+        add(member_of_sample(member),
+            mpi::experimental::builtin_datatype<typename traits::element_type>(),
+            array_length<traits>(),
+            sizeof(M));
+        return *this;
+    }
+
+    /// @copydoc array_field(M C::*) &
+    template <detail::array_member M, typename C>
+        requires std::is_base_of_v<C, T>
+                 && mpi::experimental::builtin_mpi_type<
+                     typename detail::array_member_traits<std::remove_cv_t<M>>::element_type>
+    struct_builder&& array_field(M C::* member) && {
+        return std::move(array_field(member));
+    }
+
+    /// @brief Adds an array member (a C array or `std::array`) as a block of all its elements, each one element of
+    /// `element_dt`.
+    template <detail::array_member M, typename C, typename Datatype>
+        requires std::is_base_of_v<C, T>
+                 && mpi::experimental::convertible_to_mpi_handle<std::remove_cvref_t<Datatype>, MPI_Datatype>
+    struct_builder& array_field(M C::* member, Datatype&& element_dt) & {
+        using traits = detail::array_member_traits<std::remove_cv_t<M>>;
+        add(member_of_sample(member), keep(std::forward<Datatype>(element_dt)), array_length<traits>(), sizeof(M));
+        return *this;
+    }
+
+    /// @copydoc array_field(M C::*, Datatype&&) &
+    template <detail::array_member M, typename C, typename Datatype>
+        requires std::is_base_of_v<C, T>
+                 && mpi::experimental::convertible_to_mpi_handle<std::remove_cvref_t<Datatype>, MPI_Datatype>
+    struct_builder&& array_field(M C::* member, Datatype&& element_dt) && {
+        return std::move(array_field(member, std::forward<Datatype>(element_dt)));
+    }
+
+    /// @brief Adds the member `f` of the sample object as one element of `dt`, for generic code that visits the
+    /// members of the sample, e.g. with Boost.PFR.
+    template <typename F, typename Datatype>
+        requires mpi::experimental::convertible_to_mpi_handle<std::remove_cvref_t<Datatype>, MPI_Datatype>
+    struct_builder& field_of_sample(F const& f, Datatype&& dt) & {
+        auto const* begin = reinterpret_cast<std::byte const*>(_sample);
+        auto const* addr  = reinterpret_cast<std::byte const*>(std::addressof(f));
+        KAMPING_V2_ASSERT(
+            std::less_equal<>{}(begin, addr) && std::less_equal<>{}(addr + sizeof(F), begin + sizeof(T)),
+            "struct_builder::field_of_sample: f is not a member of the sample object"
+        );
+        add(std::addressof(f), keep(std::forward<Datatype>(dt)), 1, sizeof(F));
+        return *this;
+    }
+
+    /// @copydoc field_of_sample(F const&, Datatype&&) &
+    template <typename F, typename Datatype>
+        requires mpi::experimental::convertible_to_mpi_handle<std::remove_cvref_t<Datatype>, MPI_Datatype>
+    struct_builder&& field_of_sample(F const& f, Datatype&& dt) && {
+        return std::move(field_of_sample(f, std::forward<Datatype>(dt)));
+    }
+
+    /// @brief The datatype of the fields added so far, resized to `sizeof(T)` (`MPI_Type_create_struct`,
+    /// `MPI_Type_create_resized`). The builder can be used further.
+    /// @return The new datatype, owned and not committed.
+    /// @throws mpi_error if `MPI_Type_create_struct` or `MPI_Type_create_resized` fails.
+    [[nodiscard]] mpi::experimental::uncommitted_datatype build() const {
+        return mpi::experimental::type_create_resized(
+            mpi::experimental::type_create_struct(_lengths, _displacements, _types),
+            0,
+            static_cast<MPI_Aint>(sizeof(T))
+        );
+    }
+
+private:
+    template <typename M, typename C>
+    void const* member_of_sample(M C::* member) const {
+        return std::addressof(_sample->*static_cast<M T::*>(member));
+    }
+
+    template <typename Traits>
+    static constexpr int array_length() {
+        static_assert(Traits::length <= static_cast<std::size_t>(INT_MAX), "array member too long for MPI");
+        return static_cast<int>(Traits::length);
+    }
+
+    /// Returns the handle of `dt`, taking ownership of a temporary owning datatype.
+    template <typename Datatype>
+    MPI_Datatype keep(Datatype&& dt) {
+        using plain            = std::remove_cvref_t<Datatype>;
+        MPI_Datatype const raw = mpi::experimental::handle(dt);
+        if constexpr (
+            !std::is_lvalue_reference_v<Datatype>
+            && (std::same_as<plain, mpi::experimental::uncommitted_datatype>
+                || std::same_as<plain, mpi::experimental::datatype>)
+        ) {
+            _owned.push_back(mpi::experimental::uncommitted_datatype::from_native(dt.release()));
+        }
+        return raw;
+    }
+
+    void add(void const* addr, MPI_Datatype dt, int count, [[maybe_unused]] std::size_t member_size) {
+        KAMPING_V2_ASSERT(
+            detail::fits_into_member(dt, count, member_size),
+            "struct_builder: the datatype of a field reaches beyond its member"
+        );
+        MPI_Aint base   = 0;
+        MPI_Aint member = 0;
+        int      err    = MPI_Get_address(_sample, &base);
+        if (err != MPI_SUCCESS) {
+            throw mpi::experimental::mpi_error(err);
+        }
+        err = MPI_Get_address(addr, &member);
+        if (err != MPI_SUCCESS) {
+            throw mpi::experimental::mpi_error(err);
+        }
+        _lengths.push_back(count);
+        _displacements.push_back(MPI_Aint_diff(member, base));
+        _types.push_back(dt);
+    }
+
+    std::unique_ptr<T>                                   _owned_sample; // stable address when the builder is moved
+    T const*                                             _sample;
+    std::vector<int>                                     _lengths;
+    std::vector<MPI_Aint>                                _displacements;
+    std::vector<MPI_Datatype>                            _types;
+    std::vector<mpi::experimental::uncommitted_datatype> _owned;
+};
 
 // ── MPI_Type_create_subarray ───────────────────────────────────────────────────────────────────────────────────────
 

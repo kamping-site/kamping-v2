@@ -36,6 +36,20 @@ auto [_, all] = v2::allgatherv(points | views::with_auto_pool(env),
                                v2::auto_recv_v<point>(env), env);
 ```
 
+For classes that `struct_type` cannot reflect, e.g. with constructors, private members or base classes, or to send
+only some members, build the datatype with a `struct_builder`. Builtin members are deduced, other members get their
+datatype explicitly:
+
+```cpp
+auto const particle_type = v2::struct_builder<particle>{}
+                               .field(&particle::id)
+                               .array_field(&particle::pos)          // std::array<double, 3>
+                               .field(&particle::velocity, vec_type)
+                               .build()
+                               .commit();
+v2::send(particles | views::with_type(particle_type), dest, comm);
+```
+
 ## One-off datatypes
 
 Layouts that are not a C++ type, such as a matrix column or a process's block of a distributed matrix, are built

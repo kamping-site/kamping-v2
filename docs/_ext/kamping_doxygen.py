@@ -616,7 +616,7 @@ class _DoxygenFunctionGroup(_DoxygenObject, CPPFunctionObject):
         # consecutive overloads with the same description share one label
         groups: list[tuple[list[int], list[nodes.Node]]] = []
         for number, (body, _) in enumerate(bodies, start=1):
-            if groups and nodes.Element("", *groups[-1][1]).astext() == nodes.Element("", *body).astext():
+            if groups and _same_text(groups[-1][1], body):
                 groups[-1][0].append(number)
             else:
                 groups.append(([number], body))
@@ -642,7 +642,7 @@ class _DoxygenFunctionGroup(_DoxygenObject, CPPFunctionObject):
         for number, (_, returned) in enumerate(bodies, start=1):
             if not returned:
                 continue
-            match = next((r for r in returns if nodes.Element("", *r[1]).astext() == nodes.Element("", *returned).astext()), None)
+            match = next((r for r in returns if _same_text(r[1], returned)), None)
             if match:
                 match[0].append(number)
             else:
@@ -661,6 +661,12 @@ class _DoxygenFunctionGroup(_DoxygenObject, CPPFunctionObject):
         if header and self.show_header:
             out.append(nodes.paragraph("", "Defined in header ", nodes.literal(text=f"<{header}>")))
         content_node[0:0] = out
+
+
+def _same_text(a: list[nodes.Node], b: list[nodes.Node]) -> bool:
+    """Whether two descriptions read the same, ignoring whitespace (``@copydoc`` adds trailing spaces)."""
+    words = lambda body: nodes.Element("", *body).astext().split()
+    return words(a) == words(b)
 
 
 def _location(member: ET.Element) -> tuple[str, int]:

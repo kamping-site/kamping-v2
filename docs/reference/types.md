@@ -109,6 +109,10 @@ last output argument. Where MPI takes parallel arrays, v2 adds forms that take o
 :members:
 ```
 
+```{doxygenstruct} kamping::v2::struct_field
+:members:
+```
+
 ```{doxygenstruct} kamping::v2::subarray_dim
 :members:
 ```
@@ -118,6 +122,12 @@ last output argument. Where MPI takes parallel arrays, v2 adds forms that take o
 ```
 
 ```{doxygenenum} kamping::v2::distribution
+```
+
+### Struct builder
+
+```{doxygenclass} kamping::v2::struct_builder
+:members:
 ```
 
 ## Committing by hand
