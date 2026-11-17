@@ -227,7 +227,7 @@ public:
     /// @brief The hints in effect for this session (`MPI_Session_get_info`).
     /// @return A new, owned info object; empty if the session has no hints.
     /// @throws mpi_error if `MPI_Session_get_info` fails.
-    [[nodiscard]] mpi::experimental::info get_info() const {
+    [[nodiscard]] mpi::experimental::info info() const {
         MPI_Info used = MPI_INFO_NULL;
         int      err  = MPI_Session_get_info(sess(), &used);
         if (err != MPI_SUCCESS) {
@@ -237,14 +237,14 @@ public:
     }
 
     /// @brief The thread support level provided for the MPI objects derived from this session, such as communicators
-    /// created with `comm_from_pset()`: the `thread_level` key of `get_info()`.
+    /// created with `comm_from_pset()`: the `thread_level` key of `info()`.
     ///
     /// It can differ between sessions, and from `environment::provided_thread_level()` of the World Model.
     /// @return The provided level, or nothing if the MPI implementation does not report it. Open MPI, for example,
     /// only reports it if a level was requested when the session was initialized.
     /// @throws mpi_error if `MPI_Session_get_info` fails.
     [[nodiscard]] std::optional<mpi::experimental::thread_level> provided_thread_level() const {
-        return get_info().template get<mpi::experimental::thread_level>("thread_level");
+        return info().template get<mpi::experimental::thread_level>("thread_level");
     }
 };
 

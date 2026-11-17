@@ -236,8 +236,9 @@ The same pattern applies to ranks (`to_rank`) and tags (`to_tag`): `rank_traits`
 - `#pragma once` for include guards
 - East-side `const` (`int const` not `const int`)
 - snake_case for types (including enums and their enumerators), functions and variables
-- A public member must not have the name of a type it uses (e.g. `environment::provided_thread_level()`, not
-  `thread_level()`): inside the class, the member hides the type
+- A public member may have the name of a type it uses when that is clearly the best name (e.g. `comm.group()`,
+  `comm.topology()`, `darray_dim::distribution`). Inside the class, the member hides the type, so qualify the type
+  there (`mpi::experimental::group`). Otherwise, prefer a different name
 - Tag types only when a value selects code at compile time (e.g. commutativity); an `enum class` when the value is only
   passed to MPI at runtime (e.g. `array_order`)
 - Private members prefixed with `_`: `_member`
