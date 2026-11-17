@@ -103,7 +103,7 @@ void reduce_local(SBuf&& inbuf, RBuf&& inoutbuf, Op const& op) {
     }
 }
 
-template <typename T, typename F>
+template <typename T, typename F, commutativity_tag Commutativity>
     requires reduction_functor<F, T>
 class functor_op;
 
@@ -179,8 +179,8 @@ public:
     op(op&& o) noexcept : _op(std::exchange(o._op, MPI_OP_NULL)) {}
 
     /// @brief Takes over the operation of `f`, which holds `MPI_OP_NULL` afterwards; the functor is dropped.
-    template <typename T, typename F>
-    op(functor_op<T, F>&& f) noexcept : _op(f.release()) {}
+    template <typename T, typename F, commutativity_tag Commutativity>
+    op(functor_op<T, F, Commutativity>&& f) noexcept : _op(f.release()) {}
 
     /// @brief Frees the current operation, then transfers ownership; `o` holds `MPI_OP_NULL` afterwards.
     op& operator=(op&& o) noexcept {
@@ -291,23 +291,22 @@ template <commutativity_tag Commutativity = non_commutative_tag>
 /// It owns its `MPI_Op` like an `op` and can be passed as the operation of the reduce-like collectives. It is also
 /// callable as `T(T const&, T const&)`, which calls the functor directly, so the same object combines values locally,
 /// e.g. in `std::reduce`, without an MPI call. Moving it into an `op` keeps the operation and drops the functor.
+/// The commutativity is part of the type, so generic code can rely on it at compile time (`commutative_op`).
 /// Move-only.
-template <typename T, typename F>
+template <typename T, typename F, commutativity_tag Commutativity = non_commutative_tag>
     requires reduction_functor<F, T>
 class functor_op {
 public:
-    /// @brief Creates the operation for `f` (`MPI_Op_create`).
+    /// @brief Creates the operation for `f` (`MPI_Op_create`), commutative if `Commutativity` is `commutative_tag`.
     ///
     /// MPI combines elements with a default-constructed `F`; `f` is kept for `operator()`. `T` need not be assignable:
     /// MPI's callback replaces an element by destroying and constructing it in place. MPI passes the elements as raw
     /// memory, so `T` must be sent with a datatype that transfers its whole value representation.
     /// @param f The functor.
-    /// @param commutativity `commutative` or `non_commutative`.
     /// @throws mpi_error if `MPI_Op_create` fails.
-    template <commutativity_tag Commutativity>
-    functor_op(F f, Commutativity commutativity)
+    explicit functor_op(F f)
         : _f(std::move(f)),
-          _op(mpi::experimental::make_op(&detail::apply_elementwise<T, F>, commutativity)) {}
+          _op(mpi::experimental::make_op(&detail::apply_elementwise<T, F>, Commutativity{})) {}
 
     /// @return `f(lhs, rhs)` with the functor.
     T operator()(T const& lhs, T const& rhs) const {
@@ -367,8 +366,9 @@ private:
 /// @throws mpi_error if `MPI_Op_create` fails.
 template <typename T, typename F, commutativity_tag Commutativity = non_commutative_tag>
     requires reduction_functor<std::remove_cvref_t<F>, T>
-[[nodiscard]] functor_op<T, std::remove_cvref_t<F>> make_op(F&& f, Commutativity commutativity = {}) {
-    return functor_op<T, std::remove_cvref_t<F>>(std::forward<F>(f), commutativity);
+[[nodiscard]] functor_op<T, std::remove_cvref_t<F>, Commutativity>
+make_op(F&& f, Commutativity /* commutativity */ = {}) {
+    return functor_op<T, std::remove_cvref_t<F>, Commutativity>(std::forward<F>(f));
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -440,5 +440,21 @@ template <typename T, typename Op>
 template <typename Op, typename T>
 concept reduction_op = convertible_to_mpi_handle<std::remove_cvref_t<Op>, MPI_Op>
                        || (builtin_op<Op, T> && detail::locally_callable<Op, std::remove_cvref_t<T>>);
+
+namespace detail {
+template <typename Op>
+struct is_commutative_functor_op : std::false_type {};
+template <typename T, typename F>
+struct is_commutative_functor_op<functor_op<T, F, commutative_tag>> : std::true_type {};
+} // namespace detail
+
+/// `Op` is known at compile time to be commutative on values of type `T`: it is a function object of a predefined
+/// operation (`builtin_op`; all predefined MPI operations are commutative), or a `functor_op` created with
+/// `commutative`.
+///
+/// Generic code can then combine values in any order, e.g. with `std::reduce` instead of `std::accumulate`. An
+/// operation whose commutativity is only known at runtime, such as `op` or a raw `MPI_Op`, does not satisfy it.
+template <typename Op, typename T>
+concept commutative_op = builtin_op<Op, T> || detail::is_commutative_functor_op<std::remove_cvref_t<Op>>::value;
 
 } // namespace mpi::experimental

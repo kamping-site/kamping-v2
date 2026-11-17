@@ -82,6 +82,15 @@ static_assert(!std::is_convertible_v<int_sum_op&, op>);
 static_assert(std::same_as<decltype(make_op<int>(std::plus<>{})), int_sum_op>);
 static_assert(std::same_as<decltype(make_op(&int_sum)), op>);
 
+// Commutativity known at compile time: predefined operations, and functor_ops created with commutative.
+static_assert(commutative_op<std::plus<>, int>);
+static_assert(commutative_op<ops::max<>, double>);
+static_assert(commutative_op<decltype(make_op<int>(std::plus<>{}, commutative)), int>);
+static_assert(!commutative_op<decltype(make_op<int>(std::plus<>{})), int>);
+static_assert(!commutative_op<op, int>); // only known at runtime
+static_assert(!commutative_op<MPI_Op, int>);
+static_assert(std::is_convertible_v<functor_op<int, std::plus<>, commutative_tag>&&, op>);
+
 // The operation objects are callable on single values.
 static_assert(std::is_invocable_r_v<int, op const&, int, int>);
 static_assert(std::is_invocable_r_v<double, op_view, double, double>);

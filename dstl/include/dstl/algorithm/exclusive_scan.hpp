@@ -64,8 +64,12 @@ void exclusive_scan(
         // First pass: compute local total without assuming T{} is the identity for op.
         auto it          = std::ranges::begin(r);
         T    local_total = *it++;
-        // std::accumulate, not std::reduce: op need only be associative, so the elements must be combined in order.
-        local_total = std::accumulate(it, std::ranges::end(r), local_total, local_op);
+        // op need only be associative, so the elements are combined in order, unless op is known to be commutative.
+        if constexpr (kamping::v2::commutative_op<BinaryOp, T>) {
+            local_total = std::reduce(it, std::ranges::end(r), local_total, local_op);
+        } else {
+            local_total = std::accumulate(it, std::ranges::end(r), local_total, local_op);
+        }
 
         if (sub_comm.size() > 1) {
             kamping::v2::exscan(

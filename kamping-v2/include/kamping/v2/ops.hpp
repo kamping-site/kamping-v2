@@ -45,6 +45,7 @@ using mpi::experimental::as_local_op;
 using mpi::experimental::builtin_op;
 using mpi::experimental::builtin_op_handle;
 using mpi::experimental::commutative;
+using mpi::experimental::commutative_op;
 using mpi::experimental::commutative_tag;
 using mpi::experimental::commutativity_tag;
 using mpi::experimental::functor_op;
