@@ -663,6 +663,11 @@ class _DoxygenFunctionGroup(_DoxygenObject, CPPFunctionObject):
         content_node[0:0] = out
 
 
+def _location(member: ET.Element) -> tuple[str, int]:
+    location = member.find("location")
+    return (location.get("file") or "", int(location.get("line") or 0))
+
+
 class DoxygenOverloads(SphinxDirective):
     """All overloads of the function named by the argument, in source order."""
 
@@ -678,8 +683,14 @@ class DoxygenOverloads(SphinxDirective):
         namespace, short = split_qualified(qualified)
         reexport_header = None
         if namespace == "kamping::v2" and short in reexports(self.env):
+            # the re-exported core overloads, together with overloads that v2 adds under the same name
             reexport_header = reexports(self.env)[short]
-            members = functions.get(f"mpi::experimental::{short}", [])
+            # Doxygen also lists the re-exported core overloads under the v2 name, defined as mpi::experimental::X
+            members = functions.get(f"mpi::experimental::{short}", []) + [
+                m
+                for m in functions.get(qualified, [])
+                if not (m.findtext("definition") or "").endswith(f"mpi::experimental::{short}")
+            ]
         else:
             members = functions.get(qualified, [])
         if not members:
@@ -689,9 +700,7 @@ class DoxygenOverloads(SphinxDirective):
             "doxygenoverloads", [qualified], {}, self.content, self.lineno, self.content_offset, self.block_text,
             self.state, self.state_machine,
         )
-        directive.members = sorted(
-            members, key=lambda m: (m.find("location").get("file"), int(m.find("location").get("line")))
-        )
+        directive.members = sorted(members, key=_location)
         directive.reexport_header = reexport_header
         return directive.run()
 

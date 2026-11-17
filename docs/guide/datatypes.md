@@ -48,20 +48,33 @@ lifetime. `std::move(u).commit()`, or `.commit()` on the returned temporary, com
 `datatype`:
 
 ```cpp
-std::array const gsizes{n, n};               // an n x n matrix in blocks
-std::array const distribs{MPI_DISTRIBUTE_BLOCK, MPI_DISTRIBUTE_BLOCK};
-std::array const dargs{MPI_DISTRIBUTE_DFLT_DARG, MPI_DISTRIBUTE_DFLT_DARG};
-std::array const psizes{p_rows, p_cols};     // on a p_rows x p_cols grid
-auto const block = v2::type_create_darray(comm.size(), comm.rank(), gsizes, distribs,
-                                          dargs, psizes, v2::array_order::c, MPI_DOUBLE)
+// An n x n matrix in blocks on a p_rows x p_cols process grid.
+using v2::distribution;
+auto const block = v2::type_create_darray({{n, distribution::block, p_rows},
+                                           {n, distribution::block, p_cols}},
+                                          MPI_DOUBLE, comm)
                        .commit();
 
 v2::send(matrix | views::with_type(block) | views::with_count(1), 0, comm);
 ```
 
-Array arguments such as `gsizes` are contiguous ranges (an `std::array`, a `std::vector`, a `std::span`, ...); their
-length is the count MPI expects, e.g. the number of dimensions. The base datatype can be a builtin one like
-`MPI_DOUBLE`, a `datatype` or an `uncommitted_datatype`. Each constructor also has a form that mirrors the MPI
+Where MPI takes parallel arrays, such as the block lengths and displacements of `type_indexed` or the sizes and
+starts of the dimensions of `type_create_subarray`, there is also a form that takes one descriptor per block or
+dimension: `block{displacement, length}` (`hblock` with a displacement in bytes), `subarray_dim{size, start,
+subsize}` and `darray_dim{global_size, distrib, procs, block_size}`. They can be written as braced lists, and
+leave out what has an obvious value: the storage order is row-major unless you pass one, `type_create_darray` takes
+the rank and size from the communicator, a dimension without a distribution is not distributed, and a missing
+block size is MPI's default.
+
+```cpp
+auto const upper    = v2::type_indexed({{0, 3}, {4, 2}, {8, 1}}, MPI_DOUBLE);  // upper triangle of 3 x 3
+auto const interior = v2::type_create_subarray({{rows, 1, rows - 2}, {cols, 1, cols - 2}}, MPI_DOUBLE);
+auto const selected = v2::type_create_indexed_block(indices, MPI_DOUBLE);       // indices: any integer range
+```
+
+The forms that mirror MPI are there as well. Their array arguments are contiguous ranges (an `std::array`, a
+`std::vector`, a `std::span`, ...), and their length is the count MPI expects, e.g. the number of dimensions. The
+base datatype can be a builtin one like `MPI_DOUBLE`, a `datatype` or an `uncommitted_datatype`. Each constructor also has a form that mirrors the MPI
 call and writes the new datatype into a last argument, a raw `MPI_Datatype` or an empty `uncommitted_datatype`.
 
 `views::with_type` borrows a `datatype` passed as an lvalue. A temporary is moved into the view instead, so

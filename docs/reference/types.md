@@ -63,6 +63,10 @@ datatype into its last argument, a raw `MPI_Datatype` or an empty `uncommitted_d
 as an `uncommitted_datatype`. The new datatype is never committed. Base datatypes can be any datatype handle,
 including an `uncommitted_datatype`. Array arguments are contiguous ranges, and their length is MPI's count.
 
+Where MPI takes parallel arrays, v2 adds forms that take one descriptor per block or dimension instead, which can be
+written as braced lists. They leave out arguments with an obvious value by arity: the storage order (row-major), and
+for `type_create_indexed_block` / `type_create_hindexed_block` the block length (one element per index).
+
 ```{doxygenoverloads} kamping::v2::type_contiguous
 ```
 
@@ -97,6 +101,27 @@ including an `uncommitted_datatype`. Array arguments are contiguous ranges, and 
 ```
 
 ```{doxygenenum} kamping::v2::array_order
+```
+
+### Descriptors
+
+```{doxygenstruct} kamping::v2::block
+:members:
+```
+
+```{doxygenstruct} kamping::v2::hblock
+:members:
+```
+
+```{doxygenstruct} kamping::v2::subarray_dim
+:members:
+```
+
+```{doxygenstruct} kamping::v2::darray_dim
+:members:
+```
+
+```{doxygenenum} kamping::v2::distribution
 ```
 
 ## Committing by hand
