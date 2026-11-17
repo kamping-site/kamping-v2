@@ -21,10 +21,10 @@
 
 #include "kamping/v2/kassert.hpp"
 #include "mpi/buffer.hpp"
+#include "mpi/comm.hpp"
 #include "mpi/datatype.hpp"
 #include "mpi/handle.hpp"
 #include "mpi/range_concepts.hpp"
-#include "mpi/rank.hpp"
 #include "mpi/type_constructors.hpp"
 
 /// @file
@@ -558,11 +558,11 @@ template <
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>     Comm>
 [[nodiscard]] mpi::experimental::uncommitted_datatype
 type_create_darray(std::span<darray_dim const> dims, array_order order, Datatype const& oldtype, Comm const& comm) {
-    MPI_Comm const              raw_comm = mpi::experimental::handle(comm);
-    detail::darray_arrays const arrays(dims);
+    mpi::experimental::comm_view const cv(mpi::experimental::handle(comm));
+    detail::darray_arrays const        arrays(dims);
     return mpi::experimental::type_create_darray(
-        mpi::experimental::detail::comm_size(raw_comm),
-        mpi::experimental::detail::comm_rank(raw_comm),
+        cv.size(),
+        cv.rank(),
         arrays.gsizes,
         arrays.distribs,
         arrays.dargs,

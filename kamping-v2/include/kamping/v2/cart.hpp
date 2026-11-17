@@ -68,10 +68,7 @@ template <mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
         periods.push_back(d.periodic ? 1 : 0);
     }
     if (std::ranges::find(procs, auto_dim) != procs.end()) {
-        mpi::experimental::dims_create(
-            mpi::experimental::detail::comm_size(mpi::experimental::handle(c)),
-            std::span<int>(procs)
-        );
+        mpi::experimental::dims_create(comm_view(mpi::experimental::handle(c)).size(), std::span<int>(procs));
     }
     return mpi::experimental::cart_create(c, std::span<int const>(procs), periods, reorder);
 }

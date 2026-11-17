@@ -78,19 +78,28 @@ public:
         detail::assert_cart(_comm);
         KAMPING_V2_ASSERT(rank >= 0, "cart_position: rank must be a rank of the communicator");
         int ndims = 0;
-        check(MPI_Cartdim_get(_comm, &ndims));
+        int err   = MPI_Cartdim_get(_comm, &ndims);
+        if (err != MPI_SUCCESS) {
+            throw mpi_error(err);
+        }
         auto const n = static_cast<std::size_t>(ndims);
         _dims.resize(n);
         _periods.resize(n);
         _coords.resize(n);
-        check(MPI_Cart_get(_comm, ndims, _dims.data(), _periods.data(), _coords.data()));
-        check(MPI_Cart_coords(_comm, rank, ndims, _coords.data()));
+        err = MPI_Cart_get(_comm, ndims, _dims.data(), _periods.data(), _coords.data());
+        if (err != MPI_SUCCESS) {
+            throw mpi_error(err);
+        }
+        err = MPI_Cart_coords(_comm, rank, ndims, _coords.data());
+        if (err != MPI_SUCCESS) {
+            throw mpi_error(err);
+        }
     }
 
     /// @brief The position of the calling process in the Cartesian communicator `c`.
     /// @throws mpi_error if an MPI call fails.
     template <convertible_to_mpi_handle<MPI_Comm> Comm>
-    explicit cart_position(Comm const& c) : cart_position(c, detail::comm_rank(mpi::experimental::handle(c))) {}
+    explicit cart_position(Comm const& c) : cart_position(c, comm_view(mpi::experimental::handle(c)).rank()) {}
 
     /// @return The position `disp` steps along dimension `dim` (`MPI_Cart_rank`).
     /// @throws mpi_error if `MPI_Cart_rank` or `MPI_Cart_coords` fails.
@@ -134,12 +143,6 @@ public:
 private:
     friend struct detail::cart_position_access;
 
-    static void check(int err) {
-        if (err != MPI_SUCCESS) {
-            throw mpi_error(err);
-        }
-    }
-
     /// Whether the coordinates lie beyond the ends of a non-periodic dimension, where MPI defines no rank.
     [[nodiscard]] bool outside_grid() const noexcept {
         for (std::size_t i = 0; i < _coords.size(); ++i) {
@@ -157,8 +160,14 @@ private:
             _rank = MPI_PROC_NULL;
             return;
         }
-        check(MPI_Cart_rank(_comm, _coords.data(), &_rank));
-        check(MPI_Cart_coords(_comm, _rank, static_cast<int>(_coords.size()), _coords.data()));
+        int err = MPI_Cart_rank(_comm, _coords.data(), &_rank);
+        if (err != MPI_SUCCESS) {
+            throw mpi_error(err);
+        }
+        err = MPI_Cart_coords(_comm, _rank, static_cast<int>(_coords.size()), _coords.data());
+        if (err != MPI_SUCCESS) {
+            throw mpi_error(err);
+        }
     }
 
     MPI_Comm         _comm;
@@ -183,9 +192,11 @@ struct cart_position_access {
         result._coords[static_cast<std::size_t>(dim)] += disp;
         result._rank = rank;
         if (rank != MPI_PROC_NULL) {
-            cart_position::check(
-                MPI_Cart_coords(result._comm, rank, static_cast<int>(result._coords.size()), result._coords.data())
-            );
+            int err =
+                MPI_Cart_coords(result._comm, rank, static_cast<int>(result._coords.size()), result._coords.data());
+            if (err != MPI_SUCCESS) {
+                throw mpi_error(err);
+            }
         }
         return result;
     }
@@ -335,7 +346,7 @@ template <convertible_to_mpi_handle<MPI_Comm> Comm>
 /// @throws mpi_error if `MPI_Cart_coords` fails.
 template <convertible_to_mpi_handle<MPI_Comm> Comm>
 [[nodiscard]] std::vector<int> cart_coords(Comm const& c) {
-    return mpi::experimental::cart_coords(c, detail::comm_rank(mpi::experimental::handle(c)));
+    return mpi::experimental::cart_coords(c, comm_view(mpi::experimental::handle(c)).rank());
 }
 
 /// @return The coordinates of the process `rank` in the `N`-dimensional Cartesian communicator `c`
@@ -357,7 +368,7 @@ template <std::size_t N, convertible_to_mpi_handle<MPI_Comm> Comm>
 /// @throws mpi_error if `MPI_Cart_coords` fails.
 template <std::size_t N, convertible_to_mpi_handle<MPI_Comm> Comm>
 [[nodiscard]] std::array<int, N> cart_coords(Comm const& c) {
-    return mpi::experimental::cart_coords<N>(c, detail::comm_rank(mpi::experimental::handle(c)));
+    return mpi::experimental::cart_coords<N>(c, comm_view(mpi::experimental::handle(c)).rank());
 }
 
 /// @return The rank of the process at `coords` in the Cartesian communicator `c` (`MPI_Cart_rank`). In a periodic

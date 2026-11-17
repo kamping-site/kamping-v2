@@ -76,16 +76,24 @@ class comm_accessors {
 
 public:
     /// @return The rank of the calling process in this communicator.
+    /// @throws mpi_error if `MPI_Comm_rank` fails.
     [[nodiscard]] int rank() const {
-        int r;
-        MPI_Comm_rank(underlying(), &r);
+        int r   = 0;
+        int err = MPI_Comm_rank(underlying(), &r);
+        if (err != MPI_SUCCESS) {
+            throw mpi_error(err);
+        }
         return r;
     }
 
     /// @return The number of processes in this communicator.
+    /// @throws mpi_error if `MPI_Comm_size` fails.
     [[nodiscard]] int size() const {
-        int s;
-        MPI_Comm_size(underlying(), &s);
+        int s   = 0;
+        int err = MPI_Comm_size(underlying(), &s);
+        if (err != MPI_SUCCESS) {
+            throw mpi_error(err);
+        }
         return s;
     }
 
@@ -259,6 +267,24 @@ public:
 private:
     MPI_Comm _comm;
 };
+
+// ── Rank type constructors (declared in mpi/rank.hpp) ─────────────────────────
+
+template <convertible_to_mpi_handle<MPI_Comm> Comm>
+periodic_rank::periodic_rank(Comm const& comm)
+    : periodic_rank(comm_view(mpi::experimental::handle(comm)).rank(), comm) {}
+
+template <convertible_to_mpi_handle<MPI_Comm> Comm>
+periodic_rank::periodic_rank(int rank, Comm const& comm)
+    : periodic_rank(rank, comm_view(mpi::experimental::handle(comm)).size(), detail::with_size_tag{}) {}
+
+template <convertible_to_mpi_handle<MPI_Comm> Comm>
+nonperiodic_rank::nonperiodic_rank(Comm const& comm)
+    : nonperiodic_rank(comm_view(mpi::experimental::handle(comm)).rank(), comm) {}
+
+template <convertible_to_mpi_handle<MPI_Comm> Comm>
+nonperiodic_rank::nonperiodic_rank(int rank, Comm const& comm)
+    : nonperiodic_rank(rank, comm_view(mpi::experimental::handle(comm)).size(), detail::with_size_tag{}) {}
 
 // ── Predefined communicators ──────────────────────────────────────────────────
 
