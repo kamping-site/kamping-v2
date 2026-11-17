@@ -218,7 +218,7 @@ TEST(V2TypeConstructorsTest, DarrayCyclicWithBlockSize) {
     ASSERT_EQ(16 % (2 * size), 0);
 
     std::vector<v2::darray_dim> const dims{
-        {.global_size = 16, .distrib = v2::distribution::cyclic, .procs = size, .block_size = 2}
+        {.global_size = 16, .distribution = v2::distribution::cyclic, .procs = size, .block_size = 2}
     };
     auto const dt    = v2::type_create_darray(dims, v2::array_order::c, MPI_INT, MPI_COMM_WORLD).commit();
     int const  local = 16 / size;

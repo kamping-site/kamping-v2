@@ -27,7 +27,7 @@ TEST(SessionTest, RequestedThreadLevelIsReportedAsProvided) {
     auto    provided = s.provided_thread_level();
     if (provided.has_value()) {
         EXPECT_LE(*provided, thread_level::multiple);
-        EXPECT_TRUE(s.get_info().get("thread_level").has_value());
+        EXPECT_TRUE(s.info().get("thread_level").has_value());
     }
 }
 

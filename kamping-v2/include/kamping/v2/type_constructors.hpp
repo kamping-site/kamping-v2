@@ -74,13 +74,15 @@ struct subarray_dim {
     int subsize; ///< Elements of the subarray.
 };
 
-/// @brief A dimension of `type_create_darray`: `global_size` elements, distributed as `distrib` over `procs`
+/// @brief A dimension of `type_create_darray`: `global_size` elements, distributed as `distribution` over `procs`
 /// processes.
 struct darray_dim {
-    int                global_size;                     ///< Elements of the global array.
-    distribution       distrib    = distribution::none; ///< Distribution; `none` requires `procs == 1`.
-    int                procs      = 1;                  ///< Processes in this dimension.
-    std::optional<int> block_size = std::nullopt;       ///< Block size; MPI's default if empty.
+    // The member hides the type `distribution` inside the struct, so the type is qualified here.
+    int                             global_size; ///< Elements of the global array.
+    mpi::experimental::distribution distribution =
+        mpi::experimental::distribution::none;    ///< Distribution; `none` requires `procs == 1`.
+    int                procs      = 1;            ///< Processes in this dimension.
+    std::optional<int> block_size = std::nullopt; ///< Block size; MPI's default if empty.
 };
 
 namespace detail {
@@ -178,11 +180,11 @@ struct darray_arrays {
     explicit darray_arrays(std::span<darray_dim const> dims) {
         for (auto const& d: dims) {
             KAMPING_V2_ASSERT(
-                d.distrib != distribution::none || (d.procs == 1 && !d.block_size.has_value()),
+                d.distribution != distribution::none || (d.procs == 1 && !d.block_size.has_value()),
                 "type_create_darray: a dimension that is not distributed has procs == 1 and no block size"
             );
             gsizes.push_back(d.global_size);
-            distribs.push_back(static_cast<int>(d.distrib));
+            distribs.push_back(static_cast<int>(d.distribution));
             dargs.push_back(d.block_size.value_or(MPI_DISTRIBUTE_DFLT_DARG));
             psizes.push_back(d.procs);
         }
