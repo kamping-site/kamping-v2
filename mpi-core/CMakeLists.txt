@@ -17,6 +17,7 @@ target_sources(
               include/mpi/attribute.hpp
               include/mpi/buffer.hpp
               include/mpi/cache.hpp
+              include/mpi/cart.hpp
               include/mpi/collectives/allgather.hpp
               include/mpi/collectives/allgatherv.hpp
               include/mpi/collectives/allreduce.hpp
@@ -44,6 +45,7 @@ target_sources(
               include/mpi/group.hpp
               include/mpi/handle.hpp
               include/mpi/info.hpp
+              include/mpi/int_array.hpp
               include/mpi/message.hpp
               include/mpi/mpi_span.hpp
               include/mpi/ops.hpp

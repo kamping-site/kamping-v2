@@ -19,28 +19,6 @@
 namespace mpi::experimental {
 
 namespace detail {
-/// @return The rank of the calling process in `comm`.
-/// @throws mpi_error if `MPI_Comm_rank` fails.
-inline int comm_rank(MPI_Comm comm) {
-    int rank = 0;
-    int err  = MPI_Comm_rank(comm, &rank);
-    if (err != MPI_SUCCESS) {
-        throw mpi_error(err);
-    }
-    return rank;
-}
-
-/// @return The size of `comm`.
-/// @throws mpi_error if `MPI_Comm_size` fails.
-inline int comm_size(MPI_Comm comm) {
-    int size = 0;
-    int err  = MPI_Comm_size(comm, &size);
-    if (err != MPI_SUCCESS) {
-        throw mpi_error(err);
-    }
-    return size;
-}
-
 /// Tag selecting the private constructors of the rank types that take a size instead of a communicator.
 struct with_size_tag {};
 } // namespace detail
@@ -78,14 +56,12 @@ public:
     /// @brief The rank of the calling process in `comm`.
     /// @throws mpi_error if the rank or size of `comm` cannot be queried.
     template <convertible_to_mpi_handle<MPI_Comm> Comm>
-    explicit periodic_rank(Comm const& comm)
-        : periodic_rank(detail::comm_rank(mpi::experimental::handle(comm)), comm) {}
+    explicit periodic_rank(Comm const& comm); // defined in mpi/comm.hpp, after comm_view
 
     /// @brief The rank `rank` in `comm`, wrapped into `[0, comm.size())`.
     /// @throws mpi_error if the size of `comm` cannot be queried.
     template <convertible_to_mpi_handle<MPI_Comm> Comm>
-    periodic_rank(int rank, Comm const& comm)
-        : periodic_rank(rank, detail::comm_size(mpi::experimental::handle(comm)), detail::with_size_tag{}) {}
+    periodic_rank(int rank, Comm const& comm); // defined in mpi/comm.hpp, after comm_view
 
     /// @return The rank `rank` in a communicator of size `size`, wrapped into `[0, size)`. For code that knows the
     /// size but has no communicator at hand.
@@ -171,14 +147,12 @@ public:
     /// @brief The rank of the calling process in `comm`.
     /// @throws mpi_error if the rank or size of `comm` cannot be queried.
     template <convertible_to_mpi_handle<MPI_Comm> Comm>
-    explicit nonperiodic_rank(Comm const& comm)
-        : nonperiodic_rank(detail::comm_rank(mpi::experimental::handle(comm)), comm) {}
+    explicit nonperiodic_rank(Comm const& comm); // defined in mpi/comm.hpp, after comm_view
 
     /// @brief The position `rank` in `comm`. `rank` may be outside of `[0, comm.size())`.
     /// @throws mpi_error if the size of `comm` cannot be queried.
     template <convertible_to_mpi_handle<MPI_Comm> Comm>
-    nonperiodic_rank(int rank, Comm const& comm)
-        : nonperiodic_rank(rank, detail::comm_size(mpi::experimental::handle(comm)), detail::with_size_tag{}) {}
+    nonperiodic_rank(int rank, Comm const& comm); // defined in mpi/comm.hpp, after comm_view
 
     /// @return The position `rank` in a communicator of size `size`. `rank` may be outside of `[0, size)`. For code
     /// that knows the size but has no communicator at hand.
@@ -242,3 +216,6 @@ public:
 };
 
 } // namespace mpi::experimental
+
+// The constructors from a communicator query it through comm_view, which needs the rank types for its members.
+#include "mpi/comm.hpp" // IWYU pragma: export

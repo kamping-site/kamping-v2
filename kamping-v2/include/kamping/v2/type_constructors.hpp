@@ -10,6 +10,7 @@
 #include <functional>
 #include <initializer_list>
 #include <memory>
+#include <numeric>
 #include <optional>
 #include <ranges>
 #include <span>
@@ -21,10 +22,10 @@
 
 #include "kamping/v2/kassert.hpp"
 #include "mpi/buffer.hpp"
+#include "mpi/comm.hpp"
 #include "mpi/datatype.hpp"
 #include "mpi/handle.hpp"
 #include "mpi/range_concepts.hpp"
-#include "mpi/rank.hpp"
 #include "mpi/type_constructors.hpp"
 
 /// @file
@@ -547,22 +548,38 @@ type_create_subarray(std::initializer_list<subarray_dim> dims, Datatype const& o
 
 // ── MPI_Type_create_darray ─────────────────────────────────────────────────────────────────────────────────────────
 
-/// @brief `type_create_darray` with one `darray_dim` per dimension, for the calling process of `comm`; `order` is
-/// `array_order::c` if left out.
+/// @brief `type_create_darray` with one `darray_dim` per dimension: the block of the process `rank` of `comm`, or of
+/// the calling process if `rank` is left out; `order` is `array_order::c` if left out.
 ///
-/// The product of the `procs` must be the size of `comm`.
+/// The product of the `procs` must be the size of `comm`. Giving the rank lets one process build the datatypes of
+/// all blocks, e.g. to scatter a matrix from a root:
+///
+/// @code
+/// for (int r = 0; r < grid.size(); ++r) {
+///     types.push_back(v2::type_create_darray({{n, block, p}, {n, block, p}}, dbl, r, grid).commit());
+/// }
+/// @endcode
 /// @return The new datatype, owned and not committed.
-/// @throws mpi_error if `MPI_Type_create_darray` fails.
+/// @throws mpi_error if `MPI_Type_create_darray` or querying `comm` fails.
 template <
     mpi::experimental::convertible_to_mpi_handle<MPI_Datatype> Datatype,
+    mpi::experimental::rank                                    Rank,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>     Comm>
-[[nodiscard]] mpi::experimental::uncommitted_datatype
-type_create_darray(std::span<darray_dim const> dims, array_order order, Datatype const& oldtype, Comm const& comm) {
-    MPI_Comm const              raw_comm = mpi::experimental::handle(comm);
-    detail::darray_arrays const arrays(dims);
+[[nodiscard]] mpi::experimental::uncommitted_datatype type_create_darray(
+    std::span<darray_dim const> dims, array_order order, Datatype const& oldtype, Rank const& rank, Comm const& comm
+) {
+    mpi::experimental::comm_view const cv(mpi::experimental::handle(comm));
+    detail::darray_arrays const        arrays(dims);
+    int const                          size = cv.size();
+    KAMPING_V2_ASSERT(
+        std::reduce(arrays.psizes.begin(), arrays.psizes.end(), 1, std::multiplies<>{}) == size,
+        "type_create_darray: the product of the procs must be the size of the communicator"
+    );
+    int const r = mpi::experimental::to_rank(rank);
+    KAMPING_V2_ASSERT(r >= 0 && r < size, "type_create_darray: rank must be a rank of the communicator");
     return mpi::experimental::type_create_darray(
-        mpi::experimental::detail::comm_size(raw_comm),
-        mpi::experimental::detail::comm_rank(raw_comm),
+        size,
+        r,
         arrays.gsizes,
         arrays.distribs,
         arrays.dargs,
@@ -572,12 +589,124 @@ type_create_darray(std::span<darray_dim const> dims, array_order order, Datatype
     );
 }
 
-/// @brief `type_create_darray` with one `darray_dim` per dimension, for the calling process of `comm`; `order` is
-/// `array_order::c` if left out.
+/// @brief `type_create_darray` with one `darray_dim` per dimension: the block of the process `rank` of `comm`, or of
+/// the calling process if `rank` is left out; `order` is `array_order::c` if left out.
 ///
-/// The product of the `procs` must be the size of `comm`.
+/// The product of the `procs` must be the size of `comm`. Giving the rank lets one process build the datatypes of
+/// all blocks, e.g. to scatter a matrix from a root:
+///
+/// @code
+/// for (int r = 0; r < grid.size(); ++r) {
+///     types.push_back(v2::type_create_darray({{n, block, p}, {n, block, p}}, dbl, r, grid).commit());
+/// }
+/// @endcode
 /// @return The new datatype, owned and not committed.
-/// @throws mpi_error if `MPI_Type_create_darray` fails.
+/// @throws mpi_error if `MPI_Type_create_darray` or querying `comm` fails.
+template <
+    mpi::experimental::convertible_to_mpi_handle<MPI_Datatype> Datatype,
+    mpi::experimental::rank                                    Rank,
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm>     Comm>
+[[nodiscard]] mpi::experimental::uncommitted_datatype type_create_darray(
+    std::initializer_list<darray_dim> dims,
+    array_order                       order,
+    Datatype const&                   oldtype,
+    Rank const&                       rank,
+    Comm const&                       comm
+) {
+    return kamping::v2::type_create_darray(
+        std::span<darray_dim const>(dims.begin(), dims.size()),
+        order,
+        oldtype,
+        rank,
+        comm
+    );
+}
+
+/// @brief `type_create_darray` with one `darray_dim` per dimension: the block of the process `rank` of `comm`, or of
+/// the calling process if `rank` is left out; `order` is `array_order::c` if left out.
+///
+/// The product of the `procs` must be the size of `comm`. Giving the rank lets one process build the datatypes of
+/// all blocks, e.g. to scatter a matrix from a root:
+///
+/// @code
+/// for (int r = 0; r < grid.size(); ++r) {
+///     types.push_back(v2::type_create_darray({{n, block, p}, {n, block, p}}, dbl, r, grid).commit());
+/// }
+/// @endcode
+/// @return The new datatype, owned and not committed.
+/// @throws mpi_error if `MPI_Type_create_darray` or querying `comm` fails.
+template <
+    mpi::experimental::convertible_to_mpi_handle<MPI_Datatype> Datatype,
+    mpi::experimental::rank                                    Rank,
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm>     Comm>
+[[nodiscard]] mpi::experimental::uncommitted_datatype
+type_create_darray(std::span<darray_dim const> dims, Datatype const& oldtype, Rank const& rank, Comm const& comm) {
+    return kamping::v2::type_create_darray(dims, array_order::c, oldtype, rank, comm);
+}
+
+/// @brief `type_create_darray` with one `darray_dim` per dimension: the block of the process `rank` of `comm`, or of
+/// the calling process if `rank` is left out; `order` is `array_order::c` if left out.
+///
+/// The product of the `procs` must be the size of `comm`. Giving the rank lets one process build the datatypes of
+/// all blocks, e.g. to scatter a matrix from a root:
+///
+/// @code
+/// for (int r = 0; r < grid.size(); ++r) {
+///     types.push_back(v2::type_create_darray({{n, block, p}, {n, block, p}}, dbl, r, grid).commit());
+/// }
+/// @endcode
+/// @return The new datatype, owned and not committed.
+/// @throws mpi_error if `MPI_Type_create_darray` or querying `comm` fails.
+template <
+    mpi::experimental::convertible_to_mpi_handle<MPI_Datatype> Datatype,
+    mpi::experimental::rank                                    Rank,
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm>     Comm>
+[[nodiscard]] mpi::experimental::uncommitted_datatype type_create_darray(
+    std::initializer_list<darray_dim> dims, Datatype const& oldtype, Rank const& rank, Comm const& comm
+) {
+    return kamping::v2::type_create_darray(dims, array_order::c, oldtype, rank, comm);
+}
+
+/// @brief `type_create_darray` with one `darray_dim` per dimension: the block of the process `rank` of `comm`, or of
+/// the calling process if `rank` is left out; `order` is `array_order::c` if left out.
+///
+/// The product of the `procs` must be the size of `comm`. Giving the rank lets one process build the datatypes of
+/// all blocks, e.g. to scatter a matrix from a root:
+///
+/// @code
+/// for (int r = 0; r < grid.size(); ++r) {
+///     types.push_back(v2::type_create_darray({{n, block, p}, {n, block, p}}, dbl, r, grid).commit());
+/// }
+/// @endcode
+/// @return The new datatype, owned and not committed.
+/// @throws mpi_error if `MPI_Type_create_darray` or querying `comm` fails.
+template <
+    mpi::experimental::convertible_to_mpi_handle<MPI_Datatype> Datatype,
+    mpi::experimental::convertible_to_mpi_handle<MPI_Comm>     Comm>
+[[nodiscard]] mpi::experimental::uncommitted_datatype
+type_create_darray(std::span<darray_dim const> dims, array_order order, Datatype const& oldtype, Comm const& comm) {
+    return kamping::v2::type_create_darray(
+        dims,
+        order,
+        oldtype,
+        mpi::experimental::comm_view(mpi::experimental::handle(comm)).rank(),
+        comm
+    );
+}
+
+/// @brief `type_create_darray` with one `darray_dim` per dimension: the block of the process `rank` of `comm`, or of
+/// the calling process if `rank` is left out; `order` is `array_order::c` if left out.
+///
+/// The product of the `procs` must be the size of `comm`. Giving the rank lets one process build the datatypes of
+/// all blocks, e.g. to scatter a matrix from a root:
+///
+/// @code
+/// for (int r = 0; r < grid.size(); ++r) {
+///     types.push_back(v2::type_create_darray({{n, block, p}, {n, block, p}}, dbl, r, grid).commit());
+/// }
+/// @endcode
+/// @return The new datatype, owned and not committed.
+/// @throws mpi_error if `MPI_Type_create_darray` or querying `comm` fails.
 template <
     mpi::experimental::convertible_to_mpi_handle<MPI_Datatype> Datatype,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>     Comm>
@@ -592,12 +721,19 @@ template <
     );
 }
 
-/// @brief `type_create_darray` with one `darray_dim` per dimension, for the calling process of `comm`; `order` is
-/// `array_order::c` if left out.
+/// @brief `type_create_darray` with one `darray_dim` per dimension: the block of the process `rank` of `comm`, or of
+/// the calling process if `rank` is left out; `order` is `array_order::c` if left out.
 ///
-/// The product of the `procs` must be the size of `comm`.
+/// The product of the `procs` must be the size of `comm`. Giving the rank lets one process build the datatypes of
+/// all blocks, e.g. to scatter a matrix from a root:
+///
+/// @code
+/// for (int r = 0; r < grid.size(); ++r) {
+///     types.push_back(v2::type_create_darray({{n, block, p}, {n, block, p}}, dbl, r, grid).commit());
+/// }
+/// @endcode
 /// @return The new datatype, owned and not committed.
-/// @throws mpi_error if `MPI_Type_create_darray` fails.
+/// @throws mpi_error if `MPI_Type_create_darray` or querying `comm` fails.
 template <
     mpi::experimental::convertible_to_mpi_handle<MPI_Datatype> Datatype,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>     Comm>
@@ -606,12 +742,19 @@ type_create_darray(std::span<darray_dim const> dims, Datatype const& oldtype, Co
     return kamping::v2::type_create_darray(dims, array_order::c, oldtype, comm);
 }
 
-/// @brief `type_create_darray` with one `darray_dim` per dimension, for the calling process of `comm`; `order` is
-/// `array_order::c` if left out.
+/// @brief `type_create_darray` with one `darray_dim` per dimension: the block of the process `rank` of `comm`, or of
+/// the calling process if `rank` is left out; `order` is `array_order::c` if left out.
 ///
-/// The product of the `procs` must be the size of `comm`.
+/// The product of the `procs` must be the size of `comm`. Giving the rank lets one process build the datatypes of
+/// all blocks, e.g. to scatter a matrix from a root:
+///
+/// @code
+/// for (int r = 0; r < grid.size(); ++r) {
+///     types.push_back(v2::type_create_darray({{n, block, p}, {n, block, p}}, dbl, r, grid).commit());
+/// }
+/// @endcode
 /// @return The new datatype, owned and not committed.
-/// @throws mpi_error if `MPI_Type_create_darray` fails.
+/// @throws mpi_error if `MPI_Type_create_darray` or querying `comm` fails.
 template <
     mpi::experimental::convertible_to_mpi_handle<MPI_Datatype> Datatype,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>     Comm>

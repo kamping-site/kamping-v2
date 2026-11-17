@@ -22,6 +22,15 @@ v2::comm      half = world.split(world.rank() % 2);
 v2::send(data, 0, half);
 ```
 
+Process grids are communicators with a Cartesian topology. `cart_create` chooses balanced dimensions where you pass
+`auto_dim`, and a `cart_position` moves through the grid, wrapping around in periodic dimensions:
+
+```cpp
+auto grid          = v2::cart_create(world, {{v2::auto_dim, true}, {v2::auto_dim, true}});
+auto [left, right] = grid.cart_shift(1, 1);  // the neighbors along dimension 1
+v2::sendrecv(sbuf, right, rbuf, left, grid);
+```
+
 (world-and-sessions)=
 ## The world model and the sessions model
 

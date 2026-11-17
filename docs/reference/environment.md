@@ -57,6 +57,72 @@ The free functions `dup`, `split` and `split_type` do the same as the members, a
 ```{doxygenvariable} kamping::v2::undefined
 ```
 
+```{doxygenoverloads} kamping::v2::topo_test
+```
+
+```{doxygenenum} kamping::v2::topology
+```
+
+## Cartesian topologies
+
+A Cartesian topology is a property of a communicator: `cart_create` returns an ordinary `comm`, and the functions
+below take any communicator with a Cartesian topology. The communicator types also have members that delegate to
+them (`grid.cart_coords()`, `grid.cart_position()`, `grid.cart_shift(d, k)`, `grid.cart_sub(d)`, ...).
+
+```cpp
+auto grid          = v2::cart_create(world, {{v2::auto_dim, true}, {v2::auto_dim, true}});  // balanced, periodic
+auto [row, col]    = grid.cart_coords<2>();
+auto [left, right] = grid.cart_shift(1, 1);              // positions, usable as ranks
+v2::sendrecv(sbuf, right, rbuf, left, grid);
+auto diag          = grid.cart_position().shift(0, 1).shift(1, 1);
+v2::comm row_comm  = grid.cart_sub(1);                   // the processes of my row
+```
+
+```{doxygenoverloads} kamping::v2::cart_create
+```
+
+```{doxygenstruct} kamping::v2::cart_dim
+:members:
+```
+
+```{doxygenvariable} kamping::v2::auto_dim
+```
+
+```{doxygenoverloads} kamping::v2::dims_create
+```
+
+```{doxygenclass} kamping::v2::cart_position
+:members:
+```
+
+```{doxygenoverloads} kamping::v2::cart_shift
+```
+
+```{doxygenstruct} kamping::v2::cart_shift_result
+:members:
+```
+
+```{doxygenoverloads} kamping::v2::cart_coords
+```
+
+```{doxygenoverloads} kamping::v2::cart_rank
+```
+
+```{doxygenoverloads} kamping::v2::cart_sub
+```
+
+```{doxygenoverloads} kamping::v2::cartdim
+```
+
+```{doxygenoverloads} kamping::v2::cart_get
+```
+
+```{doxygenoverloads} kamping::v2::cart_dims
+```
+
+```{doxygenconcept} kamping::v2::flag_array
+```
+
 ## Groups
 
 ```{doxygenclass} kamping::v2::group_view

@@ -14,6 +14,10 @@ add_executable(test_core_cache cache_test.cpp)
 target_link_libraries(test_core_cache PRIVATE mpi::core kamping_v2_warnings KaTestrophe::main)
 katestrophe_add_mpi_test(test_core_cache CORES 1 2 4)
 
+add_executable(test_core_cart cart_test.cpp)
+target_link_libraries(test_core_cart PRIVATE mpi::core kamping_v2_warnings KaTestrophe::main)
+katestrophe_add_mpi_test(test_core_cart CORES 1 2 4 8)
+
 add_executable(test_core_datatype datatype_test.cpp)
 target_link_libraries(test_core_datatype PRIVATE mpi::core kamping_v2_warnings KaTestrophe::main)
 katestrophe_add_mpi_test(test_core_datatype CORES 1 2)

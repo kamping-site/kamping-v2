@@ -3,8 +3,13 @@
 
 #pragma once
 
+#include <array>
+#include <cstddef>
+#include <initializer_list>
+#include <span>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include <mpi.h>
 
@@ -12,12 +17,12 @@
 #include "mpi/error.hpp"
 #include "mpi/group.hpp"
 #include "mpi/handle.hpp"
+#include "mpi/int_array.hpp"
 #include "mpi/rank.hpp"
 #include "mpi/special_values.hpp"
 
 namespace mpi::experimental {
 
-// ── Forward declaration ───────────────────────────────────────────────────────
 /// @brief The kind of communicator `split_type` creates (`MPI_COMM_TYPE_*`). Values that MPI does not define are left
 /// out.
 enum class comm_type : int {
@@ -33,9 +38,32 @@ enum class comm_type : int {
 #endif
 };
 
-// Needed so comm_accessors can declare dup() / split() before comm is defined.
+/// @brief The virtual topology of a communicator (`MPI_Topo_test`).
+enum class topology : int {
+    none       = MPI_UNDEFINED,  ///< No topology.
+    cart       = MPI_CART,       ///< A Cartesian grid (`cart_create`).
+    graph      = MPI_GRAPH,      ///< A graph (`MPI_Graph_create`).
+    dist_graph = MPI_DIST_GRAPH, ///< A distributed graph (`MPI_Dist_graph_create(_adjacent)`).
+};
+
+/// @brief The virtual topology of `c` (`MPI_Topo_test`).
+/// @throws mpi_error if `MPI_Topo_test` fails.
+template <convertible_to_mpi_handle<MPI_Comm> Comm>
+[[nodiscard]] topology topo_test(Comm const& c) {
+    int status = MPI_UNDEFINED;
+    int err    = MPI_Topo_test(mpi::experimental::handle(c), &status);
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
+    return static_cast<topology>(status);
+}
+
+// ── Forward declaration ───────────────────────────────────────────────────────
+// Needed so comm_accessors can declare dup() / split() and the Cartesian members before these are defined.
 
 class comm;
+class cart_position;
+struct cart_shift_result;
 
 /// CRTP mixin providing read-only accessors and collective operations for any communicator wrapper: `.rank()`,
 /// `.size()`, `.periodic_rank()`, `.nonperiodic_rank()`, `.group()`, `.dup()`, `.split()`. `Derived` must implement
@@ -48,16 +76,24 @@ class comm_accessors {
 
 public:
     /// @return The rank of the calling process in this communicator.
+    /// @throws mpi_error if `MPI_Comm_rank` fails.
     [[nodiscard]] int rank() const {
-        int r;
-        MPI_Comm_rank(underlying(), &r);
+        int r   = 0;
+        int err = MPI_Comm_rank(underlying(), &r);
+        if (err != MPI_SUCCESS) {
+            throw mpi_error(err);
+        }
         return r;
     }
 
     /// @return The number of processes in this communicator.
+    /// @throws mpi_error if `MPI_Comm_size` fails.
     [[nodiscard]] int size() const {
-        int s;
-        MPI_Comm_size(underlying(), &s);
+        int s   = 0;
+        int err = MPI_Comm_size(underlying(), &s);
+        if (err != MPI_SUCCESS) {
+            throw mpi_error(err);
+        }
         return s;
     }
 
@@ -135,6 +171,80 @@ public:
     /// @return A null `comm`.
     /// @throws mpi_error if `MPI_Comm_split_type` fails.
     [[nodiscard]] comm split_type(undefined_t) const; // defined out-of-line after comm
+
+    /// @return The virtual topology of this communicator (`MPI_Topo_test`). Delegates to the free function
+    /// `mpi::experimental::topo_test`.
+    /// @throws mpi_error if `MPI_Topo_test` fails.
+    [[nodiscard]] mpi::experimental::topology topology() const {
+        return mpi::experimental::topo_test(underlying());
+    }
+
+    // The Cartesian members require a communicator with a Cartesian topology (asserted in debug builds). They
+    // delegate to the free functions of the same name and are defined in mpi/cart.hpp.
+
+    /// @return The position of the calling process in this Cartesian communicator, with arithmetic along its
+    /// dimensions: `grid.cart_position().shift(1, 1)` is the next process along dimension 1.
+    /// @throws mpi_error if an MPI call fails.
+    [[nodiscard]] mpi::experimental::cart_position cart_position() const;
+
+    /// @return The position of the process `rank` in this Cartesian communicator.
+    /// @throws mpi_error if an MPI call fails.
+    [[nodiscard]] mpi::experimental::cart_position cart_position(int rank) const;
+
+    /// @return The number of dimensions of this Cartesian communicator (`MPI_Cartdim_get`).
+    /// @throws mpi_error if `MPI_Cartdim_get` fails.
+    [[nodiscard]] int cartdim() const;
+
+    /// @return The coordinates of the calling process in this Cartesian communicator (`MPI_Cart_coords`).
+    /// @throws mpi_error if `MPI_Cart_coords` fails.
+    [[nodiscard]] std::vector<int> cart_coords() const;
+
+    /// @return The coordinates of the process `rank` in this Cartesian communicator (`MPI_Cart_coords`).
+    /// @throws mpi_error if `MPI_Cart_coords` fails.
+    [[nodiscard]] std::vector<int> cart_coords(int rank) const;
+
+    /// @return The coordinates of the calling process in this `N`-dimensional Cartesian communicator, e.g. for
+    /// structured bindings: `auto [row, col] = grid.cart_coords<2>();` (`MPI_Cart_coords`).
+    /// @throws mpi_error if `MPI_Cart_coords` fails.
+    template <std::size_t N>
+    [[nodiscard]] std::array<int, N> cart_coords() const;
+
+    /// @return The coordinates of the process `rank` in this `N`-dimensional Cartesian communicator
+    /// (`MPI_Cart_coords`).
+    /// @throws mpi_error if `MPI_Cart_coords` fails.
+    template <std::size_t N>
+    [[nodiscard]] std::array<int, N> cart_coords(int rank) const;
+
+    /// @return The rank of the process at `coords` in this Cartesian communicator (`MPI_Cart_rank`). In a periodic
+    /// dimension, coordinates outside of the grid wrap around.
+    /// @throws mpi_error if `MPI_Cart_rank` fails.
+    [[nodiscard]] int cart_rank(std::span<int const> coords) const;
+
+    /// @return The rank of the process at `coords` in this Cartesian communicator (`MPI_Cart_rank`). In a periodic
+    /// dimension, coordinates outside of the grid wrap around.
+    /// @throws mpi_error if `MPI_Cart_rank` fails.
+    [[nodiscard]] int cart_rank(std::initializer_list<int> coords) const;
+
+    /// @return The positions `disp` steps back (`source`) and ahead (`dest`) of the calling process along dimension
+    /// `direction` (`MPI_Cart_shift`); in a non-periodic dimension, there is no neighbor beyond the ends.
+    /// @throws mpi_error if `MPI_Cart_shift` fails.
+    [[nodiscard]] cart_shift_result cart_shift(int direction, int disp) const;
+
+    /// @brief Collective: split this Cartesian communicator into lower-dimensional grids that keep the dimensions
+    /// where `remain_dims` is true (`MPI_Cart_sub`).
+    /// @throws mpi_error if `MPI_Cart_sub` fails.
+    template <flag_array RemainDims>
+    [[nodiscard]] comm cart_sub(RemainDims const& remain_dims) const;
+
+    /// @brief Collective: split this Cartesian communicator into lower-dimensional grids that keep the dimensions
+    /// where `remain_dims` is true (`MPI_Cart_sub`).
+    /// @throws mpi_error if `MPI_Cart_sub` fails.
+    [[nodiscard]] comm cart_sub(std::initializer_list<bool> remain_dims) const;
+
+    /// @brief Collective: split this Cartesian communicator into one-dimensional grids along dimension `dim`, e.g.
+    /// the rows of a two-dimensional grid with `cart_sub(1)` (`MPI_Cart_sub`).
+    /// @throws mpi_error if `MPI_Cart_sub` fails.
+    [[nodiscard]] comm cart_sub(int dim) const;
 };
 
 // ── comm_view ────────────────────────────────────────────────────────────────
@@ -157,6 +267,24 @@ public:
 private:
     MPI_Comm _comm;
 };
+
+// ── Rank type constructors (declared in mpi/rank.hpp) ─────────────────────────
+
+template <convertible_to_mpi_handle<MPI_Comm> Comm>
+periodic_rank::periodic_rank(Comm const& comm)
+    : periodic_rank(comm_view(mpi::experimental::handle(comm)).rank(), comm) {}
+
+template <convertible_to_mpi_handle<MPI_Comm> Comm>
+periodic_rank::periodic_rank(int rank, Comm const& comm)
+    : periodic_rank(rank, comm_view(mpi::experimental::handle(comm)).size(), detail::with_size_tag{}) {}
+
+template <convertible_to_mpi_handle<MPI_Comm> Comm>
+nonperiodic_rank::nonperiodic_rank(Comm const& comm)
+    : nonperiodic_rank(comm_view(mpi::experimental::handle(comm)).rank(), comm) {}
+
+template <convertible_to_mpi_handle<MPI_Comm> Comm>
+nonperiodic_rank::nonperiodic_rank(int rank, Comm const& comm)
+    : nonperiodic_rank(rank, comm_view(mpi::experimental::handle(comm)).size(), detail::with_size_tag{}) {}
 
 // ── Predefined communicators ──────────────────────────────────────────────────
 
@@ -534,3 +662,6 @@ inline comm comm_accessors<Derived>::split_type(undefined_t) const {
 }
 
 } // namespace mpi::experimental
+
+// The Cartesian members of comm_accessors are defined with the free functions they delegate to.
+#include "mpi/cart.hpp" // IWYU pragma: export

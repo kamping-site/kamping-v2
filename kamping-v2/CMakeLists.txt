@@ -19,6 +19,7 @@ target_sources(
               include/kamping/v2.hpp
               include/kamping/v2/buffer.hpp
               include/kamping/v2/cache.hpp
+              include/kamping/v2/cart.hpp
               include/kamping/v2/collectives.hpp
               include/kamping/v2/collectives/allgather.hpp
               include/kamping/v2/collectives/allgatherv.hpp

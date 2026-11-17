@@ -18,6 +18,7 @@
 #include "kamping/v2/buffer.hpp"
 #include "kamping/v2/datatype.hpp"
 #include "kamping/v2/handle.hpp"
+#include "kamping/v2/rank.hpp"
 
 namespace v2 = kamping::v2;
 
@@ -209,6 +210,35 @@ TEST(V2TypeConstructorsTest, DarrayBlock) {
     std::vector<int> expected(static_cast<std::size_t>(local));
     std::iota(expected.begin(), expected.end(), rank * local);
     EXPECT_EQ(selected_ints(global.data(), dt, local), expected);
+}
+
+TEST(V2TypeConstructorsTest, DarrayOfAnotherRank) {
+    // Every process builds the datatypes of all blocks of an 8-element array distributed in blocks; the block of rank
+    // r holds the elements r * 8 / size, ...
+    int const size = world_size();
+    ASSERT_EQ(8 % size, 0);
+    int const local = 8 / size;
+
+    std::array<int, 8> global{};
+    std::iota(global.begin(), global.end(), 0);
+    for (int r = 0; r < size; ++r) {
+        auto const dt =
+            v2::type_create_darray({{8, v2::distribution::block, size}}, MPI_INT, r, MPI_COMM_WORLD).commit();
+        std::vector<int> expected(static_cast<std::size_t>(local));
+        std::iota(expected.begin(), expected.end(), r * local);
+        EXPECT_EQ(selected_ints(global.data(), dt, local), expected);
+    }
+
+    // Without a rank, the block of the calling process; with order and a rank type, the same.
+    auto const own = v2::type_create_darray({{8, v2::distribution::block, size}}, MPI_INT, MPI_COMM_WORLD).commit();
+    std::vector<v2::darray_dim> const dims{{.global_size = 8, .distribution = v2::distribution::block, .procs = size}};
+    auto const                        typed =
+        v2::type_create_darray(dims, v2::array_order::c, MPI_INT, v2::periodic_rank(MPI_COMM_WORLD), MPI_COMM_WORLD)
+            .commit();
+    std::vector<int> expected(static_cast<std::size_t>(local));
+    std::iota(expected.begin(), expected.end(), world_rank() * local);
+    EXPECT_EQ(selected_ints(global.data(), own, local), expected);
+    EXPECT_EQ(selected_ints(global.data(), typed, local), expected);
 }
 
 TEST(V2TypeConstructorsTest, DarrayCyclicWithBlockSize) {
