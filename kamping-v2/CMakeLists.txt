@@ -111,12 +111,35 @@ if (KAMPING_V2_INSTALL)
         EXPORT kamping-v2-v2-targets
         FILE_SET HEADERS
     )
+    # Boost.PFR: a PFR built from source and the wrapper of a system Boost have no install rules of their own, so they
+    # are installed with kamping::v2; an installed standalone PFR is found again by the package.
+    set(KAMPING_V2_PFR_DEPENDENCY "")
+    if (KAMPING_V2_ENABLE_REFLECTION)
+        if (TARGET boost_pfr)
+            get_target_property(pfr_source_dir boost_pfr SOURCE_DIR)
+            set_target_properties(
+                boost_pfr
+                PROPERTIES
+                    EXPORT_NAME pfr
+                    INTERFACE_INCLUDE_DIRECTORIES
+                    "$<BUILD_INTERFACE:${pfr_source_dir}/include>;$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
+            )
+            install(DIRECTORY "${pfr_source_dir}/include/" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+            install(TARGETS boost_pfr EXPORT kamping-v2-v2-targets)
+        elseif (TARGET kamping_v2_pfr)
+            install(TARGETS kamping_v2_pfr EXPORT kamping-v2-v2-targets)
+            set(KAMPING_V2_PFR_DEPENDENCY "find_dependency(Boost 1.75 COMPONENTS headers CONFIG)")
+        else ()
+            set(KAMPING_V2_PFR_DEPENDENCY "find_dependency(pfr 2.2.0)")
+        endif ()
+    endif ()
     install(
         EXPORT kamping-v2-v2-targets
         NAMESPACE kamping::
         DESTINATION ${KAMPING_V2_INSTALL_CMAKEDIR}
     )
-    install(FILES cmake/kamping-v2-v2.cmake DESTINATION ${KAMPING_V2_INSTALL_CMAKEDIR})
+    configure_file(cmake/kamping-v2-v2.cmake.in kamping-v2-v2.cmake @ONLY)
+    install(FILES ${CMAKE_CURRENT_BINARY_DIR}/kamping-v2-v2.cmake DESTINATION ${KAMPING_V2_INSTALL_CMAKEDIR})
 endif ()
 
 if (PROJECT_IS_TOP_LEVEL OR KAMPING_V2_BUILD_EXAMPLES_AND_TESTS)
