@@ -8,6 +8,7 @@
 
 #include "kamping/v2/buffer.hpp"              // IWYU pragma: export
 #include "kamping/v2/cache.hpp"               // IWYU pragma: export
+#include "kamping/v2/cart.hpp"                // IWYU pragma: export
 #include "kamping/v2/collectives.hpp"         // IWYU pragma: export
 #include "kamping/v2/comm.hpp"                // IWYU pragma: export
 #include "kamping/v2/comm_view_with_pool.hpp" // IWYU pragma: export

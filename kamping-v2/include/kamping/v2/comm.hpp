@@ -15,4 +15,6 @@ using mpi::experimental::comm_world;
 using mpi::experimental::dup;
 using mpi::experimental::split;
 using mpi::experimental::split_type;
+using mpi::experimental::topo_test;
+using mpi::experimental::topology;
 } // namespace kamping::v2

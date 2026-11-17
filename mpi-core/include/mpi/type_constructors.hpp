@@ -19,6 +19,7 @@
 #include "mpi/datatype.hpp"
 #include "mpi/error.hpp"
 #include "mpi/handle.hpp"
+#include "mpi/int_array.hpp"
 #include "mpi/range_concepts.hpp"
 
 /// @file
@@ -54,32 +55,7 @@ enum class distribution : int {
 /// @brief The distributions of `type_create_darray`: a contiguous range of `int` (`MPI_DISTRIBUTE_*`), passed to MPI as
 /// it is, or a sized range of `distribution`.
 template <typename R>
-concept distribution_range = contiguous_range_of<R, int>
-                             || (std::ranges::sized_range<R> && std::ranges::input_range<R>
-                                 && std::same_as<std::remove_cvref_t<std::ranges::range_value_t<R>>, distribution>);
-
-namespace detail {
-/// Calls `f` with a pointer to the distributions of `r` as `int`s. A range of `int` is passed as it is; a range of
-/// `distribution` is converted into a buffer on the stack (on the heap for more than 8 dimensions), since an enum may
-/// not be read through an `int` pointer.
-template <distribution_range R, typename F>
-decltype(auto) with_distribution_ints(R const& r, F&& f) {
-    if constexpr (contiguous_range_of<R, int>) {
-        return std::forward<F>(f)(std::ranges::data(r));
-    } else {
-        auto const         n = static_cast<std::size_t>(std::ranges::size(r));
-        std::array<int, 8> small{};
-        std::vector<int>   large;
-        int*               out = small.data();
-        if (n > small.size()) {
-            large.resize(n);
-            out = large.data();
-        }
-        std::ranges::transform(r, out, [](distribution d) { return static_cast<int>(d); });
-        return std::forward<F>(f)(static_cast<int const*>(out));
-    }
-}
-} // namespace detail
+concept distribution_range = int_array_of<R, distribution>;
 
 // ── MPI_Type_contiguous ────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -481,7 +457,7 @@ void type_create_darray(
             && gsizes.size() == psizes.size(),
         "type_create_darray: gsizes, distribs, dargs and psizes must have the same length"
     );
-    int err = detail::with_distribution_ints(distribs, [&](int const* distribs_ptr) {
+    int err = detail::with_int_array<distribution>(distribs, [&](int const* distribs_ptr) {
         return MPI_Type_create_darray(
             size,
             rank,
