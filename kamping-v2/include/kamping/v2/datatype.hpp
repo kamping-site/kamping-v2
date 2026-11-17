@@ -15,11 +15,15 @@ using mpi::experimental::datatype_view;
 using mpi::experimental::type_commit;
 using mpi::experimental::type_contiguous;
 using mpi::experimental::type_create_darray;
+using mpi::experimental::type_create_hindexed;
+using mpi::experimental::type_create_hindexed_block;
 using mpi::experimental::type_create_hvector;
+using mpi::experimental::type_create_indexed_block;
 using mpi::experimental::type_create_resized;
 using mpi::experimental::type_create_struct;
 using mpi::experimental::type_create_subarray;
 using mpi::experimental::type_dup;
+using mpi::experimental::type_indexed;
 using mpi::experimental::type_vector;
 using mpi::experimental::uncommitted_datatype;
 } // namespace kamping::v2
