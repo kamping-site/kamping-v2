@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Karlsruhe Institute of Technology
 // SPDX-License-Identifier: BSL-1.0
 
+#include <functional>
 #include <list>
 #include <numeric>
 #include <vector>
@@ -23,6 +24,33 @@ std::vector<int> iota_vec(int start, int n) {
     return v;
 }
 } // namespace
+
+// ── op constraint: the operation must combine values locally and through MPI ──
+
+namespace {
+template <typename Op>
+concept reducible_with = requires(std::vector<int> const& v, Op const& op) { dstl::reduce(v, 0, op); };
+template <typename Op>
+concept scannable_with = requires(std::vector<int> const& v, std::vector<int>& out, Op const& op) {
+    dstl::inclusive_scan(v, out, op);
+    dstl::exclusive_scan(v, out, 0, op);
+};
+inline auto const captured = 1;
+using capturing_lambda     = decltype([c = captured](int a, int b) { return a + b + c; });
+using sum_op               = decltype(kamping::v2::make_op<int>(std::plus<>{}));
+} // namespace
+
+static_assert(reducible_with<std::plus<>>);
+static_assert(reducible_with<kamping::v2::ops::max<>>);
+static_assert(reducible_with<sum_op>);
+static_assert(reducible_with<kamping::v2::op>); // callable on int through MPI_Reduce_local
+static_assert(reducible_with<kamping::v2::op_view>);
+static_assert(scannable_with<std::plus<>>);
+static_assert(scannable_with<sum_op>);
+static_assert(!reducible_with<std::minus<>>);     // no predefined operation
+static_assert(!reducible_with<capturing_lambda>); // not an MPI operation
+static_assert(!reducible_with<MPI_Op>);           // not callable; use op_view
+static_assert(!scannable_with<capturing_lambda>);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // dstl::reduce

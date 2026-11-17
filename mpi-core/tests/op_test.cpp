@@ -113,6 +113,18 @@ static_assert(valid_op<std::plus<>, std::vector<int>, std::vector<int>>);
 static_assert(!valid_op<std::plus<>, std::vector<color>, std::vector<color>>);
 static_assert(valid_op<op, std::vector<color>, std::vector<color>>);
 
+// reduction_op: callable locally and an MPI operation on the element type.
+static_assert(reduction_op<std::plus<>, int>);
+static_assert(reduction_op<ops::max<>, double const&>);
+static_assert(reduction_op<functor_op<int, std::plus<>>, int>);
+static_assert(reduction_op<op, int>);
+static_assert(reduction_op<op_view, double>);
+static_assert(!reduction_op<op, pinned>); // op(a, b) needs a builtin type; op(a, b, dt) takes the datatype
+static_assert(!reduction_op<std::minus<>, int>);
+static_assert(!reduction_op<std::plus<>, color>);
+static_assert(!reduction_op<MPI_Op, int>);
+static_assert(!reduction_op<decltype([](int a, int b) { return a + b; }), int>);
+
 TEST(OpTest, builtin_op_handle) {
     EXPECT_EQ((builtin_op_handle<std::plus<>, int>()), MPI_SUM);
     EXPECT_EQ((builtin_op_handle<std::multiplies<>, float>()), MPI_PROD);

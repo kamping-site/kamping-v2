@@ -14,6 +14,7 @@
 #include "kamping/v2/collectives/exscan.hpp"
 #include "kamping/v2/comm.hpp"
 #include "kamping/v2/handle.hpp"
+#include "kamping/v2/ops.hpp"
 #include "kamping/v2/views/ref_single_view.hpp"
 #include "kamping/v2/views/with_type_view.hpp"
 
@@ -38,13 +39,13 @@ namespace dstl {
 /// element for op is required.
 ///
 /// @pre out must have the same element count as r on each rank.
-/// @pre op must be associative and mappable to an MPI_Op.
+/// @pre op must be associative.
 template <
     std::ranges::forward_range                       R,
     kamping::v2::recv_buffer                         O,
     kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = kamping::v2::comm_view,
     class BinaryOp                                        = std::plus<>>
-    requires kamping::v2::has_mpi_type<R>
+    requires kamping::v2::has_mpi_type<R> && kamping::v2::reduction_op<BinaryOp, std::ranges::range_value_t<R>>
 void exclusive_scan(
     R&&                           r,
     O&&                           out,

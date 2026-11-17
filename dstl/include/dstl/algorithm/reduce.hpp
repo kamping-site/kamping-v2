@@ -15,6 +15,7 @@
 #include "kamping/v2/collectives/reduce.hpp"
 #include "kamping/v2/comm.hpp"
 #include "kamping/v2/handle.hpp"
+#include "kamping/v2/ops.hpp"
 #include "kamping/v2/sentinels.hpp"
 #include "kamping/v2/views/ref_single_view.hpp"
 #include "kamping/v2/views/with_type_view.hpp"
@@ -32,13 +33,13 @@ namespace dstl {
 /// Empty ranks contribute T{} to the allreduce, so T{} must be the identity element
 /// for op when empty ranks are possible.
 ///
-/// @pre op must be associative, commutative, and mappable to an MPI_Op.
+/// @pre op must be associative and commutative.
 /// @pre If any rank's range is empty, T{} must be the identity element for op.
 template <
     std::ranges::forward_range                       R,
     kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = kamping::v2::comm_view,
     class BinaryOp                                        = std::plus<>>
-    requires kamping::v2::has_mpi_type<R>
+    requires kamping::v2::has_mpi_type<R> && kamping::v2::reduction_op<BinaryOp, std::ranges::range_value_t<R>>
 auto reduce(
     R&&                           r,
     std::ranges::range_value_t<R> init = {},
@@ -70,14 +71,14 @@ auto reduce(
 /// Returns std::optional containing op(init, in[0], ..., in[N-1]) on root, and
 /// std::nullopt on all other ranks.
 ///
-/// @pre op must be associative, commutative, and mappable to an MPI_Op.
+/// @pre op must be associative and commutative.
 /// @pre If any rank's range is empty, T{} must be the identity element for op.
 template <
     std::ranges::forward_range                       R,
     kamping::v2::rank                                Rank = int,
     kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = kamping::v2::comm_view,
     class BinaryOp                                        = std::plus<>>
-    requires kamping::v2::has_mpi_type<R>
+    requires kamping::v2::has_mpi_type<R> && kamping::v2::reduction_op<BinaryOp, std::ranges::range_value_t<R>>
 auto reduce_to_root(
     R&&                           r,
     std::ranges::range_value_t<R> init = {},

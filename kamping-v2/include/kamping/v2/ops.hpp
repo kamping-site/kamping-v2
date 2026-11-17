@@ -55,6 +55,7 @@ using mpi::experimental::op_accessors;
 using mpi::experimental::op_view;
 using mpi::experimental::reduce_local;
 using mpi::experimental::reduction_functor;
+using mpi::experimental::reduction_op;
 using mpi::experimental::user_function;
 using mpi::experimental::valid_op;
 } // namespace kamping::v2
