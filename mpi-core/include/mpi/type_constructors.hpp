@@ -4,7 +4,6 @@
 #pragma once
 
 #include <cstddef>
-#include <limits>
 #include <span>
 
 #include <mpi.h>
@@ -37,24 +36,6 @@ enum class array_order : int {
     fortran = MPI_ORDER_FORTRAN ///< Column-major: the first dimension varies fastest.
 };
 
-namespace detail {
-/// @return `n` as `int`, the count type of the MPI datatype constructors.
-inline int checked_int_count(std::size_t n) {
-    KAMPING_V2_ASSERT(
-        n <= static_cast<std::size_t>(std::numeric_limits<int>::max()),
-        "array argument of a datatype constructor has more than INT_MAX entries"
-    );
-    return static_cast<int>(n);
-}
-
-/// Throws `mpi_error` if `err` is not `MPI_SUCCESS`.
-inline void check_type_constructor(int err) {
-    if (err != MPI_SUCCESS) {
-        throw mpi_error(err);
-    }
-}
-} // namespace detail
-
 // ── MPI_Type_contiguous ────────────────────────────────────────────────────────────────────────────────────────────
 
 /// @brief `count` copies of `oldtype`, laid out contiguously (`MPI_Type_contiguous`).
@@ -63,7 +44,9 @@ inline void check_type_constructor(int err) {
 template <convertible_to_mpi_handle<MPI_Datatype> Datatype, convertible_to_mpi_handle_ptr<MPI_Datatype> NewDatatype>
 void type_contiguous(int count, Datatype const& oldtype, NewDatatype& newtype) {
     int err = MPI_Type_contiguous(count, mpi::experimental::handle(oldtype), mpi::experimental::handle_ptr(newtype));
-    detail::check_type_constructor(err);
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
 }
 
 /// @brief `count` copies of `oldtype`, laid out contiguously (`MPI_Type_contiguous`).
@@ -91,7 +74,9 @@ void type_vector(int count, int blocklength, int stride, Datatype const& oldtype
         mpi::experimental::handle(oldtype),
         mpi::experimental::handle_ptr(newtype)
     );
-    detail::check_type_constructor(err);
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
 }
 
 /// @brief `count` blocks of `blocklength` copies of `oldtype` each, whose starts are `stride` elements of `oldtype`
@@ -121,7 +106,9 @@ void type_create_hvector(int count, int blocklength, MPI_Aint stride, Datatype c
         mpi::experimental::handle(oldtype),
         mpi::experimental::handle_ptr(newtype)
     );
-    detail::check_type_constructor(err);
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
 }
 
 /// @brief Like `type_vector`, but `stride` is given in bytes (`MPI_Type_create_hvector`).
@@ -152,13 +139,15 @@ void type_indexed(
         "type_indexed: blocklengths and displacements must have the same length"
     );
     int err = MPI_Type_indexed(
-        detail::checked_int_count(blocklengths.size()),
+        static_cast<int>(blocklengths.size()),
         blocklengths.data(),
         displacements.data(),
         mpi::experimental::handle(oldtype),
         mpi::experimental::handle_ptr(newtype)
     );
-    detail::check_type_constructor(err);
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
 }
 
 /// @brief Blocks of `oldtype` of different lengths at different offsets (`MPI_Type_indexed`).
@@ -200,13 +189,15 @@ void type_create_hindexed(
         "type_create_hindexed: blocklengths and displacements must have the same length"
     );
     int err = MPI_Type_create_hindexed(
-        detail::checked_int_count(blocklengths.size()),
+        static_cast<int>(blocklengths.size()),
         blocklengths.data(),
         displacements.data(),
         mpi::experimental::handle(oldtype),
         mpi::experimental::handle_ptr(newtype)
     );
-    detail::check_type_constructor(err);
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
 }
 
 /// @brief Like `type_indexed`, but `displacements` are given in bytes (`MPI_Type_create_hindexed`).
@@ -234,13 +225,15 @@ void type_create_indexed_block(
     int blocklength, std::span<int const> displacements, Datatype const& oldtype, NewDatatype& newtype
 ) {
     int err = MPI_Type_create_indexed_block(
-        detail::checked_int_count(displacements.size()),
+        static_cast<int>(displacements.size()),
         blocklength,
         displacements.data(),
         mpi::experimental::handle(oldtype),
         mpi::experimental::handle_ptr(newtype)
     );
-    detail::check_type_constructor(err);
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
 }
 
 /// @brief Blocks of `blocklength` copies of `oldtype` each at different offsets (`MPI_Type_create_indexed_block`).
@@ -271,13 +264,15 @@ void type_create_hindexed_block(
     int blocklength, std::span<MPI_Aint const> displacements, Datatype const& oldtype, NewDatatype& newtype
 ) {
     int err = MPI_Type_create_hindexed_block(
-        detail::checked_int_count(displacements.size()),
+        static_cast<int>(displacements.size()),
         blocklength,
         displacements.data(),
         mpi::experimental::handle(oldtype),
         mpi::experimental::handle_ptr(newtype)
     );
-    detail::check_type_constructor(err);
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
 }
 
 /// @brief Like `type_create_indexed_block`, but `displacements` are given in bytes
@@ -312,13 +307,15 @@ void type_create_struct(
         "type_create_struct: blocklengths, displacements and types must have the same length"
     );
     int err = MPI_Type_create_struct(
-        detail::checked_int_count(blocklengths.size()),
+        static_cast<int>(blocklengths.size()),
         blocklengths.data(),
         displacements.data(),
         types.data(),
         mpi::experimental::handle_ptr(newtype)
     );
-    detail::check_type_constructor(err);
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
 }
 
 /// @brief A datatype made of blocks of different datatypes (`MPI_Type_create_struct`).
@@ -368,7 +365,7 @@ void type_create_subarray(
         "type_create_subarray: sizes, subsizes and starts must have the same length"
     );
     int err = MPI_Type_create_subarray(
-        detail::checked_int_count(sizes.size()),
+        static_cast<int>(sizes.size()),
         sizes.data(),
         subsizes.data(),
         starts.data(),
@@ -376,7 +373,9 @@ void type_create_subarray(
         mpi::experimental::handle(oldtype),
         mpi::experimental::handle_ptr(newtype)
     );
-    detail::check_type_constructor(err);
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
 }
 
 /// @brief The subarray of `subsizes` elements starting at `starts` of a multi-dimensional array of `oldtype` with
@@ -436,7 +435,7 @@ void type_create_darray(
     int err = MPI_Type_create_darray(
         size,
         rank,
-        detail::checked_int_count(gsizes.size()),
+        static_cast<int>(gsizes.size()),
         gsizes.data(),
         distribs.data(),
         dargs.data(),
@@ -445,7 +444,9 @@ void type_create_darray(
         mpi::experimental::handle(oldtype),
         mpi::experimental::handle_ptr(newtype)
     );
-    detail::check_type_constructor(err);
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
 }
 
 /// @brief The part that process `rank` of `size` processes holds of a distributed multi-dimensional array of
@@ -491,7 +492,9 @@ template <convertible_to_mpi_handle<MPI_Datatype> Datatype, convertible_to_mpi_h
 void type_create_resized(Datatype const& oldtype, MPI_Aint lb, MPI_Aint extent, NewDatatype& newtype) {
     int err =
         MPI_Type_create_resized(mpi::experimental::handle(oldtype), lb, extent, mpi::experimental::handle_ptr(newtype));
-    detail::check_type_constructor(err);
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
 }
 
 /// @brief `oldtype` with its lower bound set to `lb` and its extent to `extent` bytes (`MPI_Type_create_resized`).
