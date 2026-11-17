@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: BSL-1.0
 
 /// @file
-/// Element-typed contiguous range concepts shared by the handle and array argument protocols.
+/// Element-typed range concepts shared by the handle and array argument protocols.
 
 #pragma once
 
@@ -23,5 +23,13 @@ template <typename R, typename E>
 concept output_range_of = contiguous_range_of<R, E> && std::ranges::borrowed_range<R> && requires(R& r) {
     { std::ranges::data(r) } -> std::same_as<E*>;
 };
+
+/// A sized input range of standard integers (not `bool` or a character type), e.g. a `std::vector<std::size_t>`.
+template <typename R>
+concept sized_integer_range =
+    std::ranges::input_range<R> && std::ranges::sized_range<R> && std::integral<std::ranges::range_value_t<R>>
+    && !std::same_as<std::ranges::range_value_t<R>, bool> && !std::same_as<std::ranges::range_value_t<R>, char>
+    && !std::same_as<std::ranges::range_value_t<R>, wchar_t> && !std::same_as<std::ranges::range_value_t<R>, char8_t>
+    && !std::same_as<std::ranges::range_value_t<R>, char16_t> && !std::same_as<std::ranges::range_value_t<R>, char32_t>;
 
 } // namespace mpi::experimental

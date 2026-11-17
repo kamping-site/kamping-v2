@@ -17,12 +17,13 @@
 #include "kamping/v2/kassert.hpp"
 #include "mpi/datatype.hpp"
 #include "mpi/handle.hpp"
+#include "mpi/range_concepts.hpp"
 #include "mpi/rank.hpp"
 #include "mpi/type_constructors.hpp"
 
 /// @file
-/// The MPI datatype constructors in `kamping::v2`: the core wrappers from `mpi/type_constructors.hpp`, plus forms
-/// that describe blocks and dimensions with one descriptor each instead of MPI's parallel arrays.
+/// The MPI datatype constructors in `kamping::v2`: the core wrappers, plus forms that take one descriptor per block or
+/// dimension instead of MPI's parallel arrays.
 
 namespace kamping::v2 {
 using mpi::experimental::array_order;
@@ -40,58 +41,45 @@ using mpi::experimental::type_vector;
 
 // ── Descriptors ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-/// @brief A block of a `type_indexed` datatype: `length` copies of the base datatype, starting `displacement`
-/// elements of the base datatype after the start of the datatype.
+/// @brief A block of `type_indexed`: `length` elements, `displacement` elements from the start.
 struct block {
-    int displacement; ///< Offset of the block, in elements of the base datatype.
-    int length;       ///< Number of elements in the block.
+    int displacement; ///< Offset in elements of the base datatype.
+    int length;       ///< Number of elements.
 };
 
-/// @brief A block of a `type_create_hindexed` datatype: `length` copies of the base datatype, starting
-/// `displacement` bytes after the start of the datatype.
+/// @brief A block of `type_create_hindexed`: `length` elements, `displacement` bytes from the start.
 struct hblock {
-    MPI_Aint displacement; ///< Offset of the block, in bytes.
-    int      length;       ///< Number of elements in the block.
+    MPI_Aint displacement; ///< Offset in bytes.
+    int      length;       ///< Number of elements.
 };
 
-/// @brief One dimension of a `type_create_subarray` datatype: the `subsize` elements starting at index `start` of a
-/// dimension with `size` elements.
+/// @brief A dimension of `type_create_subarray`: the `subsize` elements from index `start` of `size` elements.
 struct subarray_dim {
-    int size;    ///< Number of elements of the full array in this dimension.
-    int start;   ///< Index of the first element of the subarray in this dimension.
-    int subsize; ///< Number of elements of the subarray in this dimension.
+    int size;    ///< Elements of the full array.
+    int start;   ///< First index of the subarray.
+    int subsize; ///< Elements of the subarray.
 };
 
-/// @brief How a dimension of a `type_create_darray` datatype is distributed over the processes.
+/// @brief How a dimension of `type_create_darray` is distributed.
 enum class distribution : int {
-    block  = MPI_DISTRIBUTE_BLOCK,  ///< Contiguous blocks, one per process.
-    cyclic = MPI_DISTRIBUTE_CYCLIC, ///< Blocks dealt out to the processes round-robin.
-    none   = MPI_DISTRIBUTE_NONE    ///< Not distributed: every process holds the whole dimension.
+    block  = MPI_DISTRIBUTE_BLOCK,  ///< One contiguous block per process.
+    cyclic = MPI_DISTRIBUTE_CYCLIC, ///< Blocks dealt out round-robin.
+    none   = MPI_DISTRIBUTE_NONE    ///< Not distributed.
 };
 
-/// @brief One dimension of a `type_create_darray` datatype: `global_size` elements, distributed as `distrib` over
-/// `procs` processes.
-///
-/// Without a `block_size`, MPI picks the default: for `distribution::block`, the global size divided by `procs`,
-/// rounded up; for `distribution::cyclic`, one element. A dimension that is not distributed has `procs == 1` and no
-/// block size.
+/// @brief A dimension of `type_create_darray`: `global_size` elements, distributed as `distrib` over `procs`
+/// processes.
 struct darray_dim {
-    int                global_size;                     ///< Number of elements of the global array in this dimension.
-    distribution       distrib    = distribution::none; ///< How the dimension is distributed.
-    int                procs      = 1;                  ///< Number of processes this dimension is distributed over.
-    std::optional<int> block_size = std::nullopt;       ///< Block size of the distribution; MPI's default if empty.
+    int                global_size;                     ///< Elements of the global array.
+    distribution       distrib    = distribution::none; ///< Distribution; `none` requires `procs == 1`.
+    int                procs      = 1;                  ///< Processes in this dimension.
+    std::optional<int> block_size = std::nullopt;       ///< Block size; MPI's default if empty.
 };
 
 namespace detail {
-/// A sized range whose elements are integers, e.g. a `std::vector<std::size_t>` of indices.
-template <typename R>
-concept integer_range =
-    std::ranges::input_range<R> && std::ranges::sized_range<R> && std::integral<std::ranges::range_value_t<R>>
-    && !std::same_as<std::ranges::range_value_t<R>, bool>;
-
 /// Calls `f` with the values of `r` as a `std::span<T const>`. A contiguous range of `T` is passed as it is; any other
 /// range is copied, checking that each value fits into `T`.
-template <typename T, integer_range R, typename F>
+template <typename T, mpi::experimental::sized_integer_range R, typename F>
 decltype(auto) with_span_of(R&& r, F&& f) {
     if constexpr (std::ranges::contiguous_range<R> && std::same_as<std::ranges::range_value_t<R>, T>) {
         return std::forward<F>(f)(std::span<T const>(std::ranges::data(r), std::ranges::size(r)));
@@ -152,18 +140,12 @@ struct darray_arrays {
         }
     }
 };
+
 } // namespace detail
 
 // ── MPI_Type_indexed / MPI_Type_create_hindexed ────────────────────────────────────────────────────────────────────
 
-/// @brief Blocks of `oldtype` of different lengths at different offsets (`MPI_Type_indexed`).
-///
-/// Each block gives its offset and length in elements of `oldtype`:
-///
-/// @code
-/// // The upper triangle of a 3 x 3 row-major matrix: row i holds 3 - i elements, starting at column i.
-/// auto const upper = v2::type_indexed({{0, 3}, {4, 2}, {8, 1}}, MPI_DOUBLE).commit();
-/// @endcode
+/// @brief `type_indexed` with one `block` per block: `type_indexed({{0, 3}, {4, 2}}, MPI_INT)`.
 /// @return The new datatype, owned and not committed.
 /// @throws mpi_error if `MPI_Type_indexed` fails.
 template <mpi::experimental::convertible_to_mpi_handle<MPI_Datatype> Datatype>
@@ -173,7 +155,7 @@ type_indexed(std::span<block const> blocks, Datatype const& oldtype) {
     return mpi::experimental::type_indexed(arrays.lengths, arrays.displacements, oldtype);
 }
 
-/// @brief Blocks of `oldtype` of different lengths at different offsets (`MPI_Type_indexed`).
+/// @brief `type_indexed` with one `block` per block: `type_indexed({{0, 3}, {4, 2}}, MPI_INT)`.
 /// @return The new datatype, owned and not committed.
 /// @throws mpi_error if `MPI_Type_indexed` fails.
 template <mpi::experimental::convertible_to_mpi_handle<MPI_Datatype> Datatype>
@@ -182,7 +164,7 @@ type_indexed(std::initializer_list<block> blocks, Datatype const& oldtype) {
     return kamping::v2::type_indexed(std::span<block const>(blocks.begin(), blocks.size()), oldtype);
 }
 
-/// @brief Like `type_indexed`, but the offsets of the blocks are given in bytes (`MPI_Type_create_hindexed`).
+/// @brief `type_create_hindexed` with one `hblock` per block.
 /// @return The new datatype, owned and not committed.
 /// @throws mpi_error if `MPI_Type_create_hindexed` fails.
 template <mpi::experimental::convertible_to_mpi_handle<MPI_Datatype> Datatype>
@@ -192,7 +174,7 @@ type_create_hindexed(std::span<hblock const> blocks, Datatype const& oldtype) {
     return mpi::experimental::type_create_hindexed(arrays.lengths, arrays.displacements, oldtype);
 }
 
-/// @brief Like `type_indexed`, but the offsets of the blocks are given in bytes (`MPI_Type_create_hindexed`).
+/// @brief `type_create_hindexed` with one `hblock` per block.
 /// @return The new datatype, owned and not committed.
 /// @throws mpi_error if `MPI_Type_create_hindexed` fails.
 template <mpi::experimental::convertible_to_mpi_handle<MPI_Datatype> Datatype>
@@ -203,13 +185,13 @@ type_create_hindexed(std::initializer_list<hblock> blocks, Datatype const& oldty
 
 // ── MPI_Type_create_indexed_block / MPI_Type_create_hindexed_block ─────────────────────────────────────────────────
 
-/// @brief Blocks of `blocklength` copies of `oldtype` each at different offsets (`MPI_Type_create_indexed_block`).
+/// @brief `type_create_indexed_block` with displacements from any sized integer range; without `blocklength`, one
+/// element per index.
 ///
-/// Block `i` starts `displacements[i]` elements of `oldtype` after the start of the datatype. `displacements` can be
-/// any sized range of integers; each must fit into an `int`.
+/// A range that is not a contiguous range of `int` is copied into a temporary array, checking that each value fits.
 /// @return The new datatype, owned and not committed.
 /// @throws mpi_error if `MPI_Type_create_indexed_block` fails.
-template <detail::integer_range R, mpi::experimental::convertible_to_mpi_handle<MPI_Datatype> Datatype>
+template <mpi::experimental::sized_integer_range R, mpi::experimental::convertible_to_mpi_handle<MPI_Datatype> Datatype>
 [[nodiscard]] mpi::experimental::uncommitted_datatype
 type_create_indexed_block(int blocklength, R&& displacements, Datatype const& oldtype) {
     return detail::with_span_of<int>(std::forward<R>(displacements), [&](std::span<int const> displs) {
@@ -217,29 +199,25 @@ type_create_indexed_block(int blocklength, R&& displacements, Datatype const& ol
     });
 }
 
-/// @brief The elements of an array of `oldtype` at the given indices, in that order
-/// (`MPI_Type_create_indexed_block` with blocks of one element).
+/// @brief `type_create_indexed_block` with displacements from any sized integer range; without `blocklength`, one
+/// element per index.
 ///
-/// `indices` can be any sized range of integers; each must fit into an `int`.
-///
-/// @code
-/// std::vector<std::size_t> const selected{0, 5, 7};  // the elements 0, 5 and 7 of an array
-/// auto const                     gather = v2::type_create_indexed_block(selected, MPI_INT).commit();
-/// @endcode
+/// A range that is not a contiguous range of `int` is copied into a temporary array, checking that each value fits.
 /// @return The new datatype, owned and not committed.
 /// @throws mpi_error if `MPI_Type_create_indexed_block` fails.
-template <detail::integer_range R, mpi::experimental::convertible_to_mpi_handle<MPI_Datatype> Datatype>
+template <mpi::experimental::sized_integer_range R, mpi::experimental::convertible_to_mpi_handle<MPI_Datatype> Datatype>
 [[nodiscard]] mpi::experimental::uncommitted_datatype type_create_indexed_block(R&& indices, Datatype const& oldtype) {
     return kamping::v2::type_create_indexed_block(1, std::forward<R>(indices), oldtype);
 }
 
-/// @brief Like `type_create_indexed_block`, but `displacements` are given in bytes
-/// (`MPI_Type_create_hindexed_block`).
+/// @brief `type_create_hindexed_block` with byte displacements from any sized integer range; without
+/// `blocklength`, one element per offset.
 ///
-/// `displacements` can be any sized range of integers; each must fit into an `MPI_Aint`.
+/// A range that is not a contiguous range of `MPI_Aint` is copied into a temporary array, checking that each value
+/// fits.
 /// @return The new datatype, owned and not committed.
 /// @throws mpi_error if `MPI_Type_create_hindexed_block` fails.
-template <detail::integer_range R, mpi::experimental::convertible_to_mpi_handle<MPI_Datatype> Datatype>
+template <mpi::experimental::sized_integer_range R, mpi::experimental::convertible_to_mpi_handle<MPI_Datatype> Datatype>
 [[nodiscard]] mpi::experimental::uncommitted_datatype
 type_create_hindexed_block(int blocklength, R&& displacements, Datatype const& oldtype) {
     return detail::with_span_of<MPI_Aint>(std::forward<R>(displacements), [&](std::span<MPI_Aint const> displs) {
@@ -247,29 +225,21 @@ type_create_hindexed_block(int blocklength, R&& displacements, Datatype const& o
     });
 }
 
-/// @brief One element of `oldtype` at each of the given byte offsets, in that order
-/// (`MPI_Type_create_hindexed_block` with blocks of one element).
+/// @brief `type_create_hindexed_block` with byte displacements from any sized integer range; without
+/// `blocklength`, one element per offset.
 ///
-/// `offsets` can be any sized range of integers; each must fit into an `MPI_Aint`.
+/// A range that is not a contiguous range of `MPI_Aint` is copied into a temporary array, checking that each value
+/// fits.
 /// @return The new datatype, owned and not committed.
 /// @throws mpi_error if `MPI_Type_create_hindexed_block` fails.
-template <detail::integer_range R, mpi::experimental::convertible_to_mpi_handle<MPI_Datatype> Datatype>
+template <mpi::experimental::sized_integer_range R, mpi::experimental::convertible_to_mpi_handle<MPI_Datatype> Datatype>
 [[nodiscard]] mpi::experimental::uncommitted_datatype type_create_hindexed_block(R&& offsets, Datatype const& oldtype) {
     return kamping::v2::type_create_hindexed_block(1, std::forward<R>(offsets), oldtype);
 }
 
 // ── MPI_Type_create_subarray ───────────────────────────────────────────────────────────────────────────────────────
 
-/// @brief The subarray of a multi-dimensional array of `oldtype` described by one `subarray_dim` per dimension
-/// (`MPI_Type_create_subarray`).
-///
-/// The array is stored in `order`, row-major (`array_order::c`) if left out. The extent of the new datatype is that
-/// of the full array, so a buffer holding the full array is sent or received with a count of one.
-///
-/// @code
-/// // A rows x cols matrix without its boundary.
-/// auto interior = v2::type_create_subarray({{rows, 1, rows - 2}, {cols, 1, cols - 2}}, MPI_DOUBLE).commit();
-/// @endcode
+/// @brief `type_create_subarray` with one `subarray_dim` per dimension; `order` is `array_order::c` if left out.
 /// @return The new datatype, owned and not committed.
 /// @throws mpi_error if `MPI_Type_create_subarray` fails.
 template <mpi::experimental::convertible_to_mpi_handle<MPI_Datatype> Datatype>
@@ -279,8 +249,7 @@ type_create_subarray(std::span<subarray_dim const> dims, array_order order, Data
     return mpi::experimental::type_create_subarray(arrays.sizes, arrays.subsizes, arrays.starts, order, oldtype);
 }
 
-/// @brief The subarray of a multi-dimensional array of `oldtype` described by one `subarray_dim` per dimension
-/// (`MPI_Type_create_subarray`).
+/// @brief `type_create_subarray` with one `subarray_dim` per dimension; `order` is `array_order::c` if left out.
 /// @return The new datatype, owned and not committed.
 /// @throws mpi_error if `MPI_Type_create_subarray` fails.
 template <mpi::experimental::convertible_to_mpi_handle<MPI_Datatype> Datatype>
@@ -289,8 +258,7 @@ type_create_subarray(std::initializer_list<subarray_dim> dims, array_order order
     return kamping::v2::type_create_subarray(std::span<subarray_dim const>(dims.begin(), dims.size()), order, oldtype);
 }
 
-/// @brief The subarray of a multi-dimensional array of `oldtype` described by one `subarray_dim` per dimension
-/// (`MPI_Type_create_subarray`).
+/// @brief `type_create_subarray` with one `subarray_dim` per dimension; `order` is `array_order::c` if left out.
 /// @return The new datatype, owned and not committed.
 /// @throws mpi_error if `MPI_Type_create_subarray` fails.
 template <mpi::experimental::convertible_to_mpi_handle<MPI_Datatype> Datatype>
@@ -299,8 +267,7 @@ type_create_subarray(std::span<subarray_dim const> dims, Datatype const& oldtype
     return kamping::v2::type_create_subarray(dims, array_order::c, oldtype);
 }
 
-/// @brief The subarray of a multi-dimensional array of `oldtype` described by one `subarray_dim` per dimension
-/// (`MPI_Type_create_subarray`).
+/// @brief `type_create_subarray` with one `subarray_dim` per dimension; `order` is `array_order::c` if left out.
 /// @return The new datatype, owned and not committed.
 /// @throws mpi_error if `MPI_Type_create_subarray` fails.
 template <mpi::experimental::convertible_to_mpi_handle<MPI_Datatype> Datatype>
@@ -311,22 +278,12 @@ type_create_subarray(std::initializer_list<subarray_dim> dims, Datatype const& o
 
 // ── MPI_Type_create_darray ─────────────────────────────────────────────────────────────────────────────────────────
 
-/// @brief The part of a distributed multi-dimensional array of `oldtype` that the calling process holds
-/// (`MPI_Type_create_darray`).
+/// @brief `type_create_darray` with one `darray_dim` per dimension, for the calling process of `comm`; `order` is
+/// `array_order::c` if left out.
 ///
-/// The array has one `darray_dim` per dimension and is stored in `order`, row-major (`array_order::c`) if left out.
-/// The processes of `comm` form a grid with `dims[i].procs` processes in dimension `i`, in row-major order; the
-/// product of the `procs` must be the size of `comm`.
-///
-/// @code
-/// // An n x n matrix in blocks on a p_rows x p_cols process grid.
-/// using v2::distribution;
-/// auto const blk =
-///     v2::type_create_darray({{n, distribution::block, p_rows}, {n, distribution::block, p_cols}}, MPI_DOUBLE, comm)
-///         .commit();
-/// @endcode
+/// The product of the `procs` must be the size of `comm`.
 /// @return The new datatype, owned and not committed.
-/// @throws mpi_error if `MPI_Type_create_darray` or querying the rank or size of `comm` fails.
+/// @throws mpi_error if `MPI_Type_create_darray` fails.
 template <
     mpi::experimental::convertible_to_mpi_handle<MPI_Datatype> Datatype,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>     Comm>
@@ -346,10 +303,12 @@ type_create_darray(std::span<darray_dim const> dims, array_order order, Datatype
     );
 }
 
-/// @brief The part of a distributed multi-dimensional array of `oldtype` that the calling process holds
-/// (`MPI_Type_create_darray`).
+/// @brief `type_create_darray` with one `darray_dim` per dimension, for the calling process of `comm`; `order` is
+/// `array_order::c` if left out.
+///
+/// The product of the `procs` must be the size of `comm`.
 /// @return The new datatype, owned and not committed.
-/// @throws mpi_error if `MPI_Type_create_darray` or querying the rank or size of `comm` fails.
+/// @throws mpi_error if `MPI_Type_create_darray` fails.
 template <
     mpi::experimental::convertible_to_mpi_handle<MPI_Datatype> Datatype,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>     Comm>
@@ -364,10 +323,12 @@ template <
     );
 }
 
-/// @brief The part of a distributed multi-dimensional array of `oldtype` that the calling process holds
-/// (`MPI_Type_create_darray`).
+/// @brief `type_create_darray` with one `darray_dim` per dimension, for the calling process of `comm`; `order` is
+/// `array_order::c` if left out.
+///
+/// The product of the `procs` must be the size of `comm`.
 /// @return The new datatype, owned and not committed.
-/// @throws mpi_error if `MPI_Type_create_darray` or querying the rank or size of `comm` fails.
+/// @throws mpi_error if `MPI_Type_create_darray` fails.
 template <
     mpi::experimental::convertible_to_mpi_handle<MPI_Datatype> Datatype,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>     Comm>
@@ -376,10 +337,12 @@ type_create_darray(std::span<darray_dim const> dims, Datatype const& oldtype, Co
     return kamping::v2::type_create_darray(dims, array_order::c, oldtype, comm);
 }
 
-/// @brief The part of a distributed multi-dimensional array of `oldtype` that the calling process holds
-/// (`MPI_Type_create_darray`).
+/// @brief `type_create_darray` with one `darray_dim` per dimension, for the calling process of `comm`; `order` is
+/// `array_order::c` if left out.
+///
+/// The product of the `procs` must be the size of `comm`.
 /// @return The new datatype, owned and not committed.
-/// @throws mpi_error if `MPI_Type_create_darray` or querying the rank or size of `comm` fails.
+/// @throws mpi_error if `MPI_Type_create_darray` fails.
 template <
     mpi::experimental::convertible_to_mpi_handle<MPI_Datatype> Datatype,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>     Comm>

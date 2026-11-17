@@ -14,6 +14,7 @@
 #include <gtest/gtest.h>
 #include <mpi.h>
 
+#include "kamping/v2/buffer.hpp"
 #include "kamping/v2/datatype.hpp"
 #include "kamping/v2/handle.hpp"
 
@@ -70,6 +71,21 @@ static_assert(std::is_aggregate_v<v2::block>);
 static_assert(std::is_aggregate_v<v2::hblock>);
 static_assert(std::is_aggregate_v<v2::subarray_dim>);
 static_assert(std::is_aggregate_v<v2::darray_dim>);
+
+// Ranges of integers, but not of booleans or characters, are accepted as displacements.
+static_assert(mpi::experimental::sized_integer_range<std::vector<std::size_t>>);
+static_assert(mpi::experimental::sized_integer_range<std::list<int> const&>);
+static_assert(!mpi::experimental::sized_integer_range<std::vector<bool>>);
+static_assert(!mpi::experimental::sized_integer_range<std::vector<char>>);
+static_assert(!mpi::experimental::sized_integer_range<std::vector<double>>);
+
+TEST(V2TypeConstructorsTest, BuiltinDatatype) {
+    EXPECT_EQ(v2::builtin_datatype<double>(), MPI_DOUBLE);
+    EXPECT_EQ(v2::builtin_datatype<int const&>(), MPI_INT);
+    auto const dt = v2::type_vector(2, 1, 2, v2::builtin_datatype<int>()).commit();
+    auto const m  = iota16();
+    EXPECT_EQ(selected_ints(m.data(), dt, 2), (std::vector<int>{0, 2}));
+}
 
 // ── type_indexed / type_create_hindexed ────────────────────────────────────────────────────────────────────────────
 
