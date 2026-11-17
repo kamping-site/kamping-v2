@@ -28,6 +28,7 @@ target_sources(
               include/dstl/alltoallv.hpp
               include/dstl/default_init_allocator.hpp
               include/dstl/detail/alltoallv_common.hpp
+              include/dstl/detail/local_fold.hpp
               include/dstl/detail/recv_buffer_utils.hpp
               include/dstl/distribution.hpp
               include/dstl/dstl.hpp

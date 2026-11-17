@@ -403,3 +403,45 @@ TEST(InclusiveScan, CallbackOpOnDerivedType) {
         EXPECT_EQ(out[static_cast<std::size_t>(i)].b, 3 * ranks_before + (i + 1) * comm.rank());
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// dstl::reduce with non-commutative operations and runtime commutativity
+// ─────────────────────────────────────────────────────────────────────────────
+
+namespace {
+// "Keep the right operand" on ints: associative, not commutative.
+void keep_right(void* /* invec */, void* /* inoutvec */, int* /* len */, MPI_Datatype* /* datatype */) {
+    // inout[i] = in[i] op inout[i] = inout[i]: nothing to do.
+}
+} // namespace
+
+TEST(Reduce, NonCommutativeFunctor) {
+    // The result is the last element of the global sequence, so the elements must be combined in order.
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
+    int const                    n    = 5;
+    auto const                   vec  = iota_vec(comm.rank() * n, n);
+
+    auto const keep_right_op = kamping::v2::make_op<int>([](int /* a */, int b) { return b; });
+    EXPECT_EQ(dstl::reduce(vec, 0, keep_right_op, comm), n * comm.size() - 1);
+}
+
+TEST(Reduce, NonCommutativeCallback) {
+    // Applied through MPI_Reduce_local and not commutative at runtime: combined in order.
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
+    int const                    n    = 5;
+    auto const                   vec  = iota_vec(comm.rank() * n, n);
+
+    auto const keep_right_op = kamping::v2::make_op(&keep_right);
+    EXPECT_EQ(dstl::reduce(vec, 0, keep_right_op, comm), n * comm.size() - 1);
+}
+
+TEST(Reduce, CommutativeAtRuntimeLargeRange) {
+    // Applied through MPI_Reduce_local and commutative at runtime: folded by halving. Odd sizes leave a middle element.
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
+    for (int const n: {1, 2, 3, 7, 1000, 1001}) {
+        auto const vec      = iota_vec(comm.rank() * n, n);
+        int const  expected = n * comm.size() * (n * comm.size() - 1) / 2;
+        EXPECT_EQ(dstl::reduce(vec, 0, MPI_SUM, comm), expected) << "n = " << n;
+        EXPECT_EQ(dstl::reduce(vec, 0, kamping::v2::op_view{MPI_SUM}, comm), expected) << "n = " << n;
+    }
+}

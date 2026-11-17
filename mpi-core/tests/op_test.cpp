@@ -302,3 +302,22 @@ TEST(OpTest, as_local_op) {
     EXPECT_EQ(result.value, 7);
     MPI_Type_free(&pinned_type);
 }
+
+TEST(OpTest, commutativity_at_runtime) {
+    EXPECT_TRUE(op_commutative(MPI_SUM));
+    EXPECT_TRUE(op_view{MPI_MAX}.commutative());
+
+    auto const sum = make_op(&int_sum, commutative);
+    auto const seq = make_op(&int_sum);
+    EXPECT_TRUE(sum.commutative());
+    EXPECT_FALSE(seq.commutative());
+    EXPECT_FALSE(op_commutative(seq));
+
+    // functor_op knows it at compile time, and MPI agrees.
+    auto const fsum = make_op<int>(std::plus<>{}, commutative);
+    auto const fseq = make_op<int>(std::plus<>{});
+    static_assert(decltype(fsum)::commutative());
+    static_assert(!decltype(fseq)::commutative());
+    EXPECT_TRUE(op_commutative(fsum));
+    EXPECT_FALSE(op_commutative(fseq));
+}

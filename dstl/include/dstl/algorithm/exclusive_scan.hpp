@@ -9,6 +9,7 @@
 
 #include <mpi.h>
 
+#include "dstl/detail/local_fold.hpp"
 #include "dstl/with_subset.hpp"
 #include "kamping/v2/buffer.hpp"
 #include "kamping/v2/collectives/exscan.hpp"
@@ -61,15 +62,9 @@ void exclusive_scan(
 
     T rank_prefix{};
     with_subset(cv, !std::ranges::empty(r), [&](kamping::v2::comm_view sub_comm) {
-        // First pass: compute local total without assuming T{} is the identity for op.
-        auto it          = std::ranges::begin(r);
-        T    local_total = *it++;
-        // op need only be associative, so the elements are combined in order, unless op is known to be commutative.
-        if constexpr (kamping::v2::commutative_op<BinaryOp, T>) {
-            local_total = std::reduce(it, std::ranges::end(r), local_total, local_op);
-        } else {
-            local_total = std::accumulate(it, std::ranges::end(r), local_total, local_op);
-        }
+        // First pass: compute local total without assuming T{} is the identity for op. op need only be associative,
+        // so the elements are reordered only if op is commutative.
+        T const local_total = detail::local_fold<T>(std::ranges::begin(r), std::ranges::end(r), op, mpi_type);
 
         if (sub_comm.size() > 1) {
             kamping::v2::exscan(

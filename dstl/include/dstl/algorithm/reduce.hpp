@@ -10,6 +10,7 @@
 
 #include <mpi.h>
 
+#include "dstl/detail/local_fold.hpp"
 #include "kamping/v2/buffer.hpp"
 #include "kamping/v2/collectives/allreduce.hpp"
 #include "kamping/v2/collectives/reduce.hpp"
@@ -33,7 +34,7 @@ namespace dstl {
 /// Empty ranks contribute T{} to the allreduce, so T{} must be the identity element
 /// for op when empty ranks are possible.
 ///
-/// @pre op must be associative and commutative.
+/// @pre op must be associative.
 /// @pre If any rank's range is empty, T{} must be the identity element for op.
 template <
     std::ranges::forward_range                       R,
@@ -51,9 +52,8 @@ auto reduce(
 
     auto first = std::ranges::begin(r);
     auto last  = std::ranges::end(r);
-    // Applies op locally: op itself if it is callable, otherwise its MPI_Op through MPI_Reduce_local.
-    auto const local_op = kamping::v2::as_local_op<T>(op, mpi_type);
-    T          result   = (first == last) ? T{} : std::reduce(std::next(first), last, *first, local_op);
+    // op need only be associative, so the elements are reordered only if op is commutative.
+    T result = (first == last) ? T{} : detail::local_fold<T>(first, last, op, mpi_type);
 
     kamping::v2::allreduce(
         kamping::v2::inplace,
@@ -62,7 +62,7 @@ auto reduce(
         comm
     );
 
-    return local_op(init, result);
+    return kamping::v2::as_local_op<T>(op, mpi_type)(init, result);
 }
 
 /// @brief Reduces the globally distributed range to a scalar on the root rank.
@@ -72,7 +72,7 @@ auto reduce(
 /// Returns std::optional containing op(init, in[0], ..., in[N-1]) on root, and
 /// std::nullopt on all other ranks.
 ///
-/// @pre op must be associative and commutative.
+/// @pre op must be associative.
 /// @pre If any rank's range is empty, T{} must be the identity element for op.
 template <
     std::ranges::forward_range                       R,
@@ -90,10 +90,9 @@ auto reduce_to_root(
     using T                     = std::ranges::range_value_t<R>;
     MPI_Datatype const mpi_type = kamping::v2::type(r);
 
-    auto       first    = std::ranges::begin(r);
-    auto       last     = std::ranges::end(r);
-    auto const local_op = kamping::v2::as_local_op<T>(op, mpi_type);
-    T          result   = (first == last) ? T{} : std::reduce(std::next(first), last, *first, local_op);
+    auto first  = std::ranges::begin(r);
+    auto last   = std::ranges::end(r);
+    T    result = (first == last) ? T{} : detail::local_fold<T>(first, last, op, mpi_type);
 
     kamping::v2::comm_view cv{kamping::v2::handle(comm)};
 
@@ -105,7 +104,7 @@ auto reduce_to_root(
             root,
             comm
         );
-        return local_op(init, result);
+        return kamping::v2::as_local_op<T>(op, mpi_type)(init, result);
     } else {
         kamping::v2::reduce(
             kamping::v2::views::ref_single(result) | kamping::v2::views::with_type(mpi_type),

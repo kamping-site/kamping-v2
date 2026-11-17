@@ -54,6 +54,7 @@ using mpi::experimental::non_commutative;
 using mpi::experimental::non_commutative_tag;
 using mpi::experimental::op;
 using mpi::experimental::op_accessors;
+using mpi::experimental::op_commutative;
 using mpi::experimental::op_view;
 using mpi::experimental::reduce_local;
 using mpi::experimental::reduction_functor;

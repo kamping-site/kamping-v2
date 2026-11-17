@@ -103,18 +103,40 @@ void reduce_local(SBuf&& inbuf, RBuf&& inoutbuf, Op const& op) {
     }
 }
 
+/// @return Whether the operation `o` is commutative (`MPI_Op_commutative`), e.g. `true` for `MPI_SUM`.
+///
+/// For operations whose commutativity is only known at runtime, such as `op` or a raw `MPI_Op`; for functors,
+/// `commutative_op` tells it at compile time.
+/// @throws mpi_error if `MPI_Op_commutative` fails.
+template <convertible_to_mpi_handle<MPI_Op> Op>
+[[nodiscard]] bool op_commutative(Op const& o) {
+    int commute = 0;
+    int err     = MPI_Op_commutative(mpi::experimental::handle(o), &commute);
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
+    return commute != 0;
+}
+
 template <typename T, typename F, commutativity_tag Commutativity>
     requires reduction_functor<F, T>
 class functor_op;
 
-/// CRTP mixin that makes an operation handle callable on single values: `o(a, b)` returns `a op b`, computed with
-/// `reduce_local`. `Derived` must implement `MPI_Op mpi_handle() const`.
+/// CRTP mixin for operation handles: `.commutative()`, and calls on single values: `o(a, b)` returns `a op b`, computed
+/// with `reduce_local`. `Derived` must implement `MPI_Op mpi_handle() const`.
 ///
 /// Each call is an MPI call, so an operation created from a C++ functor is faster to apply with the functor itself, as
 /// `functor_op` does.
 template <typename Derived>
 class op_accessors {
 public:
+    /// @return Whether the operation is commutative (`MPI_Op_commutative`). Delegates to the free function
+    /// `op_commutative`.
+    /// @throws mpi_error if `MPI_Op_commutative` fails.
+    [[nodiscard]] bool commutative() const {
+        return mpi::experimental::op_commutative(static_cast<Derived const&>(*this));
+    }
+
     /// @return `lhs op rhs` for values of a builtin type, e.g. `op_view{MPI_SUM}(1, 2) == 3`.
     /// @throws mpi_error if `MPI_Reduce_local` fails.
     template <builtin_mpi_type T>
@@ -328,6 +350,11 @@ public:
     /// @return The underlying `MPI_Op`.
     [[nodiscard]] MPI_Op mpi_handle() const noexcept {
         return _op.mpi_handle();
+    }
+
+    /// @return Whether the operation is commutative, as given to `make_op`; known at compile time.
+    [[nodiscard]] static constexpr bool commutative() noexcept {
+        return std::same_as<Commutativity, commutative_tag>;
     }
 
     /// @brief Views the operation, which must outlive the view.
