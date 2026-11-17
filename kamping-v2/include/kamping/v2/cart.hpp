@@ -4,6 +4,7 @@
 #pragma once
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <initializer_list>
 #include <span>
@@ -12,6 +13,7 @@
 #include <mpi.h>
 
 #include "kamping/v2/comm.hpp"
+#include "kamping/v2/kassert.hpp"
 #include "mpi/cart.hpp"
 #include "mpi/handle.hpp"
 #include "mpi/rank.hpp"
@@ -116,6 +118,24 @@ template <mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
     dims.reserve(n);
     for (std::size_t i = 0; i < n; ++i) {
         dims.push_back(cart_dim{procs[i], periods[i] != 0});
+    }
+    return dims;
+}
+
+/// @return The grid of the `N`-dimensional Cartesian communicator `c`, one `cart_dim` per dimension
+/// (`MPI_Cart_get`), e.g. for structured bindings: `auto [rows, cols] = v2::cart_dims<2>(grid);`.
+/// @throws mpi_error if `MPI_Cartdim_get` or `MPI_Cart_get` fails.
+template <std::size_t N, mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
+[[nodiscard]] std::array<cart_dim, N> cart_dims(Comm const& c) {
+    KAMPING_V2_ASSERT(
+        mpi::experimental::cartdim(c) == static_cast<int>(N),
+        "cart_dims<N>: the communicator does not have N dimensions"
+    );
+    std::array<int, N> procs{}, periods{}, coords{};
+    mpi::experimental::cart_get(c, procs, periods, coords);
+    std::array<cart_dim, N> dims{};
+    for (std::size_t i = 0; i < N; ++i) {
+        dims[i] = cart_dim{procs[i], periods[i] != 0};
     }
     return dims;
 }

@@ -29,6 +29,11 @@ TEST(V2CartTest, CreateWithAutoDims) {
     EXPECT_EQ(dims[0].procs, expected[0]);
     EXPECT_EQ(dims[1].procs, expected[1]);
     EXPECT_TRUE(dims[0].periodic && dims[1].periodic);
+
+    auto const [rows, cols] = v2::cart_dims<2>(grid);
+    EXPECT_EQ(rows.procs, expected[0]);
+    EXPECT_EQ(cols.procs, expected[1]);
+    EXPECT_TRUE(rows.periodic && cols.periodic);
 }
 
 TEST(V2CartTest, CreateWithFixedAndAutoDims) {
