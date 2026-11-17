@@ -8,13 +8,14 @@
 #include "mpi/buffer.hpp"
 #include "mpi/error.hpp"
 #include "mpi/handle.hpp"
+#include "mpi/special_values.hpp"
 
 namespace mpi::experimental {
 /// Starts sending `sbuf` to `dest` (`MPI_Isend`). The caller must keep `sbuf` alive and complete `request`.
 template <
     send_buffer                                SBuf,
-    rank                                       Dest,
-    tag                                        Tag,
+    destination                                Dest,
+    message_tag                                Tag,
     convertible_to_mpi_handle<MPI_Comm>        Comm,
     convertible_to_mpi_handle_ptr<MPI_Request> Request>
 void isend(SBuf&& sbuf, Dest dest, Tag tag, Comm const& comm, Request&& request) {
@@ -36,8 +37,8 @@ void isend(SBuf&& sbuf, Dest dest, Tag tag, Comm const& comm, Request&& request)
 /// `request`.
 template <
     send_buffer                                SBuf,
-    rank                                       Dest,
-    tag                                        Tag,
+    destination                                Dest,
+    message_tag                                Tag,
     convertible_to_mpi_handle<MPI_Comm>        Comm,
     convertible_to_mpi_handle_ptr<MPI_Request> Request>
 void ibsend(SBuf&& sbuf, Dest dest, Tag tag, Comm const& comm, Request&& request) {
@@ -59,8 +60,8 @@ void ibsend(SBuf&& sbuf, Dest dest, Tag tag, Comm const& comm, Request&& request
 /// `request`.
 template <
     send_buffer                                SBuf,
-    rank                                       Dest,
-    tag                                        Tag,
+    destination                                Dest,
+    message_tag                                Tag,
     convertible_to_mpi_handle<MPI_Comm>        Comm,
     convertible_to_mpi_handle_ptr<MPI_Request> Request>
 void issend(SBuf&& sbuf, Dest dest, Tag tag, Comm const& comm, Request&& request) {
@@ -82,8 +83,8 @@ void issend(SBuf&& sbuf, Dest dest, Tag tag, Comm const& comm, Request&& request
 /// `request`.
 template <
     send_buffer                                SBuf,
-    rank                                       Dest,
-    tag                                        Tag,
+    destination                                Dest,
+    message_tag                                Tag,
     convertible_to_mpi_handle<MPI_Comm>        Comm,
     convertible_to_mpi_handle_ptr<MPI_Request> Request>
 void irsend(SBuf&& sbuf, Dest dest, Tag tag, Comm const& comm, Request&& request) {

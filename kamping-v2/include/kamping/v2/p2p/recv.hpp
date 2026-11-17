@@ -8,6 +8,7 @@
 
 #include <mpi.h>
 
+#include "kamping/v2/handle.hpp"
 #include "kamping/v2/infer.hpp"
 #include "mpi/handle.hpp"
 #include "mpi/p2p/mrecv.hpp"
@@ -46,7 +47,7 @@ void infer_and_recv(RBuf& rbuf, int source, int tag, MPI_Comm comm, RecvFn&& rec
 /// @return The receive buffer (owned if passed as rvalue, borrowed otherwise).
 template <
     mpi::experimental::recv_buffer                               RBuf,
-    mpi::experimental::rank                                      Source,
+    mpi::experimental::sender                                    Source,
     mpi::experimental::tag                                       Tag,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>       Comm,
     mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>
@@ -65,14 +66,14 @@ auto recv(RBuf&& rbuf, Source source, Tag tag, Comm const& comm, Status&& status
 /// Receives a message from `source` with any tag into `rbuf`; see the overload above.
 template <
     mpi::experimental::recv_buffer                               RBuf,
-    mpi::experimental::rank                                      Source,
+    mpi::experimental::sender                                    Source,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>       Comm,
     mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>
 auto recv(RBuf&& rbuf, Source source, Comm const& comm, Status&& status = MPI_STATUS_IGNORE) -> RBuf {
     return kamping::v2::recv(
         std::forward<RBuf>(rbuf),
         std::move(source),
-        MPI_ANY_TAG,
+        mpi::experimental::any_tag,
         comm,
         std::forward<Status>(status)
     );
@@ -84,7 +85,13 @@ template <
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>       Comm,
     mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>
 auto recv(RBuf&& rbuf, Comm const& comm, Status&& status = MPI_STATUS_IGNORE) -> RBuf {
-    return kamping::v2::recv(std::forward<RBuf>(rbuf), MPI_ANY_SOURCE, MPI_ANY_TAG, comm, std::forward<Status>(status));
+    return kamping::v2::recv(
+        std::forward<RBuf>(rbuf),
+        mpi::experimental::any_source,
+        mpi::experimental::any_tag,
+        comm,
+        std::forward<Status>(status)
+    );
 }
 
 } // namespace kamping::v2

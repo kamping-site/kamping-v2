@@ -263,6 +263,24 @@ TEST(TypeConstructorsTest, Subarray) {
     EXPECT_EQ(selected_ints(m.data(), f_order, 6), (std::vector<int>{4, 5, 8, 9, 12, 13}));
 }
 
+namespace {
+/// Checks that `dt` selects this process's block of an 8-element array distributed in blocks.
+template <typename Datatype>
+void expect_block_of_eight(Datatype const& dt, int size, int rank) {
+    int const block = 8 / size;
+    EXPECT_EQ(dt.size(), block * static_cast<int>(sizeof(int)));
+    std::array<int, 8> global{};
+    std::iota(global.begin(), global.end(), 0);
+    std::vector<int> expected(static_cast<std::size_t>(block));
+    std::iota(expected.begin(), expected.end(), rank * block);
+    EXPECT_EQ(selected_ints(global.data(), dt, block), expected);
+}
+} // namespace
+
+// The distributions are given as `distribution`s or as plain ints; both describe the same datatype.
+static_assert(distribution_range<std::array<distribution, 2>> && distribution_range<std::vector<int>>);
+static_assert(!distribution_range<std::vector<long>> && !distribution_range<std::array<array_order, 1>>);
+
 TEST(TypeConstructorsTest, Darray) {
     // An 8-element array in blocks over the processes of MPI_COMM_WORLD; at most 8 processes.
     int size = 0;
@@ -273,20 +291,37 @@ TEST(TypeConstructorsTest, Darray) {
     ASSERT_EQ(8 % size, 0);
 
     std::array const gsizes{8};
-    std::array const distribs{MPI_DISTRIBUTE_BLOCK};
     std::array const dargs{MPI_DISTRIBUTE_DFLT_DARG};
     std::array const psizes{size};
-    auto const dt = type_create_darray(size, rank, gsizes, distribs, dargs, psizes, array_order::c, MPI_INT).commit();
 
-    int const block = 8 / size;
-    EXPECT_EQ(dt.size(), block * static_cast<int>(sizeof(int)));
+    std::array const typed{distribution::block};
+    auto const dt = type_create_darray(size, rank, gsizes, typed, dargs, psizes, array_order::c, MPI_INT).commit();
     EXPECT_EQ(dt.extent(), 8 * int_size);
+    expect_block_of_eight(dt, size, rank);
 
-    std::array<int, 8> global{};
-    std::iota(global.begin(), global.end(), 0);
-    std::vector<int> expected(static_cast<std::size_t>(block));
-    std::iota(expected.begin(), expected.end(), rank * block);
-    EXPECT_EQ(selected_ints(global.data(), dt, block), expected);
+    std::vector<int> const raw{MPI_DISTRIBUTE_BLOCK};
+    auto const from_ints = type_create_darray(size, rank, gsizes, raw, dargs, psizes, array_order::c, MPI_INT).commit();
+    expect_block_of_eight(from_ints, size, rank);
+}
+
+TEST(TypeConstructorsTest, DarrayWithManyDimensions) {
+    // More dimensions than fit into the stack buffer for the converted distributions: eight undistributed dimensions
+    // of size one, then the 8-element array in blocks.
+    int size = 0;
+    int rank = 0;
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    ASSERT_EQ(8 % size, 0);
+
+    std::vector<int>          gsizes(9, 1);
+    std::vector<distribution> distribs(9, distribution::none);
+    std::vector<int>          dargs(9, MPI_DISTRIBUTE_DFLT_DARG);
+    std::vector<int>          psizes(9, 1);
+    gsizes[8]     = 8;
+    distribs[8]   = distribution::block;
+    psizes[8]     = size;
+    auto const dt = type_create_darray(size, rank, gsizes, distribs, dargs, psizes, array_order::c, MPI_INT).commit();
+    expect_block_of_eight(dt, size, rank);
 }
 
 TEST(TypeConstructorsTest, Dup) {

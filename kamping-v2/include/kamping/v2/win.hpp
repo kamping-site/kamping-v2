@@ -10,5 +10,6 @@ using mpi::experimental::fence;
 using mpi::experimental::win;
 using mpi::experimental::win_accessors;
 using mpi::experimental::win_allocate;
+using mpi::experimental::win_assert;
 using mpi::experimental::win_view;
 } // namespace kamping::v2

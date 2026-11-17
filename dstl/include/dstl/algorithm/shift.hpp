@@ -19,6 +19,7 @@
 #include "kamping/v2/comm.hpp"
 #include "kamping/v2/handle.hpp"
 #include "kamping/v2/p2p/sendrecv.hpp"
+#include "kamping/v2/rank.hpp"
 #include "kamping/v2/sentinels.hpp"
 #include "kamping/v2/views/ref_single_view.hpp"
 #include "kamping/v2/views/with_type_view.hpp"
@@ -82,8 +83,10 @@ shift_left(R&& r, std::ranges::range_difference_t<R> n, Comm const& comm = kampi
         }
 
         // A single sendrecv with the right neighbor suffices.
-        int const left  = (rank > 0) ? rank - 1 : MPI_PROC_NULL;
-        int const right = (rank < p - 1) ? rank + 1 : MPI_PROC_NULL;
+        // The neighbors on a line; beyond its ends they stand for MPI_PROC_NULL.
+        auto const self  = kamping::v2::nonperiodic_rank::with_size(rank, p);
+        auto const left  = self - 1;
+        auto const right = self + 1;
 
         // Capture the MPI type before take() strips it from the view chain.
         MPI_Datatype const mpi_type = kamping::v2::type(r);
@@ -115,7 +118,7 @@ shift_left(R&& r, std::ranges::range_difference_t<R> n, Comm const& comm = kampi
             std::ranges::copy(staging, first + (local_size - n));
         }
 
-        if (right == MPI_PROC_NULL) {
+        if (right.is_proc_null()) {
             return {first, first + std::max(diff_t{0}, local_size - n)};
         }
         return {first, last};
@@ -214,8 +217,10 @@ shift_right(R&& r, std::ranges::range_difference_t<R> n, Comm const& comm = kamp
         }
 
         // A single sendrecv with the left neighbor suffices.
-        int const left  = (rank > 0) ? rank - 1 : MPI_PROC_NULL;
-        int const right = (rank < p - 1) ? rank + 1 : MPI_PROC_NULL;
+        // The neighbors on a line; beyond its ends they stand for MPI_PROC_NULL.
+        auto const self  = kamping::v2::nonperiodic_rank::with_size(rank, p);
+        auto const left  = self - 1;
+        auto const right = self + 1;
 
         // Capture the MPI type before drop() strips it from the view chain.
         MPI_Datatype const mpi_type = kamping::v2::type(r);
@@ -247,7 +252,7 @@ shift_right(R&& r, std::ranges::range_difference_t<R> n, Comm const& comm = kamp
             std::ranges::copy(staging, first);
         }
 
-        if (left == MPI_PROC_NULL) {
+        if (left.is_proc_null()) {
             return {first + std::min(n, local_size), last};
         }
         return {first, last};

@@ -19,8 +19,8 @@
 /// Each accessor dispatches with the same priority:
 ///   1. a trait specialization (`handle_traits`, `handle_range_traits`, `rank_traits`, `tag_traits`) — non-intrusive,
 ///      for types you don't own;
-///   2. a member function (`mpi_handle()`, `mpi_handle_ptr()`, `mpi_handle_range()`);
-///   3. a passthrough for the raw MPI value itself.
+///   2. a member function (`mpi_handle()`, `mpi_handle_ptr()`, `mpi_handle_range()`, `mpi_rank()`, `mpi_tag()`);
+///   3. a passthrough for the raw MPI value itself (for ranks and tags: a scoped enum or an `int`).
 
 namespace mpi::experimental {
 
@@ -215,12 +215,12 @@ concept convertible_to_mpi_handle_range = builtin_handle<HandleType> && requires
 };
 
 // ──────────────────────────────────────────────────────────────────────────────
-// to_rank() / to_tag() — priority: rank_traits / tag_traits > scoped enum > implicit int conversion
+// to_rank() / to_tag() — priority: rank_traits / tag_traits > mpi_rank() / mpi_tag() member > scoped enum > int
 // ──────────────────────────────────────────────────────────────────────────────
 
 /// Trait class for non-intrusively converting a type you don't own to an MPI rank.
 ///
-/// Scoped enums and types implicitly convertible to `int` need no specialization.
+/// Types with an `mpi_rank()` member, scoped enums and types implicitly convertible to `int` need no specialization.
 ///
 /// @code
 /// template <>
@@ -246,6 +246,24 @@ template <typename T>
 concept tag_traits_has_tag = requires(T const& t) {
     { tag_traits<T>::tag(t) } -> std::same_as<int>;
 };
+
+template <typename T>
+concept has_mpi_rank_member = !rank_traits_has_rank<T> && requires(T const& t) {
+    { t.mpi_rank() } -> std::same_as<int>;
+};
+
+template <typename T>
+concept has_mpi_tag_member = !tag_traits_has_tag<T> && requires(T const& t) {
+    { t.mpi_tag() } -> std::same_as<int>;
+};
+
+/// Neither a trait specialization nor a member function: the value itself is the rank.
+template <typename T>
+concept plain_rank = !rank_traits_has_rank<T> && !has_mpi_rank_member<T>;
+
+/// Neither a trait specialization nor a member function: the value itself is the tag.
+template <typename T>
+concept plain_tag = !tag_traits_has_tag<T> && !has_mpi_tag_member<T>;
 } // namespace detail
 
 /// @return The MPI rank `t` stands for, obtained via `rank_traits<T>::rank(t)`.
@@ -255,17 +273,24 @@ constexpr int to_rank(T const& t) {
     return rank_traits<std::remove_cvref_t<T>>::rank(t);
 }
 
+/// @return The MPI rank `t` stands for, obtained via `t.mpi_rank()`.
+template <typename T>
+    requires detail::has_mpi_rank_member<std::remove_cvref_t<T>>
+constexpr int to_rank(T const& t) {
+    return t.mpi_rank();
+}
+
 /// @return The underlying value of the scoped enum `t`, as an MPI rank.
 template <typename T>
-    requires(!detail::rank_traits_has_rank<std::remove_cvref_t<T>>) && detail::is_scoped_enum_v<std::remove_cvref_t<T>>
+    requires detail::plain_rank<std::remove_cvref_t<T>> && detail::is_scoped_enum_v<std::remove_cvref_t<T>>
 constexpr int to_rank(T t) {
     return static_cast<int>(static_cast<std::underlying_type_t<std::remove_cvref_t<T>>>(t));
 }
 
 /// @return `t` converted to `int`, as an MPI rank.
 template <typename T>
-    requires(!detail::rank_traits_has_rank<std::remove_cvref_t<T>>)
-            && (!detail::is_scoped_enum_v<std::remove_cvref_t<T>>) && std::convertible_to<T, int>
+    requires detail::plain_rank<std::remove_cvref_t<T>> && (!detail::is_scoped_enum_v<std::remove_cvref_t<T>>)
+             && std::convertible_to<T, int>
 constexpr int to_rank(T t) {
     return static_cast<int>(t);
 }
@@ -277,28 +302,37 @@ constexpr int to_tag(T const& t) {
     return tag_traits<std::remove_cvref_t<T>>::tag(t);
 }
 
+/// @return The MPI tag `t` stands for, obtained via `t.mpi_tag()`.
+template <typename T>
+    requires detail::has_mpi_tag_member<std::remove_cvref_t<T>>
+constexpr int to_tag(T const& t) {
+    return t.mpi_tag();
+}
+
 /// @return The underlying value of the scoped enum `t`, as an MPI tag.
 template <typename T>
-    requires(!detail::tag_traits_has_tag<std::remove_cvref_t<T>>) && detail::is_scoped_enum_v<std::remove_cvref_t<T>>
+    requires detail::plain_tag<std::remove_cvref_t<T>> && detail::is_scoped_enum_v<std::remove_cvref_t<T>>
 constexpr int to_tag(T t) {
     return static_cast<int>(static_cast<std::underlying_type_t<std::remove_cvref_t<T>>>(t));
 }
 
 /// @return `t` converted to `int`, as an MPI tag.
 template <typename T>
-    requires(!detail::tag_traits_has_tag<std::remove_cvref_t<T>>) && (!detail::is_scoped_enum_v<std::remove_cvref_t<T>>)
-            && std::convertible_to<T, int>
+    requires detail::plain_tag<std::remove_cvref_t<T>> && (!detail::is_scoped_enum_v<std::remove_cvref_t<T>>)
+             && std::convertible_to<T, int>
 constexpr int to_tag(T t) {
     return static_cast<int>(t);
 }
 
-/// A type usable as an MPI rank: `int`, a scoped enum, or a type adapted via `rank_traits`.
+/// A type usable as an MPI rank: `int`, a scoped enum, a type with an `mpi_rank()` member (e.g. `any_source`), or a
+/// type adapted via `rank_traits`.
 template <typename T>
 concept rank = requires(T const& t) {
     { mpi::experimental::to_rank(t) } -> std::same_as<int>;
 };
 
-/// A type usable as an MPI tag: `int`, a scoped enum, or a type adapted via `tag_traits`.
+/// A type usable as an MPI tag: `int`, a scoped enum, a type with an `mpi_tag()` member (e.g. `any_tag`), or a type
+/// adapted via `tag_traits`.
 template <typename T>
 concept tag = requires(T const& t) {
     { mpi::experimental::to_tag(t) } -> std::same_as<int>;

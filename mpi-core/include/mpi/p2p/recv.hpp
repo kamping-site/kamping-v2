@@ -8,6 +8,7 @@
 #include "mpi/buffer.hpp"
 #include "mpi/error.hpp"
 #include "mpi/handle.hpp"
+#include "mpi/special_values.hpp"
 
 namespace mpi::experimental {
 /// Receives a message from `source` with `tag` into `rbuf` (`MPI_Recv`). `rbuf` must be large enough for the message.
@@ -15,7 +16,7 @@ namespace mpi::experimental {
 /// @param status Optional: filled with the status of the received message. Defaults to `MPI_STATUS_IGNORE`.
 template <
     recv_buffer                               RBuf,
-    rank                                      Source,
+    sender                                    Source,
     tag                                       Tag,
     convertible_to_mpi_handle<MPI_Comm>       Comm,
     convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>

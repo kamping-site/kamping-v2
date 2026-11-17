@@ -13,10 +13,26 @@
 #include "mpi/group.hpp"
 #include "mpi/handle.hpp"
 #include "mpi/rank.hpp"
+#include "mpi/special_values.hpp"
 
 namespace mpi::experimental {
 
 // ── Forward declaration ───────────────────────────────────────────────────────
+/// @brief The kind of communicator `split_type` creates (`MPI_COMM_TYPE_*`). Values that MPI does not define are left
+/// out.
+enum class comm_type : int {
+    shared = MPI_COMM_TYPE_SHARED, ///< Processes that can create a shared memory region.
+#ifdef MPI_COMM_TYPE_HW_GUIDED
+    hw_guided = MPI_COMM_TYPE_HW_GUIDED, ///< Hardware resource given by the info key `mpi_hw_resource_type` (MPI 4).
+#endif
+#ifdef MPI_COMM_TYPE_HW_UNGUIDED
+    hw_unguided = MPI_COMM_TYPE_HW_UNGUIDED, ///< The next smaller hardware resource level (MPI 4).
+#endif
+#ifdef MPI_COMM_TYPE_RESOURCE_GUIDED
+    resource_guided = MPI_COMM_TYPE_RESOURCE_GUIDED, ///< Resource given by the info key `mpi_pset_name` (MPI 4.1).
+#endif
+};
+
 // Needed so comm_accessors can declare dup() / split() before comm is defined.
 
 class comm;
@@ -95,10 +111,30 @@ public:
     /// @brief Collective: split this communicator by color and key (MPI_Comm_split).
     ///
     /// Processes with the same `color` form a sub-communicator ordered by `key`.
-    /// Pass `MPI_UNDEFINED` as `color` to opt out — result is `MPI_COMM_NULL`.
+    /// Pass `undefined` instead of a color to opt out — the result is a null `comm`.
     /// Delegates to the free function `mpi::experimental::split`.
     /// @throws mpi_error if `MPI_Comm_split` fails.
     [[nodiscard]] comm split(int color, int key = 0) const; // defined out-of-line after comm
+
+    /// @brief Collective: take part in a split without joining any of the new communicators (MPI_Comm_split with
+    /// `MPI_UNDEFINED`).
+    /// @return A null `comm`.
+    /// @throws mpi_error if `MPI_Comm_split` fails.
+    [[nodiscard]] comm split(undefined_t) const; // defined out-of-line after comm
+
+    /// @brief Collective: split this communicator by `type`, e.g. into the processes of each shared-memory node
+    /// (MPI_Comm_split_type).
+    ///
+    /// Processes are ordered by `key` within each new communicator. Delegates to the free function
+    /// `mpi::experimental::split_type`.
+    /// @throws mpi_error if `MPI_Comm_split_type` fails.
+    [[nodiscard]] comm split_type(comm_type type, int key = 0) const; // defined out-of-line after comm
+
+    /// @brief Collective: take part in a split by type without joining any of the new communicators
+    /// (MPI_Comm_split_type with `MPI_UNDEFINED`).
+    /// @return A null `comm`.
+    /// @throws mpi_error if `MPI_Comm_split_type` fails.
+    [[nodiscard]] comm split_type(undefined_t) const; // defined out-of-line after comm
 };
 
 // ── comm_view ────────────────────────────────────────────────────────────────
@@ -337,7 +373,7 @@ void dup(Comm const& c, NewComm& new_comm) {
 /// @brief Collective: split a communicator by color and key (MPI_Comm_split).
 ///
 /// Processes with the same `color` form a sub-communicator, ordered by `key`.
-/// Pass `MPI_UNDEFINED` as `color` to opt out — the output handle is set to
+/// Pass `undefined` instead of a color to opt out — the output handle is set to
 /// `MPI_COMM_NULL` for that process.
 ///
 /// @tparam Comm     Any type satisfying `convertible_to_mpi_handle<MPI_Comm>`.
@@ -350,6 +386,64 @@ template <
     convertible_to_mpi_handle_ptr<MPI_Comm> NewComm = MPI_Comm*>
 void split(Comm const& c, int color, int key, NewComm& new_comm) {
     int err = MPI_Comm_split(mpi::experimental::handle(c), color, key, mpi::experimental::handle_ptr(new_comm));
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
+}
+
+/// @brief Collective: take part in a split without joining any of the new communicators (MPI_Comm_split with
+/// `MPI_UNDEFINED`). The output handle is set to `MPI_COMM_NULL`.
+/// @throws mpi_error if `MPI_Comm_split` fails.
+template <
+    convertible_to_mpi_handle<MPI_Comm>     Comm    = MPI_Comm,
+    convertible_to_mpi_handle_ptr<MPI_Comm> NewComm = MPI_Comm*>
+void split(Comm const& c, undefined_t, NewComm& new_comm) {
+    int err = MPI_Comm_split(
+        mpi::experimental::handle(c),
+        undefined_t::mpi_value(),
+        0,
+        mpi::experimental::handle_ptr(new_comm)
+    );
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
+}
+
+/// @brief Collective: split a communicator by `type`, e.g. into the processes of each shared-memory node
+/// (MPI_Comm_split_type).
+///
+/// Processes are ordered by `key` within each new communicator.
+/// @param new_comm Output: receives the new communicator handle.
+/// @throws mpi_error if `MPI_Comm_split_type` fails.
+template <
+    convertible_to_mpi_handle<MPI_Comm>     Comm,
+    convertible_to_mpi_handle<MPI_Info>     Info,
+    convertible_to_mpi_handle_ptr<MPI_Comm> NewComm>
+void split_type(Comm const& c, comm_type type, int key, Info const& info, NewComm& new_comm) {
+    int err = MPI_Comm_split_type(
+        mpi::experimental::handle(c),
+        static_cast<int>(type),
+        key,
+        mpi::experimental::handle(info),
+        mpi::experimental::handle_ptr(new_comm)
+    );
+    if (err != MPI_SUCCESS) {
+        throw mpi_error(err);
+    }
+}
+
+/// @brief Collective: take part in a split by type without joining any of the new communicators
+/// (MPI_Comm_split_type with `MPI_UNDEFINED`). The output handle is set to `MPI_COMM_NULL`.
+/// @throws mpi_error if `MPI_Comm_split_type` fails.
+template <convertible_to_mpi_handle<MPI_Comm> Comm, convertible_to_mpi_handle_ptr<MPI_Comm> NewComm>
+void split_type(Comm const& c, undefined_t, NewComm& new_comm) {
+    int err = MPI_Comm_split_type(
+        mpi::experimental::handle(c),
+        undefined_t::mpi_value(),
+        0,
+        MPI_INFO_NULL,
+        mpi::experimental::handle_ptr(new_comm)
+    );
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);
     }
@@ -379,6 +473,39 @@ template <convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
     return comm::from_native(out);
 }
 
+/// @brief Collective: take part in a split without joining any of the new communicators, returning a null `comm`.
+/// @throws mpi_error if `MPI_Comm_split` fails.
+template <convertible_to_mpi_handle<MPI_Comm> Comm = MPI_Comm>
+[[nodiscard]] comm split(Comm const& c, undefined_t) {
+    MPI_Comm out = MPI_COMM_NULL;
+    split(c, undefined, out);
+    return comm::from_native(out);
+}
+
+/// @brief Collective: split a communicator by `type`, returning an owning `comm` (MPI_Comm_split_type).
+///
+/// Processes are ordered by `key` within each new communicator.
+/// @code
+/// comm node = split_type(world, comm_type::shared, world.rank());  // the processes on this node
+/// @endcode
+/// @throws mpi_error if `MPI_Comm_split_type` fails.
+template <convertible_to_mpi_handle<MPI_Comm> Comm, convertible_to_mpi_handle<MPI_Info> Info = MPI_Info>
+[[nodiscard]] comm split_type(Comm const& c, comm_type type, int key = 0, Info const& info = MPI_INFO_NULL) {
+    MPI_Comm out = MPI_COMM_NULL;
+    split_type(c, type, key, info, out);
+    return comm::from_native(out);
+}
+
+/// @brief Collective: take part in a split by type without joining any of the new communicators, returning a null
+/// `comm`.
+/// @throws mpi_error if `MPI_Comm_split_type` fails.
+template <convertible_to_mpi_handle<MPI_Comm> Comm>
+[[nodiscard]] comm split_type(Comm const& c, undefined_t) {
+    MPI_Comm out = MPI_COMM_NULL;
+    split_type(c, undefined, out);
+    return comm::from_native(out);
+}
+
 // ── comm_accessors member definitions (out-of-line; comm must be complete) ───
 
 template <typename Derived>
@@ -389,6 +516,21 @@ inline comm comm_accessors<Derived>::dup() const {
 template <typename Derived>
 inline comm comm_accessors<Derived>::split(int color, int key) const {
     return mpi::experimental::split(underlying(), color, key);
+}
+
+template <typename Derived>
+inline comm comm_accessors<Derived>::split(undefined_t) const {
+    return mpi::experimental::split(underlying(), undefined);
+}
+
+template <typename Derived>
+inline comm comm_accessors<Derived>::split_type(comm_type type, int key) const {
+    return mpi::experimental::split_type(underlying(), type, key);
+}
+
+template <typename Derived>
+inline comm comm_accessors<Derived>::split_type(undefined_t) const {
+    return mpi::experimental::split_type(underlying(), undefined);
 }
 
 } // namespace mpi::experimental

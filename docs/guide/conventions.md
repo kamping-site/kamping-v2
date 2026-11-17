@@ -18,8 +18,8 @@ A left-out argument takes the obvious value:
 | Argument | Default |
 |----------|---------|
 | send tag | `DEFAULT_SEND_TAG` (0) |
-| source of a receive | `MPI_ANY_SOURCE` |
-| tag of a receive | `MPI_ANY_TAG` |
+| source of a receive | `any_source` (`MPI_ANY_SOURCE`) |
+| tag of a receive | `any_tag` (`MPI_ANY_TAG`) |
 | root | 0 |
 | reduction operation | `std::plus<>` |
 

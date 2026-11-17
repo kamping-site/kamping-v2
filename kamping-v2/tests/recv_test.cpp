@@ -124,3 +124,37 @@ TEST_F(V2RecvTest, UnmatchedProbeWildcardSourceResolvesCorrectly) {
         EXPECT_EQ(g_mprobe_calls, 0);
     }
 }
+
+// The typed wildcards work like the raw macros, also for buffers that are resized from a probe.
+TEST_F(V2RecvTest, TypedWildcardsResolveCorrectly) {
+    int rank, size;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+    if (size < 2)
+        GTEST_SKIP();
+
+    if (rank == 0) {
+        std::vector<int> data = {7, 8};
+        kamping::v2::send(data, 1, 43, MPI_COMM_WORLD);
+    } else if (rank == 1) {
+        std::vector<int> buf;
+        kamping::v2::recv(
+            buf | kamping::v2::views::resize,
+            kamping::v2::any_source,
+            kamping::v2::any_tag,
+            MPI_COMM_WORLD
+        );
+        EXPECT_EQ(buf, (std::vector<int>{7, 8}));
+    }
+}
+
+namespace {
+template <typename Dest, typename Tag>
+concept v2_sendable =
+    requires(std::vector<int> const& buf, Dest dest, Tag tag) { kamping::v2::send(buf, dest, tag, MPI_COMM_WORLD); };
+} // namespace
+
+// Sending to any_source or with any_tag is rejected at compile time; proc_null and raw ints are fine.
+static_assert(v2_sendable<int, int> && v2_sendable<kamping::v2::proc_null_t, int>);
+static_assert(!v2_sendable<kamping::v2::any_source_t, int>);
+static_assert(!v2_sendable<int, kamping::v2::any_tag_t>);

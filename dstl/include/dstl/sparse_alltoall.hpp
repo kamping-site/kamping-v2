@@ -102,8 +102,8 @@ namespace detail {
 /// Counter window of the RSX protocol: one `int64` per process, counting the messages addressed to it.
 ///
 /// The counter only ever grows, so each exchange counts the difference to the previous one. Without local stores
-/// after construction, every exchange can assert `MPI_MODE_NOSTORE` on both of its fences, and a window can be reused
-/// across exchanges (see @ref rsx_window_cache).
+/// after construction, every exchange can assert `win_assert::nostore` on both of its fences, and a window can be
+/// reused across exchanges (see @ref rsx_window_cache).
 class rsx_counter {
 public:
     /// Collective: allocates the window on `comm`.
@@ -119,13 +119,13 @@ public:
         _win            = std::move(w);
         _count          = local.data();
         *_count         = 0;
-        // Makes the initial store visible; opens no epoch, so the first exchange can assert MPI_MODE_NOPRECEDE.
-        _win.fence(MPI_MODE_NOPRECEDE | MPI_MODE_NOSUCCEED);
+        // Makes the initial store visible; opens no epoch, so the first exchange can assert win_assert::noprecede.
+        _win.fence(kamping::v2::win_assert::noprecede | kamping::v2::win_assert::nosucceed);
     }
 
     /// Collective: opens the counting epoch.
     void start() {
-        _win.fence(MPI_MODE_NOPRECEDE | MPI_MODE_NOSTORE);
+        _win.fence(kamping::v2::win_assert::noprecede | kamping::v2::win_assert::nostore);
     }
 
     /// Counts one message to `dest` (within the epoch).
@@ -139,7 +139,7 @@ public:
 
     /// Collective: closes the epoch and returns the number of messages addressed to this process since @ref start.
     [[nodiscard]] std::int64_t finish() {
-        _win.fence(MPI_MODE_NOSUCCEED | MPI_MODE_NOSTORE);
+        _win.fence(kamping::v2::win_assert::nosucceed | kamping::v2::win_assert::nostore);
         std::int64_t const total = *_count;
         std::int64_t const n     = total - _last;
         _last                    = total;
@@ -197,7 +197,7 @@ void receive_counted(
     std::int64_t num_recvs, OnMessage& on_message, int tag, Comm const& comm, kamping::v2::request_vector& sends
 ) {
     for (std::int64_t i = 0; i < num_recvs; ++i) {
-        std::invoke(on_message, kamping::v2::mprobe(MPI_ANY_SOURCE, tag, comm));
+        std::invoke(on_message, kamping::v2::mprobe(kamping::v2::any_source, tag, comm));
     }
     kamping::v2::waitall(sends);
 }
@@ -254,7 +254,7 @@ void sparse_alltoall(
     kamping::v2::request barrier;
     bool                 barrier_started = false;
     while (true) {
-        if (auto probe = kamping::v2::improbe(MPI_ANY_SOURCE, t, comm)) {
+        if (auto probe = kamping::v2::improbe(kamping::v2::any_source, t, comm)) {
             std::invoke(on_message, std::move(*probe));
         }
         if (barrier_started) {

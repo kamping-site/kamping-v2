@@ -44,6 +44,38 @@ With one buffer for both directions:
 ```{doxygenoverloads} kamping::v2::sendrecv_replace
 ```
 
+## Special ranks and tags
+
+The wildcards and the null process have types of their own, so a send to `any_source` or with `any_tag` does not
+compile. The raw `MPI_ANY_SOURCE`, `MPI_ANY_TAG` and `MPI_PROC_NULL` are still accepted. A receive from `proc_null`
+transfers nothing, which its status reports with `from_proc_null()`.
+
+```cpp
+v2::recv(buf | views::resize, v2::any_source, v2::any_tag, comm);
+v2::send(buf, v2::proc_null, comm);       // completes immediately
+v2::send(buf, v2::any_source, comm);      // compile error
+```
+
+```{doxygenvariable} kamping::v2::any_source
+```
+
+```{doxygenvariable} kamping::v2::any_tag
+```
+
+```{doxygenvariable} kamping::v2::proc_null
+```
+
+The wrappers state the role of each rank and tag with these concepts:
+
+```{doxygenconcept} kamping::v2::sender
+```
+
+```{doxygenconcept} kamping::v2::destination
+```
+
+```{doxygenconcept} kamping::v2::message_tag
+```
+
 ## Neighbor ranks
 
 `periodic_rank` and `nonperiodic_rank` hold a rank together with the size of its communicator and can be shifted by

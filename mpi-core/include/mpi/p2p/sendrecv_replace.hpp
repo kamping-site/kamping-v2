@@ -8,6 +8,7 @@
 #include "mpi/buffer.hpp"
 #include "mpi/error.hpp"
 #include "mpi/handle.hpp"
+#include "mpi/special_values.hpp"
 
 namespace mpi::experimental {
 
@@ -19,9 +20,9 @@ namespace mpi::experimental {
 /// @param status Optional: filled with the status of the received message. Defaults to `MPI_STATUS_IGNORE`.
 template <
     send_recv_buffer                          SRBuf,
-    rank                                      Dest,
-    rank                                      Source,
-    tag                                       SendTag,
+    destination                               Dest,
+    sender                                    Source,
+    message_tag                               SendTag,
     tag                                       RecvTag,
     convertible_to_mpi_handle<MPI_Comm>       Comm,
     convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>

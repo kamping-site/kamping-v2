@@ -45,7 +45,7 @@ int main(int argc, char* argv[]) {
     kamping::v2::comm_view const world = kamping::v2::comm_world();
     MPI_Comm_set_errhandler(MPI_COMM_WORLD, MPI_ERRORS_RETURN);
 
-    mpi::experimental::send(my_struct{}, MPI_PROC_NULL, 0, MPI_COMM_WORLD);
+    mpi::experimental::send(my_struct{}, mpi::experimental::proc_null, 0, MPI_COMM_WORLD);
     if (world.rank() == 0) {
         std::vector<int> v{1, 2, 3, 4};
         kamping::v2::send(std::move(v), 1, world);

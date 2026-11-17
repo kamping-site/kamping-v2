@@ -49,7 +49,7 @@ class exchanger {
 public:
     void exchange(MPI_Comm comm) {
         mx::win& w = _windows.get_or_create(comm, [&] { return mx::win_allocate<int>(1, comm).first; });
-        w.fence(MPI_MODE_NOPRECEDE);
+        w.fence(mx::win_assert::noprecede);
         // ...
     }
 };

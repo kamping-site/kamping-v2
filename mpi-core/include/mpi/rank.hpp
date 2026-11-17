@@ -99,6 +99,11 @@ public:
         return _rank;
     }
 
+    /// @return `value()`, for the rank protocol (`to_rank`).
+    [[nodiscard]] constexpr int mpi_rank() const noexcept {
+        return value();
+    }
+
     /// @return The size of the communicator.
     [[nodiscard]] constexpr int size() const noexcept {
         return _size;
@@ -192,6 +197,11 @@ public:
         return is_proc_null() ? MPI_PROC_NULL : static_cast<int>(_position);
     }
 
+    /// @return `value()`, for the rank protocol (`to_rank`).
+    [[nodiscard]] constexpr int mpi_rank() const noexcept {
+        return value();
+    }
+
     /// @return The size of the communicator.
     [[nodiscard]] constexpr int size() const noexcept {
         return _size;
@@ -228,24 +238,6 @@ public:
     /// `[0, size)` are equal, since they all stand for `MPI_PROC_NULL`.
     friend constexpr bool operator==(nonperiodic_rank const& lhs, nonperiodic_rank const& rhs) noexcept {
         return lhs._size == rhs._size && lhs.value() == rhs.value();
-    }
-};
-
-/// Converts a `periodic_rank` to its value.
-template <>
-struct rank_traits<periodic_rank> {
-    /// @return `r.value()`.
-    static constexpr int rank(periodic_rank const& r) noexcept {
-        return r.value();
-    }
-};
-
-/// Converts a `nonperiodic_rank` to its value, `MPI_PROC_NULL` outside of the communicator.
-template <>
-struct rank_traits<nonperiodic_rank> {
-    /// @return `r.value()`.
-    static constexpr int rank(nonperiodic_rank const& r) noexcept {
-        return r.value();
     }
 };
 

@@ -8,6 +8,7 @@
 
 #include <mpi.h>
 
+#include "kamping/v2/handle.hpp"
 #include "kamping/v2/status.hpp"
 #include "mpi/handle.hpp"
 #include "mpi/message.hpp"
@@ -61,7 +62,7 @@ private:
 /// @brief Blocks until a message matching `source` and `tag` is available, without receiving it (`MPI_Probe`).
 /// @param status Optional: filled with the status of the message. Defaults to `MPI_STATUS_IGNORE`.
 template <
-    mpi::experimental::rank                                      Source,
+    mpi::experimental::sender                                    Source,
     mpi::experimental::tag                                       Tag,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>       Comm,
     mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>
@@ -71,11 +72,11 @@ void probe(Source source, Tag tag, Comm const& comm, Status&& status = MPI_STATU
 
 /// Like the overload above, probing for any tag.
 template <
-    mpi::experimental::rank                                      Source,
+    mpi::experimental::sender                                    Source,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>       Comm,
     mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>
 void probe(Source source, Comm const& comm, Status&& status = MPI_STATUS_IGNORE) {
-    mpi::experimental::probe(std::move(source), MPI_ANY_TAG, comm, std::forward<Status>(status));
+    mpi::experimental::probe(std::move(source), mpi::experimental::any_tag, comm, std::forward<Status>(status));
 }
 
 /// Like the overload above, probing for any source and any tag.
@@ -83,7 +84,12 @@ template <
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>       Comm,
     mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>
 void probe(Comm const& comm, Status&& status = MPI_STATUS_IGNORE) {
-    mpi::experimental::probe(MPI_ANY_SOURCE, MPI_ANY_TAG, comm, std::forward<Status>(status));
+    mpi::experimental::probe(
+        mpi::experimental::any_source,
+        mpi::experimental::any_tag,
+        comm,
+        std::forward<Status>(status)
+    );
 }
 
 /// @brief Checks whether a message matching `source` and `tag` is available, without blocking or receiving it
@@ -91,7 +97,7 @@ void probe(Comm const& comm, Status&& status = MPI_STATUS_IGNORE) {
 /// @param status Optional: filled with the status of the message if one is available. Defaults to `MPI_STATUS_IGNORE`.
 /// @return `true` if a matching message is available.
 template <
-    mpi::experimental::rank                                      Source,
+    mpi::experimental::sender                                    Source,
     mpi::experimental::tag                                       Tag,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>       Comm,
     mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>
@@ -101,11 +107,11 @@ template <
 
 /// Like the overload above, probing for any tag.
 template <
-    mpi::experimental::rank                                      Source,
+    mpi::experimental::sender                                    Source,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>       Comm,
     mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>
 [[nodiscard]] bool iprobe(Source source, Comm const& comm, Status&& status = MPI_STATUS_IGNORE) {
-    return mpi::experimental::iprobe(std::move(source), MPI_ANY_TAG, comm, std::forward<Status>(status));
+    return mpi::experimental::iprobe(std::move(source), mpi::experimental::any_tag, comm, std::forward<Status>(status));
 }
 
 /// Like the overload above, probing for any source and any tag.
@@ -113,7 +119,12 @@ template <
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>       Comm,
     mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>
 [[nodiscard]] bool iprobe(Comm const& comm, Status&& status = MPI_STATUS_IGNORE) {
-    return mpi::experimental::iprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, comm, std::forward<Status>(status));
+    return mpi::experimental::iprobe(
+        mpi::experimental::any_source,
+        mpi::experimental::any_tag,
+        comm,
+        std::forward<Status>(status)
+    );
 }
 
 /// @brief Blocks until a message matching `source` and `tag` arrives and matches it (`MPI_Mprobe`).
@@ -121,7 +132,7 @@ template <
 /// The message is removed from the matching queue and must be received through the returned @ref probe_result.
 /// @return The matched message and its status.
 template <
-    mpi::experimental::rank                                Source,
+    mpi::experimental::sender                              Source,
     mpi::experimental::tag                                 Tag,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
 [[nodiscard]] probe_result mprobe(Source source, Tag tag, Comm const& comm) {
@@ -131,15 +142,15 @@ template <
 }
 
 /// Like the overload above, matching a message with any tag.
-template <mpi::experimental::rank Source, mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
+template <mpi::experimental::sender Source, mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
 [[nodiscard]] probe_result mprobe(Source source, Comm const& comm) {
-    return kamping::v2::mprobe(std::move(source), MPI_ANY_TAG, comm);
+    return kamping::v2::mprobe(std::move(source), mpi::experimental::any_tag, comm);
 }
 
 /// Like the overload above, matching a message from any source with any tag.
 template <mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
 [[nodiscard]] probe_result mprobe(Comm const& comm) {
-    return kamping::v2::mprobe(MPI_ANY_SOURCE, MPI_ANY_TAG, comm);
+    return kamping::v2::mprobe(mpi::experimental::any_source, mpi::experimental::any_tag, comm);
 }
 
 /// @brief Matches a message matching `source` and `tag` if one is available, without blocking (`MPI_Improbe`).
@@ -147,7 +158,7 @@ template <mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
 /// A matched message is removed from the matching queue and must be received through the returned @ref probe_result.
 /// @return The matched message and its status, or `std::nullopt` if no matching message is available.
 template <
-    mpi::experimental::rank                                Source,
+    mpi::experimental::sender                              Source,
     mpi::experimental::tag                                 Tag,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
 [[nodiscard]] std::optional<probe_result> improbe(Source source, Tag tag, Comm const& comm) {
@@ -160,14 +171,14 @@ template <
 }
 
 /// Like the overload above, matching a message with any tag.
-template <mpi::experimental::rank Source, mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
+template <mpi::experimental::sender Source, mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
 [[nodiscard]] std::optional<probe_result> improbe(Source source, Comm const& comm) {
-    return kamping::v2::improbe(std::move(source), MPI_ANY_TAG, comm);
+    return kamping::v2::improbe(std::move(source), mpi::experimental::any_tag, comm);
 }
 
 /// Like the overload above, matching a message from any source with any tag.
 template <mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
 [[nodiscard]] std::optional<probe_result> improbe(Comm const& comm) {
-    return kamping::v2::improbe(MPI_ANY_SOURCE, MPI_ANY_TAG, comm);
+    return kamping::v2::improbe(mpi::experimental::any_source, mpi::experimental::any_tag, comm);
 }
 } // namespace kamping::v2

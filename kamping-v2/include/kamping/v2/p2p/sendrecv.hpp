@@ -7,6 +7,7 @@
 
 #include <mpi.h>
 
+#include "kamping/v2/handle.hpp"
 #include "kamping/v2/infer.hpp"
 #include "kamping/v2/p2p/constants.hpp"
 #include "kamping/v2/result.hpp"
@@ -24,9 +25,9 @@ namespace kamping::v2 {
 template <
     mpi::experimental::send_buffer                               SBuf,
     mpi::experimental::recv_buffer                               RBuf,
-    mpi::experimental::rank                                      Dest,
-    mpi::experimental::rank                                      Source,
-    mpi::experimental::tag                                       SendTag,
+    mpi::experimental::destination                               Dest,
+    mpi::experimental::sender                                    Source,
+    mpi::experimental::message_tag                               SendTag,
     mpi::experimental::tag                                       RecvTag,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>       Comm,
     mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>
@@ -68,8 +69,8 @@ auto sendrecv(
 template <
     mpi::experimental::send_buffer                               SBuf,
     mpi::experimental::recv_buffer                               RBuf,
-    mpi::experimental::rank                                      Dest,
-    mpi::experimental::rank                                      Source,
+    mpi::experimental::destination                               Dest,
+    mpi::experimental::sender                                    Source,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>       Comm,
     mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>
 auto sendrecv(SBuf&& sbuf, Dest dest, RBuf&& rbuf, Source source, Comm const& comm, Status&& status = MPI_STATUS_IGNORE)
@@ -80,7 +81,7 @@ auto sendrecv(SBuf&& sbuf, Dest dest, RBuf&& rbuf, Source source, Comm const& co
         DEFAULT_SEND_TAG,
         std::forward<RBuf>(rbuf),
         std::move(source),
-        MPI_ANY_TAG,
+        mpi::experimental::any_tag,
         comm,
         std::forward<Status>(status)
     );
@@ -90,7 +91,7 @@ auto sendrecv(SBuf&& sbuf, Dest dest, RBuf&& rbuf, Source source, Comm const& co
 template <
     mpi::experimental::send_buffer                               SBuf,
     mpi::experimental::recv_buffer                               RBuf,
-    mpi::experimental::rank                                      Dest,
+    mpi::experimental::destination                               Dest,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>       Comm,
     mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>
 auto sendrecv(SBuf&& sbuf, Dest dest, RBuf&& rbuf, Comm const& comm, Status&& status = MPI_STATUS_IGNORE)
@@ -100,8 +101,8 @@ auto sendrecv(SBuf&& sbuf, Dest dest, RBuf&& rbuf, Comm const& comm, Status&& st
         std::move(dest),
         DEFAULT_SEND_TAG,
         std::forward<RBuf>(rbuf),
-        MPI_ANY_SOURCE,
-        MPI_ANY_TAG,
+        mpi::experimental::any_source,
+        mpi::experimental::any_tag,
         comm,
         std::forward<Status>(status)
     );

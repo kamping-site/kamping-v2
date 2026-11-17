@@ -33,6 +33,7 @@
 
 namespace kamping::v2 {
 using mpi::experimental::array_order;
+using mpi::experimental::distribution;
 using mpi::experimental::type_contiguous;
 using mpi::experimental::type_create_darray;
 using mpi::experimental::type_create_hindexed;
@@ -71,13 +72,6 @@ struct subarray_dim {
     int size;    ///< Elements of the full array.
     int start;   ///< First index of the subarray.
     int subsize; ///< Elements of the subarray.
-};
-
-/// @brief How a dimension of `type_create_darray` is distributed.
-enum class distribution : int {
-    block  = MPI_DISTRIBUTE_BLOCK,  ///< One contiguous block per process.
-    cyclic = MPI_DISTRIBUTE_CYCLIC, ///< Blocks dealt out round-robin.
-    none   = MPI_DISTRIBUTE_NONE    ///< Not distributed.
 };
 
 /// @brief A dimension of `type_create_darray`: `global_size` elements, distributed as `distrib` over `procs`

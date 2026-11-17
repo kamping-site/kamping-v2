@@ -8,13 +8,14 @@
 #include "mpi/buffer.hpp"
 #include "mpi/error.hpp"
 #include "mpi/handle.hpp"
+#include "mpi/special_values.hpp"
 
 namespace mpi::experimental {
 /// Starts receiving a message from `source` with `tag` into `rbuf` (`MPI_Irecv`). The caller must keep `rbuf` alive and
 /// complete `request`.
 template <
     recv_buffer                                RBuf,
-    rank                                       Source,
+    sender                                     Source,
     tag                                        Tag,
     convertible_to_mpi_handle<MPI_Comm>        Comm,
     convertible_to_mpi_handle_ptr<MPI_Request> Request>

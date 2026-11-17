@@ -9,6 +9,7 @@
 
     #include <utility>
 
+    #include "kamping/v2/handle.hpp"
     #include "kamping/v2/infer.hpp"
     #include "kamping/v2/iresult.hpp"
     #include "kamping/v2/p2p/constants.hpp"
@@ -34,9 +35,9 @@ template <
     mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Request> Request,
     mpi::experimental::send_buffer                                SBuf,
     mpi::experimental::recv_buffer                                RBuf,
-    mpi::experimental::rank                                       Dest,
-    mpi::experimental::rank                                       Source,
-    mpi::experimental::tag                                        SendTag,
+    mpi::experimental::destination                                Dest,
+    mpi::experimental::sender                                     Source,
+    mpi::experimental::message_tag                                SendTag,
     mpi::experimental::tag                                        RecvTag,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>        Comm>
 auto isendrecv(
@@ -78,8 +79,8 @@ template <
     mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Request> Request,
     mpi::experimental::send_buffer                                SBuf,
     mpi::experimental::recv_buffer                                RBuf,
-    mpi::experimental::rank                                       Dest,
-    mpi::experimental::rank                                       Source,
+    mpi::experimental::destination                                Dest,
+    mpi::experimental::sender                                     Source,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>        Comm>
 auto isendrecv(Request&& request, SBuf&& sbuf, Dest dest, RBuf&& rbuf, Source source, Comm const& comm)
     -> result<SBuf, RBuf> {
@@ -90,7 +91,7 @@ auto isendrecv(Request&& request, SBuf&& sbuf, Dest dest, RBuf&& rbuf, Source so
         DEFAULT_SEND_TAG,
         std::forward<RBuf>(rbuf),
         std::move(source),
-        MPI_ANY_TAG,
+        mpi::experimental::any_tag,
         comm
     );
 }
@@ -100,7 +101,7 @@ template <
     mpi::experimental::convertible_to_mpi_handle_ptr<MPI_Request> Request,
     mpi::experimental::send_buffer                                SBuf,
     mpi::experimental::recv_buffer                                RBuf,
-    mpi::experimental::rank                                       Dest,
+    mpi::experimental::destination                                Dest,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm>        Comm>
 auto isendrecv(Request&& request, SBuf&& sbuf, Dest dest, RBuf&& rbuf, Comm const& comm) -> result<SBuf, RBuf> {
     return kamping::v2::isendrecv(
@@ -109,8 +110,8 @@ auto isendrecv(Request&& request, SBuf&& sbuf, Dest dest, RBuf&& rbuf, Comm cons
         std::move(dest),
         DEFAULT_SEND_TAG,
         std::forward<RBuf>(rbuf),
-        MPI_ANY_SOURCE,
-        MPI_ANY_TAG,
+        mpi::experimental::any_source,
+        mpi::experimental::any_tag,
         comm
     );
 }
@@ -121,9 +122,9 @@ auto isendrecv(Request&& request, SBuf&& sbuf, Dest dest, RBuf&& rbuf, Comm cons
 template <
     mpi::experimental::send_buffer                         SBuf,
     mpi::experimental::recv_buffer                         RBuf,
-    mpi::experimental::rank                                Dest,
-    mpi::experimental::rank                                Source,
-    mpi::experimental::tag                                 SendTag,
+    mpi::experimental::destination                         Dest,
+    mpi::experimental::sender                              Source,
+    mpi::experimental::message_tag                         SendTag,
     mpi::experimental::tag                                 RecvTag,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
 auto isendrecv(SBuf&& sbuf, Dest dest, SendTag send_tag, RBuf&& rbuf, Source source, RecvTag recv_tag, Comm const& comm)
@@ -146,8 +147,8 @@ auto isendrecv(SBuf&& sbuf, Dest dest, SendTag send_tag, RBuf&& rbuf, Source sou
 template <
     mpi::experimental::send_buffer                         SBuf,
     mpi::experimental::recv_buffer                         RBuf,
-    mpi::experimental::rank                                Dest,
-    mpi::experimental::rank                                Source,
+    mpi::experimental::destination                         Dest,
+    mpi::experimental::sender                              Source,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
 auto isendrecv(SBuf&& sbuf, Dest dest, RBuf&& rbuf, Source source, Comm const& comm) -> iresult<SBuf, RBuf> {
     return kamping::v2::isendrecv(
@@ -156,7 +157,7 @@ auto isendrecv(SBuf&& sbuf, Dest dest, RBuf&& rbuf, Source source, Comm const& c
         DEFAULT_SEND_TAG,
         std::forward<RBuf>(rbuf),
         std::move(source),
-        MPI_ANY_TAG,
+        mpi::experimental::any_tag,
         comm
     );
 }
@@ -165,7 +166,7 @@ auto isendrecv(SBuf&& sbuf, Dest dest, RBuf&& rbuf, Source source, Comm const& c
 template <
     mpi::experimental::send_buffer                         SBuf,
     mpi::experimental::recv_buffer                         RBuf,
-    mpi::experimental::rank                                Dest,
+    mpi::experimental::destination                         Dest,
     mpi::experimental::convertible_to_mpi_handle<MPI_Comm> Comm>
 auto isendrecv(SBuf&& sbuf, Dest dest, RBuf&& rbuf, Comm const& comm) -> iresult<SBuf, RBuf> {
     return kamping::v2::isendrecv(
@@ -173,8 +174,8 @@ auto isendrecv(SBuf&& sbuf, Dest dest, RBuf&& rbuf, Comm const& comm) -> iresult
         std::move(dest),
         DEFAULT_SEND_TAG,
         std::forward<RBuf>(rbuf),
-        MPI_ANY_SOURCE,
-        MPI_ANY_TAG,
+        mpi::experimental::any_source,
+        mpi::experimental::any_tag,
         comm
     );
 }

@@ -7,6 +7,7 @@
 
 #include "mpi/error.hpp"
 #include "mpi/handle.hpp"
+#include "mpi/special_values.hpp"
 
 namespace mpi::experimental {
 
@@ -17,7 +18,7 @@ namespace mpi::experimental {
 ///               `MPI_STATUS_IGNORE`.
 /// @return `true` if a matching message is available.
 template <
-    rank                                      Source,
+    sender                                    Source,
     tag                                       Tag,
     convertible_to_mpi_handle<MPI_Comm>       Comm,
     convertible_to_mpi_handle_ptr<MPI_Status> Status = MPI_Status*>

@@ -3,8 +3,15 @@
 
 #pragma once
 
+#include <algorithm>
+#include <array>
+#include <concepts>
 #include <cstddef>
+#include <ranges>
 #include <span>
+#include <type_traits>
+#include <utility>
+#include <vector>
 
 #include <mpi.h>
 
@@ -12,6 +19,7 @@
 #include "mpi/datatype.hpp"
 #include "mpi/error.hpp"
 #include "mpi/handle.hpp"
+#include "mpi/range_concepts.hpp"
 
 /// @file
 /// Wrappers for the MPI datatype constructors (`MPI_Type_contiguous`, `MPI_Type_vector`, ...).
@@ -35,6 +43,43 @@ enum class array_order : int {
     c       = MPI_ORDER_C,      ///< Row-major: the last dimension varies fastest.
     fortran = MPI_ORDER_FORTRAN ///< Column-major: the first dimension varies fastest.
 };
+
+/// @brief How a dimension of `type_create_darray` is distributed (`MPI_DISTRIBUTE_*`).
+enum class distribution : int {
+    block  = MPI_DISTRIBUTE_BLOCK,  ///< One contiguous block per process.
+    cyclic = MPI_DISTRIBUTE_CYCLIC, ///< Blocks dealt out round-robin.
+    none   = MPI_DISTRIBUTE_NONE    ///< Not distributed.
+};
+
+/// @brief The distributions of `type_create_darray`: a contiguous range of `int` (`MPI_DISTRIBUTE_*`), passed to MPI as
+/// it is, or a sized range of `distribution`.
+template <typename R>
+concept distribution_range = contiguous_range_of<R, int>
+                             || (std::ranges::sized_range<R> && std::ranges::input_range<R>
+                                 && std::same_as<std::remove_cvref_t<std::ranges::range_value_t<R>>, distribution>);
+
+namespace detail {
+/// Calls `f` with a pointer to the distributions of `r` as `int`s. A range of `int` is passed as it is; a range of
+/// `distribution` is converted into a buffer on the stack (on the heap for more than 8 dimensions), since an enum may
+/// not be read through an `int` pointer.
+template <distribution_range R, typename F>
+decltype(auto) with_distribution_ints(R const& r, F&& f) {
+    if constexpr (contiguous_range_of<R, int>) {
+        return std::forward<F>(f)(std::ranges::data(r));
+    } else {
+        auto const         n = static_cast<std::size_t>(std::ranges::size(r));
+        std::array<int, 8> small{};
+        std::vector<int>   large;
+        int*               out = small.data();
+        if (n > small.size()) {
+            large.resize(n);
+            out = large.data();
+        }
+        std::ranges::transform(r, out, [](distribution d) { return static_cast<int>(d); });
+        return std::forward<F>(f)(static_cast<int const*>(out));
+    }
+}
+} // namespace detail
 
 // ── MPI_Type_contiguous ────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -410,18 +455,21 @@ template <convertible_to_mpi_handle<MPI_Datatype> Datatype>
 /// @brief The part that process `rank` of `size` processes holds of a distributed multi-dimensional array of
 /// `oldtype` (`MPI_Type_create_darray`).
 ///
-/// Dimension `i` has `gsizes[i]` elements and is distributed as `distribs[i]` (`MPI_DISTRIBUTE_BLOCK`,
-/// `MPI_DISTRIBUTE_CYCLIC` or `MPI_DISTRIBUTE_NONE`) with the distribution argument `dargs[i]` (a block size or
-/// `MPI_DISTRIBUTE_DFLT_DARG`) over `psizes[i]` processes; the product of `psizes` must be `size`. All four arrays
-/// must have the same length, the number of dimensions.
+/// Dimension `i` has `gsizes[i]` elements and is distributed as `distribs[i]` with the distribution argument
+/// `dargs[i]` (a block size or `MPI_DISTRIBUTE_DFLT_DARG`) over `psizes[i]` processes; the product of `psizes` must be
+/// `size`. All four arrays must have the same length, the number of dimensions. `distribs` holds `distribution`s, or
+/// `int`s (`MPI_DISTRIBUTE_*`), which are passed to MPI without a copy.
 /// @param newtype Output: receives the new, uncommitted datatype.
 /// @throws mpi_error if `MPI_Type_create_darray` fails.
-template <convertible_to_mpi_handle<MPI_Datatype> Datatype, convertible_to_mpi_handle_ptr<MPI_Datatype> NewDatatype>
+template <
+    distribution_range                          Distribs,
+    convertible_to_mpi_handle<MPI_Datatype>     Datatype,
+    convertible_to_mpi_handle_ptr<MPI_Datatype> NewDatatype>
 void type_create_darray(
     int                  size,
     int                  rank,
     std::span<int const> gsizes,
-    std::span<int const> distribs,
+    Distribs const&      distribs,
     std::span<int const> dargs,
     std::span<int const> psizes,
     array_order          order,
@@ -429,21 +477,24 @@ void type_create_darray(
     NewDatatype&         newtype
 ) {
     KAMPING_V2_ASSERT(
-        gsizes.size() == distribs.size() && gsizes.size() == dargs.size() && gsizes.size() == psizes.size(),
+        gsizes.size() == static_cast<std::size_t>(std::ranges::size(distribs)) && gsizes.size() == dargs.size()
+            && gsizes.size() == psizes.size(),
         "type_create_darray: gsizes, distribs, dargs and psizes must have the same length"
     );
-    int err = MPI_Type_create_darray(
-        size,
-        rank,
-        static_cast<int>(gsizes.size()),
-        gsizes.data(),
-        distribs.data(),
-        dargs.data(),
-        psizes.data(),
-        static_cast<int>(order),
-        mpi::experimental::handle(oldtype),
-        mpi::experimental::handle_ptr(newtype)
-    );
+    int err = detail::with_distribution_ints(distribs, [&](int const* distribs_ptr) {
+        return MPI_Type_create_darray(
+            size,
+            rank,
+            static_cast<int>(gsizes.size()),
+            gsizes.data(),
+            distribs_ptr,
+            dargs.data(),
+            psizes.data(),
+            static_cast<int>(order),
+            mpi::experimental::handle(oldtype),
+            mpi::experimental::handle_ptr(newtype)
+        );
+    });
     if (err != MPI_SUCCESS) {
         throw mpi_error(err);
     }
@@ -452,14 +503,14 @@ void type_create_darray(
 /// @brief The part that process `rank` of `size` processes holds of a distributed multi-dimensional array of
 /// `oldtype` (`MPI_Type_create_darray`).
 ///
-/// Dimension `i` has `gsizes[i]` elements and is distributed as `distribs[i]` (`MPI_DISTRIBUTE_BLOCK`,
-/// `MPI_DISTRIBUTE_CYCLIC` or `MPI_DISTRIBUTE_NONE`) with the distribution argument `dargs[i]` (a block size or
-/// `MPI_DISTRIBUTE_DFLT_DARG`) over `psizes[i]` processes; the product of `psizes` must be `size`. All four arrays
-/// must have the same length, the number of dimensions.
+/// Dimension `i` has `gsizes[i]` elements and is distributed as `distribs[i]` with the distribution argument
+/// `dargs[i]` (a block size or `MPI_DISTRIBUTE_DFLT_DARG`) over `psizes[i]` processes; the product of `psizes` must be
+/// `size`. All four arrays must have the same length, the number of dimensions. `distribs` holds `distribution`s, or
+/// `int`s (`MPI_DISTRIBUTE_*`), which are passed to MPI without a copy.
 ///
 /// @code
 /// std::array const gsizes{n, n};  // an n x n matrix in blocks on a p_rows x p_cols process grid
-/// std::array const distribs{MPI_DISTRIBUTE_BLOCK, MPI_DISTRIBUTE_BLOCK};
+/// std::array const distribs{distribution::block, distribution::block};
 /// std::array const dargs{MPI_DISTRIBUTE_DFLT_DARG, MPI_DISTRIBUTE_DFLT_DARG};
 /// std::array const psizes{p_rows, p_cols};
 /// auto block =
@@ -467,12 +518,12 @@ void type_create_darray(
 /// @endcode
 /// @return The new datatype, owned and not committed.
 /// @throws mpi_error if `MPI_Type_create_darray` fails.
-template <convertible_to_mpi_handle<MPI_Datatype> Datatype>
+template <distribution_range Distribs, convertible_to_mpi_handle<MPI_Datatype> Datatype>
 [[nodiscard]] uncommitted_datatype type_create_darray(
     int                  size,
     int                  rank,
     std::span<int const> gsizes,
-    std::span<int const> distribs,
+    Distribs const&      distribs,
     std::span<int const> dargs,
     std::span<int const> psizes,
     array_order          order,

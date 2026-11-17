@@ -7,6 +7,7 @@
 
 #include "mpi/error.hpp"
 #include "mpi/handle.hpp"
+#include "mpi/special_values.hpp"
 
 namespace mpi::experimental {
 /// Matches a message matching `source` and `tag` if one is available, without blocking (`MPI_Improbe`).
@@ -18,7 +19,7 @@ namespace mpi::experimental {
 /// @param status  Optional: filled with the status of the matched message. Defaults to `MPI_STATUS_IGNORE`.
 /// @return `true` if a message was matched.
 template <
-    rank                                       Source,
+    sender                                     Source,
     tag                                        Tag,
     convertible_to_mpi_handle_ptr<MPI_Message> Message,
     convertible_to_mpi_handle<MPI_Comm>        Comm,
