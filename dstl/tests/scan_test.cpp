@@ -226,6 +226,24 @@ TEST(ExclusiveScan, MakeOpHandle) {
     }
 }
 
+TEST(ExclusiveScan, NonCommutativeOp) {
+    // "Keep the right operand" is associative but not commutative: element i of the exclusive scan is element i - 1
+    // of the global sequence, so the local total must be combined in order.
+    kamping::v2::comm_view const comm = kamping::v2::comm_world();
+    int const                    n    = 5;
+    int const                    base = comm.rank() * n;
+    auto const                   in   = iota_vec(base, n);
+    std::vector<int>             out(static_cast<std::size_t>(n), 0);
+
+    auto keep_right = kamping::v2::make_op<int>([](int /* a */, int b) { return b; });
+    dstl::exclusive_scan(in, out, -1, keep_right, comm);
+
+    for (int i = 0; i < n; ++i) {
+        int const global_i = base + i;
+        EXPECT_EQ(out[static_cast<std::size_t>(i)], global_i == 0 ? -1 : global_i - 1);
+    }
+}
+
 TEST(ExclusiveScan, SingleElement) {
     // Each rank holds a single element equal to rank.
     // Exclusive scan: out[i] = 0+1+...+(i-1) = i*(i-1)/2.

@@ -64,7 +64,8 @@ void exclusive_scan(
         // First pass: compute local total without assuming T{} is the identity for op.
         auto it          = std::ranges::begin(r);
         T    local_total = *it++;
-        local_total      = std::reduce(it, std::ranges::end(r), local_total, local_op);
+        // std::accumulate, not std::reduce: op need only be associative, so the elements must be combined in order.
+        local_total = std::accumulate(it, std::ranges::end(r), local_total, local_op);
 
         if (sub_comm.size() > 1) {
             kamping::v2::exscan(
