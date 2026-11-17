@@ -134,12 +134,13 @@ storage, pass it: `auto_counts(counts)`, `auto_displs(resize, displs)`. The fact
 `auto_recv_v<T>()` create a fresh, owned receive buffer that sizes itself.
 
 Derived datatypes are managed by a `type_pool`, which commits a datatype on first use and frees it with the pool.
-For plain structs, `struct_type` derives the layout from the fields via Boost.PFR:
+For plain structs, `as_struct` derives the layout from the fields via Boost.PFR:
 
 ```cpp
 struct Point { int id; double x; };
 template <>
-struct kamping::types::mpi_type_traits<Point> : kamping::types::struct_type<Point> {};
+struct kamping::v2::datatype_traits<Point>
+    : kamping::v2::as_struct<Point> {};
 
 kamping::v2::type_pool pool;
 kamping::v2::send(points | views::with_auto_pool(pool), dest, comm);
@@ -254,7 +255,7 @@ target_link_libraries(my_app PRIVATE kamping::v2 kamping::v2::cereal)
 | `dstl` | `dstl::dstl` | Distributed algorithms (loads `v2`) |
 | `cereal`, `kokkos`, `thrust`, `sycl` | `kamping::v2::<name>` | Ecosystem adapters (load `v2`), if enabled when installing |
 
-Without `COMPONENTS`, all installed components are loaded. The package bundles kamping-types.
+Without `COMPONENTS`, all installed components are loaded. The package bundles Boost.PFR if it was built from source.
 
 ### Building the tests and examples
 

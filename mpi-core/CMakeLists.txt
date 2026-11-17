@@ -16,6 +16,7 @@ target_sources(
               include/mpi/arrays.hpp
               include/mpi/attribute.hpp
               include/mpi/buffer.hpp
+              include/mpi/builtin_types.hpp
               include/mpi/cache.hpp
               include/mpi/cart.hpp
               include/mpi/collectives/allgather.hpp
@@ -48,6 +49,7 @@ target_sources(
               include/mpi/int_array.hpp
               include/mpi/message.hpp
               include/mpi/mpi_span.hpp
+              include/mpi/op.hpp
               include/mpi/ops.hpp
               include/mpi/p2p/improbe.hpp
               include/mpi/p2p/imrecv.hpp
@@ -76,7 +78,7 @@ target_sources(
               include/mpi/win.hpp
 )
 set_target_properties(mpi_core PROPERTIES EXPORT_NAME core)
-target_link_libraries(mpi_core INTERFACE MPI::MPI_CXX kamping_v2::kassert kamping::types)
+target_link_libraries(mpi_core INTERFACE MPI::MPI_CXX kamping_v2::kassert)
 
 if (KAMPING_V2_INSTALL)
     install(

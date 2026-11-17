@@ -3,25 +3,27 @@
 
 #pragma once
 
+#include <algorithm>
 #include <concepts>
+#include <functional>
 #include <ranges>
 #include <type_traits>
-#include <utility>
 
-#include <kamping/types/reduce_ops.hpp>
 #include <mpi.h>
-#include <mpi/handle.hpp>
 
 #include "mpi/buffer.hpp"
+#include "mpi/builtin_types.hpp"
+#include "mpi/handle.hpp"
 
 /// @file
-/// MPI operation contract: customization point (op_traits), accessor dispatch
-/// (as_mpi_op), and operation validation concept (valid_op).
+/// MPI operation contract: the functors for predefined operations (`ops::max`, ...), their mapping to predefined
+/// `MPI_Op`s (`builtin_op`), the customization point `op_traits`, the accessor dispatch `as_mpi_op` and the concept
+/// `valid_op`.
 ///
 /// Three-tier accessor dispatch priority:
 ///   1. op_traits<Op, SBuf, RBuf> specialization — non-intrusive, for types you don't own
-///   2. Op convertible to MPI_Op — raw MPI_Op handles pass through
-///   3. Builtin op for range element type — delegates to kamping::types::mpi_operation_traits
+///   2. Op convertible to MPI_Op — raw MPI_Op handles and operation objects (`op`, `op_view`, ...) pass through
+///   3. Functor of a predefined operation on the range element type — `builtin_op<Op, T>`
 ///
 /// To adapt a custom operation non-intrusively, specialize op_traits<Op, SBuf, RBuf>:
 ///
@@ -34,6 +36,187 @@
 
 namespace mpi::experimental {
 
+namespace ops {
+
+/// @brief Function object returning the larger of two values, mapped to `MPI_MAX`.
+///
+/// The standard library has no function object for `std::max`. `max<>` deduces the operand type.
+template <typename T = void>
+struct max {
+    /// @return The larger of `lhs` and `rhs` (`std::max`).
+    constexpr T operator()(T const& lhs, T const& rhs) const {
+        return std::max(lhs, rhs);
+    }
+};
+
+/// @brief Function object returning the larger of two values of a deduced type, mapped to `MPI_MAX`.
+template <>
+struct max<void> {
+    /// @return The larger of `lhs` and `rhs` (`std::max`).
+    template <typename T>
+    constexpr T operator()(T const& lhs, T const& rhs) const {
+        return std::max(lhs, rhs);
+    }
+};
+
+/// @brief Function object returning the smaller of two values, mapped to `MPI_MIN`.
+///
+/// The standard library has no function object for `std::min`. `min<>` deduces the operand type.
+template <typename T = void>
+struct min {
+    /// @return The smaller of `lhs` and `rhs` (`std::min`).
+    constexpr T operator()(T const& lhs, T const& rhs) const {
+        return std::min(lhs, rhs);
+    }
+};
+
+/// @brief Function object returning the smaller of two values of a deduced type, mapped to `MPI_MIN`.
+template <>
+struct min<void> {
+    /// @return The smaller of `lhs` and `rhs` (`std::min`).
+    template <typename T>
+    constexpr T operator()(T const& lhs, T const& rhs) const {
+        return std::min(lhs, rhs);
+    }
+};
+
+/// @brief Function object for the logical exclusive or, mapped to `MPI_LXOR`.
+///
+/// The standard library has no function object for it. `logical_xor<>` deduces the operand types.
+template <typename T = void>
+struct logical_xor {
+    /// @return Whether exactly one of `lhs` and `rhs` is true.
+    constexpr bool operator()(T const& lhs, T const& rhs) const {
+        return static_cast<bool>(lhs) != static_cast<bool>(rhs);
+    }
+};
+
+/// @brief Function object for the logical exclusive or of deduced operand types, mapped to `MPI_LXOR`.
+template <>
+struct logical_xor<void> {
+    /// @return Whether exactly one of `lhs` and `rhs` is true.
+    template <typename T, typename U>
+    constexpr bool operator()(T const& lhs, U const& rhs) const {
+        return static_cast<bool>(lhs) != static_cast<bool>(rhs);
+    }
+};
+
+/// @brief `std::plus`, mapped to `MPI_SUM`.
+template <typename T = void>
+using plus = std::plus<T>;
+/// @brief `std::multiplies`, mapped to `MPI_PROD`.
+template <typename T = void>
+using multiplies = std::multiplies<T>;
+/// @brief `std::logical_and`, mapped to `MPI_LAND`.
+template <typename T = void>
+using logical_and = std::logical_and<T>;
+/// @brief `std::logical_or`, mapped to `MPI_LOR`.
+template <typename T = void>
+using logical_or = std::logical_or<T>;
+/// @brief `std::bit_and`, mapped to `MPI_BAND`.
+template <typename T = void>
+using bit_and = std::bit_and<T>;
+/// @brief `std::bit_or`, mapped to `MPI_BOR`.
+template <typename T = void>
+using bit_or = std::bit_or<T>;
+/// @brief `std::bit_xor`, mapped to `MPI_BXOR`.
+template <typename T = void>
+using bit_xor = std::bit_xor<T>;
+
+} // namespace ops
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Predefined operations
+// ──────────────────────────────────────────────────────────────────────────────
+
+namespace detail {
+
+// Op is F<void> or F<T>.
+template <template <typename> class F, typename Op, typename T>
+concept functor_of = std::same_as<Op, F<void>> || std::same_as<Op, F<T>>;
+
+// T is an arithmetic builtin type in one of the categories Cs.
+template <typename T, builtin_category... Cs>
+concept builtin_in_category = arithmetic_builtin<T> && ((builtin_type_info<T>::category == Cs) || ...);
+
+enum class predefined_op { none, max, min, sum, prod, land, lor, lxor, band, bor, bxor };
+
+// The predefined operation that applies the functor Op to elements of T, following the table of MPI 4.1, Section
+// 6.9.2.
+template <typename Op, typename T>
+consteval predefined_op predefined_op_of() {
+    using enum builtin_category;
+    if constexpr (functor_of<ops::max, Op, T> && builtin_in_category<T, integer, floating>) {
+        return predefined_op::max;
+    } else if constexpr (functor_of<ops::min, Op, T> && builtin_in_category<T, integer, floating>) {
+        return predefined_op::min;
+    } else if constexpr (functor_of<std::plus, Op, T> && builtin_in_category<T, integer, floating, complex>) {
+        return predefined_op::sum;
+    } else if constexpr (functor_of<std::multiplies, Op, T> && builtin_in_category<T, integer, floating, complex>) {
+        return predefined_op::prod;
+    } else if constexpr (functor_of<std::logical_and, Op, T> && builtin_in_category<T, integer, logical>) {
+        return predefined_op::land;
+    } else if constexpr (functor_of<std::logical_or, Op, T> && builtin_in_category<T, integer, logical>) {
+        return predefined_op::lor;
+    } else if constexpr (functor_of<ops::logical_xor, Op, T> && builtin_in_category<T, integer, logical>) {
+        return predefined_op::lxor;
+    } else if constexpr (functor_of<std::bit_and, Op, T> && builtin_in_category<T, integer, byte>) {
+        return predefined_op::band;
+    } else if constexpr (functor_of<std::bit_or, Op, T> && builtin_in_category<T, integer, byte>) {
+        return predefined_op::bor;
+    } else if constexpr (functor_of<std::bit_xor, Op, T> && builtin_in_category<T, integer, byte>) {
+        return predefined_op::bxor;
+    } else {
+        return predefined_op::none;
+    }
+}
+
+} // namespace detail
+
+/// The function object `Op` applied to elements of type `T` is a predefined MPI operation, e.g. `std::plus<>` on
+/// `int` (`MPI_SUM`) or `ops::max<>` on `double` (`MPI_MAX`), ignoring cv- and reference qualifiers.
+///
+/// The functors are `std::plus`, `std::multiplies`, `std::logical_and`, `std::logical_or`, `std::bit_and`,
+/// `std::bit_or`, `std::bit_xor` (also available under `ops::`) and `ops::max`, `ops::min`, `ops::logical_xor`, each
+/// as `F<>` or `F<T>`. Which of them apply to which types follows the MPI standard; e.g. `std::bit_and<>` applies to
+/// integers and `std::byte`, but not to `double`. Enumerations have no predefined operations. The operation itself is
+/// `builtin_op_handle<Op, T>()`.
+template <typename Op, typename T>
+concept builtin_op =
+    detail::predefined_op_of<std::remove_cvref_t<Op>, std::remove_cvref_t<T>>() != detail::predefined_op::none;
+
+/// @brief The predefined MPI operation of the function object `Op` on elements of type `T`, e.g. `MPI_SUM` for
+/// `std::plus<>` on `int`.
+template <typename Op, typename T>
+    requires builtin_op<Op, T>
+[[nodiscard]] MPI_Op builtin_op_handle() noexcept {
+    switch (detail::predefined_op_of<std::remove_cvref_t<Op>, std::remove_cvref_t<T>>()) {
+        case detail::predefined_op::max:
+            return MPI_MAX;
+        case detail::predefined_op::min:
+            return MPI_MIN;
+        case detail::predefined_op::sum:
+            return MPI_SUM;
+        case detail::predefined_op::prod:
+            return MPI_PROD;
+        case detail::predefined_op::land:
+            return MPI_LAND;
+        case detail::predefined_op::lor:
+            return MPI_LOR;
+        case detail::predefined_op::lxor:
+            return MPI_LXOR;
+        case detail::predefined_op::band:
+            return MPI_BAND;
+        case detail::predefined_op::bor:
+            return MPI_BOR;
+        case detail::predefined_op::bxor:
+            return MPI_BXOR;
+        case detail::predefined_op::none:
+            break;
+    }
+    return MPI_OP_NULL;
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Public customization point.
 // ──────────────────────────────────────────────────────────────────────────────
@@ -41,32 +224,6 @@ namespace mpi::experimental {
 /// Trait class for non-intrusive MPI operation customization.
 template <typename Op, typename SBuf, typename RBuf>
 struct op_traits {};
-
-// ──────────────────────────────────────────────────────────────────────────────
-// handle_traits specializations — let as_mpi_op() extract the MPI_Op from a scoped op.
-//
-// These make any kamping::types::ScopedFunctorOp / ScopedCallbackOp (however it was created)
-// satisfy convertible_to_mpi_handle<MPI_Op>, so as_mpi_op() picks it up via its builtin-handle
-// tier and the op flows straight into the reduce-like collectives.
-// ──────────────────────────────────────────────────────────────────────────────
-
-/// Extracts the underlying MPI_Op from a ScopedFunctorOp.
-template <bool Commutative, typename T, typename Op>
-struct handle_traits<kamping::types::ScopedFunctorOp<Commutative, T, Op>> {
-    /// @returns the wrapped MPI_Op.
-    static MPI_Op handle(kamping::types::ScopedFunctorOp<Commutative, T, Op> const& op) noexcept {
-        return op.get();
-    }
-};
-
-/// Extracts the underlying MPI_Op from a ScopedCallbackOp.
-template <bool Commutative>
-struct handle_traits<kamping::types::ScopedCallbackOp<Commutative>> {
-    /// @returns the wrapped MPI_Op.
-    static MPI_Op handle(kamping::types::ScopedCallbackOp<Commutative> const& op) noexcept {
-        return op.get();
-    }
-};
 
 // ──────────────────────────────────────────────────────────────────────────────
 // detail — implementation helpers for the accessor dispatch, not public API.
@@ -86,9 +243,7 @@ concept is_builtin_mpi_op = convertible_to_mpi_handle<Op, MPI_Op>;
 
 // Tier-3: range with builtin operation
 template <typename Op, typename Buf>
-concept is_builtin_range_op =
-    std::ranges::range<Buf>
-    && kamping::types::mpi_operation_traits<std::remove_cvref_t<Op>, std::ranges::range_value_t<Buf>>::is_builtin;
+concept is_builtin_range_op = std::ranges::range<Buf> && builtin_op<Op, std::ranges::range_value_t<Buf>>;
 
 } // namespace detail
 
@@ -116,7 +271,7 @@ template <typename Op, send_buffer SBuf, recv_buffer RBuf>
             && (detail::is_builtin_range_op<Op, SBuf> || detail::is_builtin_range_op<Op, RBuf>)
 constexpr MPI_Op as_mpi_op(Op const&, SBuf const&, RBuf const&) {
     using range_buf_t = std::conditional_t<detail::is_builtin_range_op<Op, SBuf>, SBuf, RBuf>;
-    return kamping::types::mpi_operation_traits<std::remove_cvref_t<Op>, std::ranges::range_value_t<range_buf_t>>::op();
+    return mpi::experimental::builtin_op_handle<Op, std::ranges::range_value_t<range_buf_t>>();
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -127,81 +282,5 @@ constexpr MPI_Op as_mpi_op(Op const&, SBuf const&, RBuf const&) {
 template <typename Op, typename SBuf, typename RBuf>
 concept valid_op =
     requires(Op const& op, SBuf const& sbuf, RBuf const& rbuf) { mpi::experimental::as_mpi_op(op, sbuf, rbuf); };
-
-// ──────────────────────────────────────────────────────────────────────────────
-// make_op — ergonomic factory for user-defined MPI reduction operations
-//
-// A thin factory over the RAII operation handles from the kamping-types dependency. It picks the
-// right one for the argument it is given and performs the MPI_Op_create under the hood; the actual
-// reduction logic lives in kamping-types:
-//
-//   - a raw MPI callback (void(*)(void*, void*, int*, MPI_Datatype*)) → ScopedCallbackOp
-//   - a default-constructible binary functor / captureless lambda     → ScopedFunctorOp
-//
-// The returned handle works directly with the reduce-like collectives via the handle_traits
-// specializations above, which teach as_mpi_op() to extract the underlying MPI_Op.
-// ──────────────────────────────────────────────────────────────────────────────
-
-/// @brief Commutativity tag type: the operation is commutative (re-exported from `kamping::ops`).
-using commutative_tag = kamping::ops::internal::commutative_tag;
-/// @brief Commutativity tag type: the operation is non-commutative (re-exported from `kamping::ops`).
-using non_commutative_tag = kamping::ops::internal::non_commutative_tag;
-
-/// @brief Tag value marking an operation as commutative (re-exported from `kamping::ops`).
-inline constexpr commutative_tag commutative{};
-/// @brief Tag value marking an operation as non-commutative (re-exported from `kamping::ops`).
-inline constexpr non_commutative_tag non_commutative{};
-
-/// @brief Concept satisfied by the two commutativity tag types.
-template <typename C>
-concept commutativity_tag = std::same_as<C, commutative_tag> || std::same_as<C, non_commutative_tag>;
-
-namespace detail {
-/// Maps a commutativity tag type to the `bool` template argument expected by the scoped ops.
-template <commutativity_tag C>
-inline constexpr bool is_commutative_v = std::is_same_v<C, commutative_tag>;
-
-/// The raw MPI reduction callback signature.
-using op_callback_t = void (*)(void*, void*, int*, MPI_Datatype*);
-} // namespace detail
-
-/// @brief Creates an `MPI_Op` from a raw MPI reduction callback.
-///
-/// Use this when you already have a function with MPI's callback signature
-/// `void(void* invec, void* inoutvec, int* len, MPI_Datatype* datatype)`. No element type is
-/// required because the callback is already type-erased.
-///
-/// @tparam Commutativity Commutativity tag type; defaults to non-commutative.
-/// @param callback Non-null MPI callback function pointer.
-/// @return A `kamping::types::ScopedCallbackOp` owning the freshly created `MPI_Op`.
-template <commutativity_tag Commutativity = non_commutative_tag>
-[[nodiscard]] auto make_op(detail::op_callback_t callback, Commutativity = {}) {
-    return kamping::types::ScopedCallbackOp<detail::is_commutative_v<Commutativity>>{callback};
-}
-
-/// @brief Creates an `MPI_Op` from a default-constructible binary functor.
-///
-/// Handles stateless functors and captureless lambdas (which are default-constructible in C++20).
-/// The element-wise application is provided by `kamping::types::ScopedFunctorOp`; the functor must
-/// be callable as `T(T const&, T const&)`.
-///
-/// Stateful (capturing) lambdas are intentionally not supported here — they are neither
-/// default-constructible nor convertible to a raw callback. Wrap the required state in a
-/// default-constructible functor, or create the callback yourself and pass it to the overload above.
-///
-/// @tparam T The element type the operation is applied to. Must be specified explicitly, e.g.
-///           `make_op<int>(...)`.
-/// @tparam Op Functor type (deduced).
-/// @tparam Commutativity Commutativity tag type; defaults to non-commutative.
-/// @param op The binary operation.
-/// @return A `kamping::types::ScopedFunctorOp` owning the freshly created `MPI_Op`.
-template <typename T, typename Op, commutativity_tag Commutativity = non_commutative_tag>
-    requires std::is_default_constructible_v<std::remove_cvref_t<Op>>
-             && std::is_invocable_r_v<T, std::remove_cvref_t<Op>, T const&, T const&>
-[[nodiscard]] auto make_op(Op&& op, Commutativity = {}) {
-    return kamping::types::ScopedFunctorOp<detail::is_commutative_v<Commutativity>, T, std::remove_cvref_t<Op>>{
-        std::forward<Op>(op)
-    };
-}
 
 } // namespace mpi::experimental

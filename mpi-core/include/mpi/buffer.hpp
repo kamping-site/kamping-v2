@@ -7,8 +7,9 @@
 #include <ranges>
 #include <type_traits>
 
-#include <kamping/types/builtin_types.hpp>
 #include <mpi.h>
+
+#include "mpi/builtin_types.hpp"
 
 /// @file
 /// MPI buffer contract: customization point (buffer_traits), accessor dispatch
@@ -48,21 +49,6 @@ struct buffer_traits {};
 template <typename T>
 concept count_range =
     std::ranges::contiguous_range<T> && std::same_as<int, std::remove_cvref_t<std::ranges::range_value_t<T>>>;
-
-/// A type with a predefined MPI datatype, e.g. `int` (`MPI_INT`) or `double` (`MPI_DOUBLE`), ignoring cv- and reference
-/// qualifiers. Contiguous ranges of such types are buffers without further adaption. The datatype itself is
-/// `builtin_datatype<T>()`.
-template <typename T>
-concept builtin_mpi_type = kamping::types::is_builtin_type_v<std::remove_cvref_t<T>>;
-
-/// @brief The predefined MPI datatype of `T`, e.g. `MPI_DOUBLE` for `double`.
-///
-/// Predefined datatypes are never committed or freed, so the result can be used anywhere a datatype is expected:
-/// `type_vector(n, 1, n, builtin_datatype<double>())`.
-template <builtin_mpi_type T>
-[[nodiscard]] MPI_Datatype builtin_datatype() {
-    return kamping::types::builtin_type<std::remove_cvref_t<T>>::data_type();
-}
 
 // ──────────────────────────────────────────────────────────────────────────────
 // detail — implementation helpers for the accessor dispatch, not public API.
@@ -228,7 +214,7 @@ template <typename T>
     requires(!detail::traits_has_type<std::remove_cvref_t<T>>) && (!detail::has_type_member<T>)
             && detail::range_of_builtin_mpi_type<T>
 constexpr auto type(T&& /* t */) {
-    return kamping::types::builtin_type<std::remove_cvref_t<std::ranges::range_value_t<T>>>::data_type();
+    return mpi::experimental::builtin_datatype<std::ranges::range_value_t<T>>();
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

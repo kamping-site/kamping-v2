@@ -6,7 +6,6 @@
 #include <ranges>
 #include <type_traits>
 
-#include <kamping/types/builtin_types.hpp>
 #include <mpi.h>
 
 #include "mpi/buffer.hpp"
@@ -235,7 +234,8 @@ template <typename T>
 concept has_payload_element = requires { typename payload_element_t<T>; };
 
 template <typename T>
-concept payload_element_is_builtin = has_payload_element<T> && kamping::types::is_builtin_type_v<payload_element_t<T>>;
+concept payload_element_is_builtin =
+    has_payload_element<T> && mpi::experimental::builtin_mpi_type<payload_element_t<T>>;
 
 } // namespace detail
 
@@ -258,7 +258,7 @@ template <typename T>
     requires(!detail::traits_has_value_type<std::remove_cvref_t<T>>) && (!detail::has_value_type_member<T>)
             && detail::payload_element_is_builtin<T>
 constexpr auto value_type(T&& /* t */) {
-    return kamping::types::builtin_type<payload_element_t<T>>::data_type();
+    return mpi::experimental::builtin_datatype<payload_element_t<T>>();
 }
 
 /// `value_type()` is defined for `T`.

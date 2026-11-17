@@ -61,3 +61,11 @@ katestrophe_add_mpi_test(test_core_comm CORES 1 2 4)
 add_executable(test_core_rank rank_test.cpp)
 target_link_libraries(test_core_rank PRIVATE mpi::core kamping_v2_warnings KaTestrophe::main)
 katestrophe_add_mpi_test(test_core_rank CORES 1 2 4)
+
+add_executable(test_core_builtin_types builtin_types_test.cpp)
+target_link_libraries(test_core_builtin_types PRIVATE mpi::core kamping_v2_warnings KaTestrophe::main)
+katestrophe_add_mpi_test(test_core_builtin_types CORES 1)
+
+add_executable(test_core_op op_test.cpp)
+target_link_libraries(test_core_op PRIVATE mpi::core kamping_v2_warnings KaTestrophe::main)
+katestrophe_add_mpi_test(test_core_op CORES 1 2 4)

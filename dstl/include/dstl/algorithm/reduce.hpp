@@ -10,11 +10,13 @@
 
 #include <mpi.h>
 
+#include "dstl/detail/local_fold.hpp"
 #include "kamping/v2/buffer.hpp"
 #include "kamping/v2/collectives/allreduce.hpp"
 #include "kamping/v2/collectives/reduce.hpp"
 #include "kamping/v2/comm.hpp"
 #include "kamping/v2/handle.hpp"
+#include "kamping/v2/ops.hpp"
 #include "kamping/v2/sentinels.hpp"
 #include "kamping/v2/views/ref_single_view.hpp"
 #include "kamping/v2/views/with_type_view.hpp"
@@ -32,13 +34,13 @@ namespace dstl {
 /// Empty ranks contribute T{} to the allreduce, so T{} must be the identity element
 /// for op when empty ranks are possible.
 ///
-/// @pre op must be associative, commutative, and mappable to an MPI_Op.
+/// @pre op must be associative.
 /// @pre If any rank's range is empty, T{} must be the identity element for op.
 template <
     std::ranges::forward_range                       R,
     kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = kamping::v2::comm_view,
     class BinaryOp                                        = std::plus<>>
-    requires kamping::v2::has_mpi_type<R>
+    requires kamping::v2::has_mpi_type<R> && kamping::v2::reduction_op<BinaryOp, std::ranges::range_value_t<R>>
 auto reduce(
     R&&                           r,
     std::ranges::range_value_t<R> init = {},
@@ -50,8 +52,8 @@ auto reduce(
 
     auto first = std::ranges::begin(r);
     auto last  = std::ranges::end(r);
-    // op is passed by reference: handles from make_op are neither copyable nor movable.
-    T result = (first == last) ? T{} : std::reduce(std::next(first), last, *first, std::cref(op));
+    // op need only be associative, so the elements are reordered only if op is commutative.
+    T result = (first == last) ? T{} : detail::local_fold<T>(first, last, op, mpi_type);
 
     kamping::v2::allreduce(
         kamping::v2::inplace,
@@ -60,7 +62,7 @@ auto reduce(
         comm
     );
 
-    return op(init, result);
+    return kamping::v2::as_local_op<T>(op, mpi_type)(init, result);
 }
 
 /// @brief Reduces the globally distributed range to a scalar on the root rank.
@@ -70,14 +72,14 @@ auto reduce(
 /// Returns std::optional containing op(init, in[0], ..., in[N-1]) on root, and
 /// std::nullopt on all other ranks.
 ///
-/// @pre op must be associative, commutative, and mappable to an MPI_Op.
+/// @pre op must be associative.
 /// @pre If any rank's range is empty, T{} must be the identity element for op.
 template <
     std::ranges::forward_range                       R,
     kamping::v2::rank                                Rank = int,
     kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = kamping::v2::comm_view,
     class BinaryOp                                        = std::plus<>>
-    requires kamping::v2::has_mpi_type<R>
+    requires kamping::v2::has_mpi_type<R> && kamping::v2::reduction_op<BinaryOp, std::ranges::range_value_t<R>>
 auto reduce_to_root(
     R&&                           r,
     std::ranges::range_value_t<R> init = {},
@@ -90,7 +92,7 @@ auto reduce_to_root(
 
     auto first  = std::ranges::begin(r);
     auto last   = std::ranges::end(r);
-    T    result = (first == last) ? T{} : std::reduce(std::next(first), last, *first, std::cref(op));
+    T    result = (first == last) ? T{} : detail::local_fold<T>(first, last, op, mpi_type);
 
     kamping::v2::comm_view cv{kamping::v2::handle(comm)};
 
@@ -102,7 +104,7 @@ auto reduce_to_root(
             root,
             comm
         );
-        return op(init, result);
+        return kamping::v2::as_local_op<T>(op, mpi_type)(init, result);
     } else {
         kamping::v2::reduce(
             kamping::v2::views::ref_single(result) | kamping::v2::views::with_type(mpi_type),

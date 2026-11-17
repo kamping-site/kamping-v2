@@ -9,11 +9,13 @@
 
 #include <mpi.h>
 
+#include "dstl/detail/local_fold.hpp"
 #include "dstl/with_subset.hpp"
 #include "kamping/v2/buffer.hpp"
 #include "kamping/v2/collectives/exscan.hpp"
 #include "kamping/v2/comm.hpp"
 #include "kamping/v2/handle.hpp"
+#include "kamping/v2/ops.hpp"
 #include "kamping/v2/views/ref_single_view.hpp"
 #include "kamping/v2/views/with_type_view.hpp"
 
@@ -38,13 +40,13 @@ namespace dstl {
 /// element for op is required.
 ///
 /// @pre out must have the same element count as r on each rank.
-/// @pre op must be associative and mappable to an MPI_Op.
+/// @pre op must be associative.
 template <
     std::ranges::forward_range                       R,
     kamping::v2::recv_buffer                         O,
     kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = kamping::v2::comm_view,
     class BinaryOp                                        = std::plus<>>
-    requires kamping::v2::has_mpi_type<R>
+    requires kamping::v2::has_mpi_type<R> && kamping::v2::reduction_op<BinaryOp, std::ranges::range_value_t<R>>
 void exclusive_scan(
     R&&                           r,
     O&&                           out,
@@ -55,13 +57,14 @@ void exclusive_scan(
     using T                               = std::ranges::range_value_t<R>;
     MPI_Datatype const           mpi_type = kamping::v2::type(r);
     kamping::v2::comm_view const cv{kamping::v2::handle(comm)};
+    // Applies op locally: op itself if it is callable, otherwise its MPI_Op through MPI_Reduce_local.
+    auto const local_op = kamping::v2::as_local_op<T>(op, mpi_type);
 
     T rank_prefix{};
     with_subset(cv, !std::ranges::empty(r), [&](kamping::v2::comm_view sub_comm) {
-        // First pass: compute local total without assuming T{} is the identity for op.
-        auto it          = std::ranges::begin(r);
-        T    local_total = *it++;
-        local_total      = std::reduce(it, std::ranges::end(r), local_total, std::cref(op));
+        // First pass: compute local total without assuming T{} is the identity for op. op need only be associative,
+        // so the elements are reordered only if op is commutative.
+        T const local_total = detail::local_fold<T>(std::ranges::begin(r), std::ranges::end(r), op, mpi_type);
 
         if (sub_comm.size() > 1) {
             kamping::v2::exscan(
@@ -72,15 +75,9 @@ void exclusive_scan(
             );
         }
 
-        T const global_init = (sub_comm.rank() == 0) ? init : op(init, rank_prefix);
+        T const global_init = (sub_comm.rank() == 0) ? init : local_op(init, rank_prefix);
         // Second pass: local exclusive scan with the rank-adjusted initial value.
-        std::exclusive_scan(
-            std::ranges::begin(r),
-            std::ranges::end(r),
-            std::ranges::begin(out),
-            global_init,
-            std::cref(op)
-        );
+        std::exclusive_scan(std::ranges::begin(r), std::ranges::end(r), std::ranges::begin(out), global_init, local_op);
     });
 }
 

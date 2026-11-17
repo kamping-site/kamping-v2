@@ -28,13 +28,13 @@ Key CMake options (all defined in `cmake/kamping-v2-setup.cmake`):
 - `KAMPING_V2_WARNINGS_ARE_ERRORS` — treat compiler warnings as errors (default OFF)
 - `KAMPING_V2_INSTALL` — generate install rules (default ON when top-level)
 - `KAMPING_V2_ENABLE_CEREAL` / `_KOKKOS` / `_KOKKOS_COMM` / `_THRUST` / `_SYCL` — ecosystem adapters (default OFF)
-- `KAMPING_V2_ENABLE_REFLECTION` — Boost.PFR struct reflection in kamping-types (default ON)
+- `KAMPING_V2_ENABLE_REFLECTION` — Boost.PFR struct reflection for `as_struct` (default ON)
 
 ### CMake structure
 
-- `cmake/kamping-v2-setup.cmake` is included by every entry point (the root and `mpi-core/`, `kamping-v2/`, `dstl/`, `ecosystem/*/`, which can each be configured on their own). It holds the options, the dependencies (MPI, kassert, Boost.PFR, kamping-types), the `kamping_v2_warnings` target for tests and examples, and the package configuration.
+- `cmake/kamping-v2-setup.cmake` is included by every entry point (the root and `mpi-core/`, `kamping-v2/`, `dstl/`, `ecosystem/*/`, which can each be configured on their own). It holds the options, the dependencies (MPI, kassert, Boost.PFR), the `kamping_v2_warnings` target for tests and examples, and the package configuration.
 - Each component's CMakeLists creates its header-only INTERFACE target with plain `add_library` and lists every header explicitly in a `FILE_SET HEADERS` (no globbing): **add new headers there**. A component that depends on a sibling adds it with `add_subdirectory` if its target does not exist yet.
-- The installed `kamping-v2` package (`find_package(kamping-v2 COMPONENTS core v2 dstl cereal ...)`) has one export set per component and a checked-in file `<component>/cmake/kamping-v2-<c>.cmake` (`.cmake.in` if configured) that loads the components it requires, finds its external dependencies and includes its targets. kamping-types (and Boost.PFR, if fetched) are installed from `kamping-v2-setup.cmake` as the internal `types` component, since they have no install rules of their own.
+- The installed `kamping-v2` package (`find_package(kamping-v2 COMPONENTS core v2 dstl cereal ...)`) has one export set per component and a checked-in file `<component>/cmake/kamping-v2-<c>.cmake` (`.cmake.in` if configured) that loads the components it requires, finds its external dependencies and includes its targets. Boost.PFR, if built from source or wrapped from a system Boost, is installed in the `v2` export set, since it has no install rules of its own there.
 - `tests/install/` installs the build tree into a scratch prefix and builds a consumer project against it (`test_install.*`).
 
 ## Testing

@@ -14,6 +14,7 @@
 #include "kamping/v2/collectives/exscan.hpp"
 #include "kamping/v2/comm.hpp"
 #include "kamping/v2/handle.hpp"
+#include "kamping/v2/ops.hpp"
 #include "kamping/v2/views/ref_single_view.hpp"
 #include "kamping/v2/views/with_type_view.hpp"
 
@@ -37,21 +38,23 @@ namespace dstl {
 /// element for op is required.
 ///
 /// @pre out must have the same element count as r on each rank.
-/// @pre op must be associative and mappable to an MPI_Op.
+/// @pre op must be associative.
 template <
     std::ranges::forward_range                       R,
     kamping::v2::recv_buffer                         O,
     kamping::v2::convertible_to_mpi_handle<MPI_Comm> Comm = kamping::v2::comm_view,
     class BinaryOp                                        = std::plus<>>
-    requires kamping::v2::has_mpi_type<R>
+    requires kamping::v2::has_mpi_type<R> && kamping::v2::reduction_op<BinaryOp, std::ranges::range_value_t<R>>
 void inclusive_scan(R&& r, O&& out, BinaryOp const& op = {}, Comm const& comm = kamping::v2::comm_world()) {
     using T                               = std::ranges::range_value_t<R>;
     MPI_Datatype const           mpi_type = kamping::v2::type(r);
     kamping::v2::comm_view const cv{kamping::v2::handle(comm)};
+    // Applies op locally: op itself if it is callable, otherwise its MPI_Op through MPI_Reduce_local.
+    auto const local_op = kamping::v2::as_local_op<T>(op, mpi_type);
 
     T rank_prefix{};
     with_subset(cv, !std::ranges::empty(r), [&](kamping::v2::comm_view sub_comm) {
-        std::inclusive_scan(std::ranges::begin(r), std::ranges::end(r), std::ranges::begin(out), std::cref(op));
+        std::inclusive_scan(std::ranges::begin(r), std::ranges::end(r), std::ranges::begin(out), local_op);
         T const local_total = *std::prev(std::ranges::end(out));
 
         if (sub_comm.size() > 1) {
@@ -67,7 +70,7 @@ void inclusive_scan(R&& r, O&& out, BinaryOp const& op = {}, Comm const& comm = 
         // All other ranks shift their output up by the cumulative prefix from previous ranks.
         if (sub_comm.rank() > 0) {
             for (auto& x: out) {
-                x = op(rank_prefix, x);
+                x = local_op(rank_prefix, x);
             }
         }
     });

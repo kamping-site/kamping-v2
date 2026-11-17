@@ -4,13 +4,13 @@
 #include <gtest/gtest.h>
 #include <mpi.h>
 
-#include "kamping/types/contiguous_type.hpp"
 #include "kamping/v2/buffer.hpp"
 #include "kamping/v2/collectives/alltoallv.hpp"
 #include "kamping/v2/collectives/bcast.hpp"
 #include "kamping/v2/comm.hpp"
 #include "kamping/v2/comm_view_with_pool.hpp"
 #include "kamping/v2/type_pool.hpp"
+#include "kamping/v2/types/datatype_traits.hpp"
 #include "kamping/v2/views.hpp"
 
 struct Payload {
@@ -19,7 +19,7 @@ struct Payload {
 };
 
 template <>
-struct kamping::types::mpi_type_traits<Payload> : public kamping::types::byte_serialized<Payload> {};
+struct kamping::v2::datatype_traits<Payload> : kamping::v2::as_bytes<Payload> {};
 
 // comm_view_with_pool can be constructed from MPI_Comm + pool and from comm_view + pool.
 TEST(CommViewWithPoolTest, Construction) {

@@ -2,7 +2,7 @@
 # and ecosystem/*/, which can each be used on their own (e.g. via FetchContent with SOURCE_SUBDIR). Include it after
 # project(); it runs once per build tree. It defines the KAMPING_V2_* options, makes the dependencies available, and
 # defines the kamping_v2_warnings target for tests and examples. If KAMPING_V2_INSTALL is set, it installs the package
-# configuration and the internal 'types' component; each component installs itself.
+# configuration; each component installs itself.
 
 include_guard(GLOBAL)
 
@@ -19,7 +19,7 @@ option(KAMPING_V2_WARNINGS_ARE_ERRORS
        "Treat compiler warnings as errors in tests and examples, and Sphinx warnings in the docs." OFF
 )
 option(KAMPING_V2_INSTALL "Generate install rules for the kamping-v2 CMake package." ${PROJECT_IS_TOP_LEVEL})
-option(KAMPING_V2_ENABLE_REFLECTION "Derive MPI datatypes for plain structs via Boost.PFR (in kamping-types)." ON)
+option(KAMPING_V2_ENABLE_REFLECTION "Derive MPI datatypes for plain structs via Boost.PFR (as_struct)." ON)
 option(KAMPING_V2_REFLECTION_USE_SYSTEM_BOOST_FOR_PFR
        "Use Boost.PFR from a system-installed Boost instead of a standalone install or building from source." OFF
 )
@@ -47,15 +47,15 @@ endif ()
 
 # Assertion level of kamping-v2: 30 (normal assertions) in Debug builds, 10 (exceptions only) otherwise. It is the
 # default level of the kamping_v2::kassert instance, so it applies to every target linking to kamping-v2; a single target
-# can override it with the KAMPING_V2_ASSERT_ASSERTION_LEVEL property. kamping-types has its own kassert instance, whose
-# level is set with KAMPING_TYPES_ASSERTION_LEVEL.
+# can override it with the KAMPING_V2_ASSERT_ASSERTION_LEVEL property.
 set(KAMPING_V2_ASSERTION_LEVEL
     $<IF:$<CONFIG:Debug>,30,10>
     CACHE STRING "Assertion level of kamping-v2 (a number, may be a generator expression)."
 )
 
-# kassert, configured as an instance of its own (macro prefix KAMPING_V2_ASSERT, header kamping/v2/kassert.hpp). The
-# variables stay inside the block() so that they do not leak into the kassert instance kamping-types configures.
+# kassert, configured as an instance of its own (macro prefix KAMPING_V2_ASSERT, header kamping/v2/kassert.hpp), so that
+# it does not interfere with other kassert instances in the same build, e.g. that of KaMPIng (v1). The variables stay
+# inside the block() so that they do not leak into the configuration of other projects.
 if (NOT TARGET kamping_v2::kassert)
     block()
     set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
@@ -74,30 +74,32 @@ if (NOT TARGET kamping_v2::kassert)
     endblock()
 endif ()
 
-# Boost.PFR, used by kamping-types for reflection. Declared here so that kamping-types finds it; the system-Boost alias
-# must exist before kamping-types is made available, so that kamping-types skips its own FetchContent.
-FetchContent_Declare(
-    pfr
-    URL https://github.com/boostorg/pfr/archive/refs/tags/2.2.0.tar.gz
-    URL_HASH SHA256=6f490ec1383de5855dcf801c23f0a967f888eb6e1440b6ca0bf36c12d4ae7ac7
-    SYSTEM FIND_PACKAGE_ARGS 2.2.0
-)
-if (KAMPING_V2_ENABLE_REFLECTION
-    AND KAMPING_V2_REFLECTION_USE_SYSTEM_BOOST_FOR_PFR
-    AND NOT TARGET Boost::pfr
-)
-    find_package(Boost 1.75 COMPONENTS headers CONFIG)
-    if (NOT Boost_FOUND)
-        message(
-            FATAL_ERROR
-                "Boost.PFR: no compatible Boost found. Set KAMPING_V2_REFLECTION_USE_SYSTEM_BOOST_FOR_PFR=OFF to use "
-                "standalone Boost.PFR."
+# Boost.PFR, which as_struct uses to reflect aggregates: from a system Boost with
+# KAMPING_V2_REFLECTION_USE_SYSTEM_BOOST_FOR_PFR, otherwise a standalone install found by find_package(pfr), or built
+# from the release archive.
+if (KAMPING_V2_ENABLE_REFLECTION AND NOT TARGET Boost::pfr)
+    if (KAMPING_V2_REFLECTION_USE_SYSTEM_BOOST_FOR_PFR)
+        find_package(Boost 1.75 COMPONENTS headers CONFIG)
+        if (NOT Boost_FOUND)
+            message(
+                FATAL_ERROR
+                    "Boost.PFR: no compatible Boost found. Set KAMPING_V2_REFLECTION_USE_SYSTEM_BOOST_FOR_PFR=OFF to "
+                    "use standalone Boost.PFR."
+            )
+        endif ()
+        add_library(kamping_v2_pfr INTERFACE)
+        target_link_libraries(kamping_v2_pfr INTERFACE Boost::headers)
+        set_target_properties(kamping_v2_pfr PROPERTIES EXPORT_NAME pfr)
+        add_library(Boost::pfr ALIAS kamping_v2_pfr)
+    else ()
+        FetchContent_Declare(
+            pfr
+            URL https://github.com/boostorg/pfr/archive/refs/tags/2.2.0.tar.gz
+            URL_HASH SHA256=6f490ec1383de5855dcf801c23f0a967f888eb6e1440b6ca0bf36c12d4ae7ac7
+            SYSTEM FIND_PACKAGE_ARGS 2.2.0
         )
+        FetchContent_MakeAvailable(pfr)
     endif ()
-    add_library(kamping_v2_pfr INTERFACE)
-    target_link_libraries(kamping_v2_pfr INTERFACE Boost::headers)
-    set_target_properties(kamping_v2_pfr PROPERTIES EXPORT_NAME pfr)
-    add_library(Boost::pfr ALIAS kamping_v2_pfr)
 endif ()
 
 # KaTestrophe (GoogleTest with MPI), for the tests. Only declared here; the tests/ directories of the components fetch it
@@ -107,31 +109,6 @@ FetchContent_Declare(
     URL https://github.com/kamping-site/KaTestrophe.cmake/archive/refs/tags/v1.1.0.tar.gz
     URL_HASH SHA256=9ee8fbd551085c7f3800a269cff46ca66be16437ff488eb946ed6e557f9a343b
 )
-
-# kamping-types (MPI datatype construction), maintained in the KaMPIng (v1) repository. All dependencies are fetched as
-# release archives rather than git clones: a clone of the v1 repository carries its whole history (~44 MB vs. 0.4 MB).
-if (NOT TARGET kamping::types)
-    block()
-    set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
-    set(KAMPING_TYPES_ENABLE_REFLECTION ${KAMPING_V2_ENABLE_REFLECTION})
-    set(KAMPING_TYPES_BUILD_EXAMPLES OFF)
-    set(KASSERT_INSTALL ${KAMPING_V2_INSTALL})
-    # kamping-types declares its own kassert instance as a git clone; the first declaration of a name wins, so this one
-    # replaces it with the archive. Keep the version in sync with kamping-types.
-    FetchContent_Declare(
-        kamping_types_kassert
-        URL https://github.com/kamping-site/kassert/archive/refs/tags/v1.1.0.tar.gz
-        URL_HASH SHA256=20ffb231556772d0652a45b36986425078b3ff17884295d75938f5a8ec5c0ba5
-    )
-    FetchContent_Declare(
-        kamping_types
-        URL https://github.com/kamping-site/kamping/archive/refs/tags/v0.3.2.tar.gz
-        URL_HASH SHA256=9ba53746930c44f456b7a853d59b1cc73dd894b254a833f23c93b6941eb9e208
-        SOURCE_SUBDIR kamping-types
-    )
-    FetchContent_MakeAvailable(kamping_types)
-    endblock()
-endif ()
 
 # ── Warnings ──────────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -170,46 +147,4 @@ if (KAMPING_V2_INSTALL)
     install(FILES "${CMAKE_BINARY_DIR}/kamping-v2-config.cmake" "${CMAKE_BINARY_DIR}/kamping-v2-config-version.cmake"
             DESTINATION ${KAMPING_V2_INSTALL_CMAKEDIR}
     )
-
-    block()
-    # The internal 'types' component: kamping-types, and Boost.PFR if it is built from source or wrapped from a system
-    # Boost. Neither provides install rules when fetched, and their include directories point into the source tree.
-    get_target_property(imported kamping_types IMPORTED)
-    if (imported)
-        message(FATAL_ERROR "kamping-v2: installing requires kamping-types to be built from source (FetchContent).")
-    endif ()
-    set_target_properties(kamping_types PROPERTIES EXPORT_NAME types)
-    set(types_targets kamping_types)
-    set(vendored kamping_types)
-    set(KAMPING_V2_PFR_DEPENDENCY "")
-    if (TARGET boost_pfr)
-        set_target_properties(boost_pfr PROPERTIES EXPORT_NAME pfr)
-        list(APPEND types_targets boost_pfr)
-        list(APPEND vendored boost_pfr)
-    elseif (TARGET kamping_v2_pfr)
-        list(APPEND types_targets kamping_v2_pfr)
-        set(KAMPING_V2_PFR_DEPENDENCY "find_dependency(Boost 1.75 COMPONENTS headers CONFIG)")
-    elseif (TARGET Boost::pfr)
-        set(KAMPING_V2_PFR_DEPENDENCY "find_dependency(pfr 2.2.0)")
-    endif ()
-    foreach (target IN LISTS vendored)
-        get_target_property(source_dir ${target} SOURCE_DIR)
-        set_target_properties(
-            ${target}
-            PROPERTIES INTERFACE_INCLUDE_DIRECTORIES
-                       "$<BUILD_INTERFACE:${source_dir}/include>;$<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>"
-        )
-        install(DIRECTORY "${source_dir}/include/" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
-    endforeach ()
-    install(TARGETS ${types_targets} EXPORT kamping-v2-types-targets)
-    install(
-        EXPORT kamping-v2-types-targets
-        NAMESPACE kamping_v2::
-        DESTINATION ${KAMPING_V2_INSTALL_CMAKEDIR}
-    )
-    configure_file(
-        "${CMAKE_CURRENT_LIST_DIR}/kamping-v2-types.cmake.in" "${CMAKE_BINARY_DIR}/kamping-v2-types.cmake" @ONLY
-    )
-    install(FILES "${CMAKE_BINARY_DIR}/kamping-v2-types.cmake" DESTINATION ${KAMPING_V2_INSTALL_CMAKEDIR})
-    endblock()
 endif ()

@@ -10,8 +10,8 @@
 
 #include <cereal/archives/binary.hpp>
 
-#include "kamping/types/builtin_types.hpp"
 #include "kamping/v2/views/adaptor.hpp"
+#include "mpi/builtin_types.hpp"
 
 namespace kamping::v2 {
 
@@ -159,7 +159,7 @@ public:
 
     /// Returns `MPI_BYTE` (`char`). Serialized payloads are always transported as raw bytes.
     MPI_Datatype mpi_type() const noexcept {
-        return kamping::types::builtin_type<char>::data_type();
+        return mpi::experimental::builtin_datatype<char>();
     }
 
     /// Send-side pointer. Serializes lazily on first call; returns `void const*` so that

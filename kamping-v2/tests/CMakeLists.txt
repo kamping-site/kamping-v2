@@ -56,6 +56,17 @@ add_executable(test_v2_comm_view_with_pool comm_view_with_pool_test.cpp)
 target_link_libraries(test_v2_comm_view_with_pool PRIVATE kamping::v2 kamping_v2_warnings KaTestrophe::main)
 katestrophe_add_mpi_test(test_v2_comm_view_with_pool CORES 1 2)
 
+# These reflect aggregates with as_struct.
+if (KAMPING_V2_ENABLE_REFLECTION)
+    add_executable(test_v2_datatype_traits datatype_traits_test.cpp)
+    target_link_libraries(test_v2_datatype_traits PRIVATE kamping::v2 kamping_v2_warnings KaTestrophe::main)
+    katestrophe_add_mpi_test(test_v2_datatype_traits CORES 1 2 4)
+
+    add_executable(test_v2_datatype_traits_unsafe datatype_traits_unsafe_test.cpp)
+    target_link_libraries(test_v2_datatype_traits_unsafe PRIVATE kamping::v2 kamping_v2_warnings KaTestrophe::main)
+    katestrophe_add_mpi_test(test_v2_datatype_traits_unsafe CORES 1 2)
+endif ()
+
 add_executable(test_v2_datatype datatype_test.cpp)
 target_link_libraries(test_v2_datatype PRIVATE kamping::v2 kamping_v2_warnings KaTestrophe::main)
 katestrophe_add_mpi_test(test_v2_datatype CORES 1 2)
