@@ -429,7 +429,7 @@ TEST(V2TypeConstructorsTest, StructBuilderFromSample) {
 }
 
 TEST(V2TypeConstructorsTest, StructBuilderFieldOfSample) {
-    // Generic code visits the members of a sample object, as struct_type does with Boost.PFR.
+    // Generic code visits the members of a sample object, as as_struct does with Boost.PFR.
     vec2                     sample{};
     v2::struct_builder<vec2> b(sample);
     b.field_of_sample(sample.x, MPI_FLOAT).field_of_sample(sample.y, MPI_FLOAT);

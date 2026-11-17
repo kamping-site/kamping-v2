@@ -7,8 +7,6 @@
 #include <utility>
 #include <vector>
 
-#include <kamping/types/mpi_type_traits.hpp>
-#include <kamping/types/struct_type.hpp>
 #include <kamping/v2.hpp>
 
 namespace v2 = kamping::v2;
@@ -20,7 +18,7 @@ struct Point {
 
 // Reflected via Boost.PFR, so this also checks that the bundled PFR headers are installed.
 template <>
-struct kamping::types::mpi_type_traits<Point> : kamping::types::struct_type<Point> {};
+struct kamping::v2::datatype_traits<Point> : kamping::v2::as_struct<Point> {};
 
 int main(int argc, char* argv[]) {
     v2::environment env(argc, argv);

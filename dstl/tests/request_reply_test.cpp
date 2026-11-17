@@ -9,8 +9,7 @@
 #include <vector>
 
 #include <gtest/gtest.h>
-#include <kamping/types/contiguous_type.hpp>
-#include <kamping/types/mpi_type_traits.hpp>
+#include <kamping/v2/types/datatype_traits.hpp>
 #include <mpi.h>
 
 #include "dstl/dstl.hpp"
@@ -22,15 +21,15 @@ namespace views = kamping::v2::views;
 using kamping::v2::comm_world;
 
 // A custom request value type. It carries no datatype on the pair-range input, so request_reply requires
-// the MPI_Datatype overload; the datatype is built by registering the type (made known to kamping-types via
-// the byte_serialized trait specialization below) in a type_pool.
+// the MPI_Datatype overload; the datatype is built by registering the type (described by the as_bytes
+// datatype_traits specialization below) in a type_pool.
 struct MyStruct {
     int    x;
     double y;
 };
 
 template <>
-struct kamping::types::mpi_type_traits<MyStruct> : public kamping::types::byte_serialized<MyStruct> {};
+struct kamping::v2::datatype_traits<MyStruct> : kamping::v2::as_bytes<MyStruct> {};
 
 namespace {
 

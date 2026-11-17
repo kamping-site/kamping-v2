@@ -12,9 +12,9 @@
 
 #include <mpi.h>
 
-#include "kamping/types/mpi_type_traits.hpp"
 #include "kamping/v2/datatype.hpp"
 #include "kamping/v2/kassert.hpp"
+#include "kamping/v2/types/datatype_traits.hpp"
 #include "kamping/v2/views/adaptor.hpp"
 #include "kamping/v2/views/payload.hpp"
 #include "kamping/v2/views/with_type_view.hpp"
@@ -24,9 +24,9 @@ namespace kamping::v2 {
 
 /// @brief Registry that owns committed MPI datatypes for the lifetime of the pool.
 ///
-/// Builtin types (e.g. `int`, `double`) are always available without registration.
-/// Derived types (e.g. contiguous or struct types) must be registered via @ref register_type
-/// before use; the pool commits and owns the resulting `MPI_Datatype`.
+/// Builtin types (e.g. `int`, `double`, enumerations) are always available without registration.
+/// Derived types, described by `datatype_traits<T>` or given explicitly, must be registered via
+/// @ref register_type before use; the pool commits and owns the resulting `MPI_Datatype`.
 ///
 /// The pool is move-only: copying is disabled because `MPI_Datatype` handles are not duplicable.
 class type_pool {
@@ -43,27 +43,27 @@ public:
     /// @brief Registers `T` with the pool and returns its `MPI_Datatype`.
     ///
     /// For builtin types, returns the predefined MPI type immediately without storing anything.
-    /// For derived types, commits the type on the first call and returns the cached handle on
-    /// subsequent calls (idempotent).
-    /// @tparam T A type satisfying `has_static_type_v`.
+    /// For other types, commits the datatype from `datatype_traits<T>` on the first call and returns
+    /// the cached handle on subsequent calls (idempotent).
+    /// @tparam T A type with a datatype (`has_datatype<T>`).
     /// @return The committed `MPI_Datatype` for `T`.
-    template <typename T>
-        requires kamping::types::has_static_type_v<T>
+    /// @throws mpi_error if MPI fails to create or commit the datatype.
+    template <has_datatype T>
     MPI_Datatype register_type() {
-        if constexpr (!kamping::types::mpi_type_traits<T>::has_to_be_committed) {
-            return kamping::types::mpi_type_traits<T>::data_type();
+        if constexpr (mpi::experimental::builtin_mpi_type<T>) {
+            return mpi::experimental::builtin_datatype<T>();
         } else {
             std::type_index idx = std::type_index(typeid(T));
             auto            it  = _types.find(idx);
             if (it == _types.end()) {
-                it = _types.emplace(idx, datatype::commit(kamping::types::mpi_type_traits<T>::data_type())).first;
+                it = _types.emplace(idx, datatype_traits<std::remove_cvref_t<T>>::datatype().commit()).first;
             }
             return it->second.mpi_handle();
         }
     }
 
     /// @brief Registers a caller-supplied `MPI_Datatype` for `T`, without requiring a
-    /// `kamping::types::mpi_type_traits<T>` specialization.
+    /// `datatype_traits<T>` specialization.
     ///
     /// `T` is used purely as the lookup key (`std::type_index(typeid(T))`) — e.g. a byte-blob
     /// type for a struct that has no trait specialization written for it. The pool takes
@@ -91,8 +91,7 @@ public:
         return it->second.mpi_handle();
     }
 
-    /// @brief Registers an owned datatype for `T`, without requiring a `kamping::types::mpi_type_traits<T>`
-    /// specialization.
+    /// @brief Registers an owned datatype for `T`, without requiring a `datatype_traits<T>` specialization.
     ///
     /// Like the `MPI_Datatype` overload, but takes a `datatype`, which is committed already. If `T` is already
     /// registered, the existing datatype is kept and `dt` stays with the caller, who frees it when it goes out of
@@ -109,26 +108,15 @@ public:
     /// @brief Looks up the `MPI_Datatype` for `T` without registering it.
     ///
     /// For builtin types, always returns the predefined MPI type. Otherwise (including types
-    /// with no `mpi_type_traits<T>` specialization — e.g. registered only via the one-shot
+    /// with no `datatype_traits<T>` specialization — e.g. registered only via the one-shot
     /// `register_type<T>(MPI_Datatype)` overload), looks `T` up in the pool by key and returns
     /// `std::nullopt` if it has not been registered.
     /// @tparam T The type to look up; no trait requirement.
     /// @return The `MPI_Datatype` for `T`, or `std::nullopt` if not registered.
     template <typename T>
     std::optional<MPI_Datatype> find() const {
-        // Nested on purpose: has_to_be_committed does not exist for a T without type traits, and
-        // `if constexpr (a && b)` requires both operands to be well-formed.
-        if constexpr (kamping::types::has_static_type_v<T>) {
-            if constexpr (!kamping::types::mpi_type_traits<T>::has_to_be_committed) {
-                return kamping::types::mpi_type_traits<T>::data_type();
-            } else {
-                std::type_index idx = std::type_index(typeid(T));
-                auto            it  = _types.find(idx);
-                if (it == _types.end()) {
-                    return std::nullopt;
-                }
-                return it->second.mpi_handle();
-            }
+        if constexpr (mpi::experimental::builtin_mpi_type<T>) {
+            return mpi::experimental::builtin_datatype<T>();
         } else {
             std::type_index idx = std::type_index(typeid(T));
             auto            it  = _types.find(idx);
@@ -158,7 +146,7 @@ struct with_pool_fn {
 
     template <typename R>
         requires requires { typename kamping::v2::mpi_element_type_t<std::remove_cvref_t<R>>; }
-                 && kamping::types::has_static_type_v<kamping::v2::mpi_element_type_t<std::remove_cvref_t<R>>>
+                 && kamping::v2::has_datatype<kamping::v2::mpi_element_type_t<std::remove_cvref_t<R>>>
     auto operator()(R&& r, type_pool const& pool) {
         using elem_t = kamping::v2::mpi_element_type_t<std::remove_cvref_t<R>>;
         auto dt      = pool.find<elem_t>();
@@ -170,7 +158,7 @@ struct with_pool_fn {
     template <typename R, typename Env>
         requires has_pool<std::remove_cvref_t<Env>>
                  && requires { typename kamping::v2::mpi_element_type_t<std::remove_cvref_t<R>>; }
-                 && kamping::types::has_static_type_v<kamping::v2::mpi_element_type_t<std::remove_cvref_t<R>>>
+                 && kamping::v2::has_datatype<kamping::v2::mpi_element_type_t<std::remove_cvref_t<R>>>
     auto operator()(R&& r, Env&& env) {
         return (*this)(std::forward<R>(r), env.pool());
     }
@@ -183,7 +171,7 @@ struct with_auto_pool_fn {
     /// The element type is resolved via `mpi_element_type_t`, not `payload_element_t`.
     template <typename R>
         requires requires { typename kamping::v2::mpi_element_type_t<std::remove_cvref_t<R>>; }
-                 && kamping::types::has_static_type_v<kamping::v2::mpi_element_type_t<std::remove_cvref_t<R>>>
+                 && kamping::v2::has_datatype<kamping::v2::mpi_element_type_t<std::remove_cvref_t<R>>>
     auto operator()(R&& r, type_pool& pool) {
         using elem_t = kamping::v2::mpi_element_type_t<std::remove_cvref_t<R>>;
         return kamping::v2::with_type_view(std::forward<R>(r), pool.register_type<elem_t>());
@@ -193,7 +181,7 @@ struct with_auto_pool_fn {
     template <typename R, typename Env>
         requires has_pool<std::remove_cvref_t<Env>>
                  && requires { typename kamping::v2::mpi_element_type_t<std::remove_cvref_t<R>>; }
-                 && kamping::types::has_static_type_v<kamping::v2::mpi_element_type_t<std::remove_cvref_t<R>>>
+                 && kamping::v2::has_datatype<kamping::v2::mpi_element_type_t<std::remove_cvref_t<R>>>
     auto operator()(R&& r, Env&& env) {
         return (*this)(std::forward<R>(r), env.pool());
     }
@@ -228,13 +216,13 @@ struct with_value_pool_fn {
 struct with_auto_value_pool_fn {
     /// Attaches the MPI datatype for the buffer's payload type, registering it in the pool if
     /// needed — the value-type channel counterpart of @ref with_auto_pool_fn. Only covers
-    /// payload types with a `kamping::types::mpi_type_traits<T>` specialization (mirroring
+    /// payload types with a datatype (`has_datatype<T>`, mirroring
     /// `with_auto_pool`'s constraint); a payload type with no trait must be pre-registered via
     /// the one-shot `register_type<T>(MPI_Datatype)` overload and attached via @ref
     /// with_value_pool_fn instead.
     template <typename R>
         requires requires { typename kamping::v2::payload_element_t<std::remove_cvref_t<R>>; }
-                 && kamping::types::has_static_type_v<kamping::v2::payload_element_t<std::remove_cvref_t<R>>>
+                 && kamping::v2::has_datatype<kamping::v2::payload_element_t<std::remove_cvref_t<R>>>
     auto operator()(R&& r, type_pool& pool) {
         using payload_t = kamping::v2::payload_element_t<std::remove_cvref_t<R>>;
         return kamping::v2::with_value_type_view(std::forward<R>(r), pool.register_type<payload_t>());
@@ -244,7 +232,7 @@ struct with_auto_value_pool_fn {
     template <typename R, typename Env>
         requires has_pool<std::remove_cvref_t<Env>>
                  && requires { typename kamping::v2::payload_element_t<std::remove_cvref_t<R>>; }
-                 && kamping::types::has_static_type_v<kamping::v2::payload_element_t<std::remove_cvref_t<R>>>
+                 && kamping::v2::has_datatype<kamping::v2::payload_element_t<std::remove_cvref_t<R>>>
     auto operator()(R&& r, Env&& env) {
         return (*this)(std::forward<R>(r), env.pool());
     }
@@ -276,7 +264,7 @@ inline constexpr kamping::v2::adaptor<1, detail::with_pool_fn> with_pool{};
 /// `buf | views::with_auto_pool(pool)`.
 ///
 /// Like `with_pool`, but the type need not be registered in advance: the pool commits its datatype the first time
-/// it is needed. This requires a `kamping::types::mpi_type_traits<T>` specialization describing the type.
+/// it is needed. This requires a datatype for the type: a builtin type, or a `datatype_traits<T>` specialization.
 ///
 /// @code
 /// kamping::v2::bcast(v | kamping::v2::views::with_auto_pool(pool), 0, comm);
@@ -316,7 +304,7 @@ inline constexpr kamping::v2::adaptor<1, detail::with_value_pool_fn> with_value_
 /// first use: `per_rank | views::with_auto_value_pool(pool)`.
 ///
 /// Like `with_value_pool`, but the payload type need not be registered in advance. This requires a
-/// `kamping::types::mpi_type_traits<T>` specialization describing the type.
+/// datatype for the type: a builtin type, or a `datatype_traits<T>` specialization.
 ///
 /// @code
 /// kamping::v2::alltoallv(per_rank | views::with_auto_value_pool(pool) | views::flatten_v(), rbuf, comm);

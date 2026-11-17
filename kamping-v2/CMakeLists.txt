@@ -69,6 +69,13 @@ target_sources(
               include/kamping/v2/status.hpp
               include/kamping/v2/type_constructors.hpp
               include/kamping/v2/type_pool.hpp
+              include/kamping/v2/types/as_struct.hpp
+              include/kamping/v2/types/datatype_traits.hpp
+              include/kamping/v2/types/std/tuple.hpp
+              include/kamping/v2/types/std/unsafe/trivially_copyable.hpp
+              include/kamping/v2/types/std/unsafe/tuple.hpp
+              include/kamping/v2/types/std/unsafe/utility.hpp
+              include/kamping/v2/types/std/utility.hpp
               include/kamping/v2/views.hpp
               include/kamping/v2/views/adaptor.hpp
               include/kamping/v2/views/all.hpp
@@ -92,7 +99,11 @@ target_sources(
               include/kamping/v2/win.hpp
 )
 set_target_properties(kamping_v2 PROPERTIES EXPORT_NAME v2)
-target_link_libraries(kamping_v2 INTERFACE mpi::core kamping::types)
+target_link_libraries(kamping_v2 INTERFACE mpi::core)
+if (KAMPING_V2_ENABLE_REFLECTION)
+    target_link_libraries(kamping_v2 INTERFACE Boost::pfr)
+    target_compile_definitions(kamping_v2 INTERFACE KAMPING_V2_ENABLE_REFLECTION)
+endif ()
 
 if (KAMPING_V2_INSTALL)
     install(

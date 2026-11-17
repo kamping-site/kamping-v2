@@ -4,12 +4,11 @@
 #include <gtest/gtest.h>
 #include <mpi.h>
 
-#include "kamping/types/contiguous_type.hpp"
-#include "kamping/types/mpi_type_traits.hpp"
 #include "kamping/v2/buffer.hpp"
 #include "kamping/v2/collectives/bcast.hpp"
 #include "kamping/v2/comm.hpp"
 #include "kamping/v2/type_pool.hpp"
+#include "kamping/v2/types/datatype_traits.hpp"
 
 struct MyStruct {
     int    x;
@@ -17,7 +16,7 @@ struct MyStruct {
 };
 
 template <>
-struct kamping::types::mpi_type_traits<MyStruct> : public kamping::types::byte_serialized<MyStruct> {};
+struct kamping::v2::datatype_traits<MyStruct> : kamping::v2::as_bytes<MyStruct> {};
 
 // Builtin type: find() always returns the predefined MPI type, even without commit().
 TEST(TypePoolTest, BuiltinTypeAlwaysFound) {

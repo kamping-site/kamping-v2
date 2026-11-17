@@ -310,7 +310,7 @@ type_create_struct(std::initializer_list<struct_field> fields) {
 
 /// @brief Builds the datatype of a class `T` from its members, one field at a time.
 ///
-/// For classes that `struct_type` cannot reflect (constructors, private members, base classes) or of which only some
+/// For classes that `as_struct` cannot reflect (constructors, private members, base classes) or of which only some
 /// members are sent. The datatype of a builtin member is deduced; any other member is given its datatype explicitly.
 /// `build()` returns the datatype, resized to `sizeof(T)` so that arrays of `T` work.
 ///
