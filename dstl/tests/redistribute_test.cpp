@@ -89,7 +89,7 @@ TEST(Redistribute, EmptyRecvWindowInside) {
     int const              even = (p + 1) / 2;
 
     auto sbuf = iota_vec(0, rank == 0 ? 4 * even : 0);
-    auto rbuf = std::vector<int>(rank % 2 == 0 ? 4 : 0, -1);
+    auto rbuf = std::vector<int>(rank % 2 == 0 ? 4u : 0u, -1);
 
     dstl::redistribute(sbuf, rbuf, comm);
 
@@ -113,7 +113,7 @@ TEST(Redistribute, EmptySendWindowInside) {
     int const              even = (p + 1) / 2;
 
     auto sbuf = iota_vec(rank / 2 * 4, rank % 2 == 0 ? 4 : 0);
-    auto rbuf = std::vector<int>(rank == 0 ? 4 * even : 0, -1);
+    auto rbuf = std::vector<int>(static_cast<std::size_t>(rank == 0 ? 4 * even : 0), -1);
 
     dstl::redistribute(sbuf, rbuf, comm);
 
