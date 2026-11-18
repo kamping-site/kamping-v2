@@ -56,3 +56,8 @@ in a distributed lookup. See {doc}`request-reply`.
 
 Distributed counterparts of standard algorithms on a range distributed over the processes: `reduce`, `min`,
 `max`, `all_of`, `is_sorted`, prefix sums and shifts. See {doc}`algorithms`.
+
+## Debugging
+
+`wait_for_debugger` stops selected ranks until a debugger is attached to them, selected in the code or in an
+environment variable. See {doc}`debugging`.
