@@ -4,6 +4,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cstdint>
 #include <ranges>
 #include <vector>
 
@@ -50,22 +51,22 @@ void redistribute(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = kamping::v2::comm
     counts[2 * static_cast<std::size_t>(rank) + 1] = static_cast<int>(kamping::v2::count(rbuf));
     kamping::v2::allgather(kamping::v2::inplace, counts | std::views::take(2 * size), cv);
 
-    // Single-pass prefix sum over interleaved slots; sentinel slots receive the totals.
-    for (int send_sum = 0, recv_sum = 0, i = 0; i <= size; ++i) {
-        auto const k  = static_cast<std::size_t>(i);
-        int const  sc = counts[2 * k];
-        int const  rc = counts[2 * k + 1];
-        counts[2 * k] = send_sum;
-        send_sum += sc;
-        counts[2 * k + 1] = recv_sum;
-        recv_sum += rc;
+    // Single-pass prefix sum over interleaved slots; sentinel slots receive the totals. Each rank's count fits an int,
+    // the global displacements need not (e.g. 768 ranks with 2^23 elements each), so they are 64-bit.
+    std::vector<std::int64_t> displs(counts.size());
+    for (std::int64_t send_sum = 0, recv_sum = 0, i = 0; i <= size; ++i) {
+        auto const k      = static_cast<std::size_t>(i);
+        displs[2 * k]     = send_sum;
+        displs[2 * k + 1] = recv_sum;
+        send_sum += counts[2 * k];
+        recv_sum += counts[2 * k + 1];
     }
 
     // Lazy views into the interleaved displacement array — no extra allocation.
     auto send_displs = std::views::iota(0, size + 1)
-                       | std::views::transform([&](int i) { return counts[static_cast<std::size_t>(2 * i)]; });
+                       | std::views::transform([&](int i) { return displs[static_cast<std::size_t>(2 * i)]; });
     auto recv_displs = std::views::iota(0, size + 1)
-                       | std::views::transform([&](int i) { return counts[static_cast<std::size_t>(2 * i + 1)]; });
+                       | std::views::transform([&](int i) { return displs[static_cast<std::size_t>(2 * i + 1)]; });
 
     MPI_Aint send_lb{}, send_extent{}, recv_lb{}, recv_extent{};
     MPI_Type_get_extent(kamping::v2::type(sbuf), &send_lb, &send_extent);
@@ -77,14 +78,18 @@ void redistribute(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = kamping::v2::comm
     std::vector<MPI_Request> requests;
     requests.reserve(2 * static_cast<std::size_t>(size));
 
-    int const recv_begin = recv_displs[rank];
-    int const recv_end   = recv_displs[rank + 1];
+    std::int64_t const recv_begin = recv_displs[rank];
+    std::int64_t const recv_end   = recv_displs[rank + 1];
     if (recv_begin < recv_end) {
         auto const first       = std::ranges::upper_bound(send_displs, recv_begin) - send_displs.begin() - 1;
         auto const last        = std::ranges::lower_bound(send_displs, recv_end) - send_displs.begin() - 1;
         MPI_Aint   recv_offset = 0;
         for (auto j: std::views::iota(first, last + 1)) {
-            int const n = std::min(recv_end, send_displs[j + 1]) - std::max(recv_begin, send_displs[j]);
+            auto const n =
+                static_cast<int>(std::min(recv_end, send_displs[j + 1]) - std::max(recv_begin, send_displs[j]));
+            if (n == 0) {
+                continue; // rank j sends nothing (empty send window inside ours); it posts no isend
+            }
             kamping::v2::irecv(
                 requests.emplace_back(),
                 kamping::v2::mpi_span(recv_base + recv_offset * recv_extent, n, kamping::v2::type(rbuf)),
@@ -96,14 +101,18 @@ void redistribute(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = kamping::v2::comm
         }
     }
 
-    int const send_begin = send_displs[rank];
-    int const send_end   = send_displs[rank + 1];
+    std::int64_t const send_begin = send_displs[rank];
+    std::int64_t const send_end   = send_displs[rank + 1];
     if (send_begin < send_end) {
         auto const first       = std::ranges::upper_bound(recv_displs, send_begin) - recv_displs.begin() - 1;
         auto const last        = std::ranges::lower_bound(recv_displs, send_end) - recv_displs.begin() - 1;
         MPI_Aint   send_offset = 0;
         for (auto j: std::views::iota(first, last + 1)) {
-            int const n = std::min(send_end, recv_displs[j + 1]) - std::max(send_begin, recv_displs[j]);
+            auto const n =
+                static_cast<int>(std::min(send_end, recv_displs[j + 1]) - std::max(send_begin, recv_displs[j]));
+            if (n == 0) {
+                continue; // rank j receives nothing (empty recv window inside ours); it posts no irecv
+            }
             kamping::v2::isend(
                 requests.emplace_back(),
                 kamping::v2::mpi_cspan(send_base + send_offset * send_extent, n, kamping::v2::type(sbuf)),
