@@ -78,6 +78,48 @@ TEST(Redistribute, Scatter) {
     EXPECT_EQ(rbuf, iota_vec(rank * local_n, local_n));
 }
 
+// ── EmptyRecvWindowInside ────────────────────────────────────────────────────
+// Rank 0 sends everything, only even ranks receive (4 each). With p >= 4, rank 0's send window spans the empty recv
+// windows of odd ranks, which must get no (zero-length) message: they post no irecv, so it would stay unmatched.
+
+TEST(Redistribute, EmptyRecvWindowInside) {
+    kamping::v2::comm_view comm = kamping::v2::comm_world();
+    int const              rank = comm.rank();
+    int const              p    = comm.size();
+    int const              even = (p + 1) / 2;
+
+    auto sbuf = iota_vec(0, rank == 0 ? 4 * even : 0);
+    auto rbuf = std::vector<int>(rank % 2 == 0 ? 4 : 0, -1);
+
+    dstl::redistribute(sbuf, rbuf, comm);
+
+    EXPECT_EQ(rbuf, iota_vec(rank / 2 * 4, rank % 2 == 0 ? 4 : 0));
+    // nothing left over for a later exchange with the same tag
+    MPI_Barrier(MPI_COMM_WORLD);
+    int        pending = 0;
+    MPI_Status status;
+    MPI_Iprobe(MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &pending, &status);
+    EXPECT_FALSE(pending);
+}
+
+// ── EmptySendWindowInside ────────────────────────────────────────────────────
+// Only even ranks send (4 each), rank 0 receives everything. With p >= 4, rank 0's recv window spans the empty send
+// windows of odd ranks, which post no isend, so a zero-length irecv from them would never complete.
+
+TEST(Redistribute, EmptySendWindowInside) {
+    kamping::v2::comm_view comm = kamping::v2::comm_world();
+    int const              rank = comm.rank();
+    int const              p    = comm.size();
+    int const              even = (p + 1) / 2;
+
+    auto sbuf = iota_vec(rank / 2 * 4, rank % 2 == 0 ? 4 : 0);
+    auto rbuf = std::vector<int>(rank == 0 ? 4 * even : 0, -1);
+
+    dstl::redistribute(sbuf, rbuf, comm);
+
+    EXPECT_EQ(rbuf, iota_vec(0, rank == 0 ? 4 * even : 0));
+}
+
 // ── Uneven ────────────────────────────────────────────────────────────────────
 // Rank 0 sends 6, rank 1 sends 2, both receive 4.
 // Exercises a cross-rank transfer where the send and recv partitions differ.

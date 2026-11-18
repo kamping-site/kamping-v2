@@ -85,6 +85,9 @@ void redistribute(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = kamping::v2::comm
         MPI_Aint   recv_offset = 0;
         for (auto j: std::views::iota(first, last + 1)) {
             int const n = std::min(recv_end, send_displs[j + 1]) - std::max(recv_begin, send_displs[j]);
+            if (n == 0) {
+                continue; // rank j sends nothing (empty send window inside ours); it posts no isend
+            }
             kamping::v2::irecv(
                 requests.emplace_back(),
                 kamping::v2::mpi_span(recv_base + recv_offset * recv_extent, n, kamping::v2::type(rbuf)),
@@ -104,6 +107,9 @@ void redistribute(SBuf&& sbuf, RBuf&& rbuf, Comm const& comm = kamping::v2::comm
         MPI_Aint   send_offset = 0;
         for (auto j: std::views::iota(first, last + 1)) {
             int const n = std::min(send_end, recv_displs[j + 1]) - std::max(send_begin, recv_displs[j]);
+            if (n == 0) {
+                continue; // rank j receives nothing (empty recv window inside ours); it posts no irecv
+            }
             kamping::v2::isend(
                 requests.emplace_back(),
                 kamping::v2::mpi_cspan(send_base + send_offset * send_extent, n, kamping::v2::type(sbuf)),
