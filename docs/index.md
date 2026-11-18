@@ -78,6 +78,7 @@ dstl/alltoallv
 dstl/redistribute
 dstl/request-reply
 dstl/algorithms
+dstl/debugging
 ```
 
 ```{toctree}
