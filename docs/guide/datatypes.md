@@ -3,8 +3,20 @@
 Elements of builtin types such as `int` or `double` are sent with the matching predefined MPI datatype;
 `v2::builtin_datatype<T>()` returns it, and `v2::builtin_mpi_type<T>` checks that `T` has one. Enumerations are sent
 with the datatype of their underlying type, and `std::vector<v2::unpacked_bool>` is a vector of booleans that MPI can
-send, unlike the bit-packed `std::vector<bool>`. Your own types need a derived datatype that describes their layout,
-and derived datatypes have to be committed before use and freed afterwards.
+send, unlike the bit-packed `std::vector<bool>`. `std::chrono::duration`s are sent as their count, so timings can be
+reduced directly:
+
+```cpp
+auto const start   = v2::clock::now();
+work();
+auto       elapsed = v2::clock::now() - start;  // std::chrono::duration<double>
+v2::allreduce(v2::inplace, views::ref_single(elapsed), v2::ops::max<>{}, comm);  // MPI_MAX on doubles
+```
+
+The same works for a class of your own that wraps one arithmetic value, such as a strong typedef `meters`, by
+specializing `mpi::experimental::representation_traits<meters>` with `using type = double;`. Your other types need a
+derived datatype that describes their layout, and derived datatypes have to be committed before use and freed
+afterwards.
 
 A `type_pool` takes care of this. It is a move-only registry that owns committed datatypes: it commits a datatype
 the first time it is needed and frees all of them when it is destroyed.

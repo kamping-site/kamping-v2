@@ -7,29 +7,43 @@
 
 #include <mpi.h>
 
+/// @file
+/// `clock`, a `std::chrono` clock reading `MPI_Wtime`.
+
 namespace mpi::experimental {
 
-/// @brief A std::chrono compatible clock type build around `MPI_Wtime`.
+/// @brief A `std::chrono` clock built around `MPI_Wtime`.
+///
+/// Its durations are `std::chrono::duration<double>` in seconds and can be sent and reduced like any builtin type,
+/// e.g. to find the slowest process:
+///
+/// @code
+/// auto const start   = clock::now();
+/// work();
+/// auto       elapsed = clock::now() - start;
+/// allreduce(inplace, views::ref_single(elapsed), ops::max<>{}, comm);
+/// @endcode
+///
+/// Time points of different processes are comparable only if the MPI implementation synchronizes the clocks
+/// (`MPI_WTIME_IS_GLOBAL`); durations are always comparable.
 struct clock {
-    using rep        = double;        //< arithmetic type representing the tick period of the clock, in seconds
-    using period     = std::ratio<1>; //< a <std::ratio> type representing the tick period of the clock, in seconds
-    using duration   = std::chrono::duration<rep, period>;       //< the duration type
-    using time_point = std::chrono::time_point<clock, duration>; //< the time_point type
+    using rep        = double;                                   ///< The number of seconds.
+    using period     = std::ratio<1>;                            ///< The tick period: one second.
+    using duration   = std::chrono::duration<rep, period>;       ///< The duration type, in seconds.
+    using time_point = std::chrono::time_point<clock, duration>; ///< The time point type.
 
-    // MPI_Wtime returns elapsed wall-clock time since a fixed
-    // point in the past that does not change during the process lifetime.
-    // We interpret this as a monotonic (steady) clock.
-    static constexpr bool is_steady = false; //< steady clock flag, always true
+    /// The clock is steady: MPI specifies `MPI_Wtime` as the time since some point in the past that does not change
+    /// during the life of the process.
+    static constexpr bool is_steady = true;
 
-    /// @return A time point representing the current time, as returned by `MPI_Wtime`.
+    /// @return The current time, as returned by `MPI_Wtime`.
     static time_point now() noexcept {
         return time_point{duration{MPI_Wtime()}};
     }
 
-    /// @return A duration represent the clocks resolution, i.e. the number of seconds between clock ticks as returned
-    /// by `MPI_Wtick`.
+    /// @return The resolution of the clock, the time between two ticks, as returned by `MPI_Wtick`.
     static duration resolution() noexcept {
-        return clock::duration{MPI_Wtick()};
+        return duration{MPI_Wtick()};
     }
 };
 

@@ -1,13 +1,17 @@
 // Copyright (c) 2026 Karlsruhe Institute of Technology
 // SPDX-License-Identifier: BSL-1.0
 
+#include <chrono>
 #include <vector>
 
 #include <gtest/gtest.h>
 #include <mpi.h>
 
 #include "kamping/v2/collectives/allreduce.hpp"
+#include "kamping/v2/ops.hpp"
 #include "kamping/v2/sentinels.hpp"
+#include "kamping/v2/time.hpp"
+#include "kamping/v2/views/ref_single_view.hpp"
 #include "kamping/v2/views/resize_view.hpp"
 
 using namespace ::kamping;
@@ -87,4 +91,32 @@ TEST_F(AllreduceTest, allreduce_inplace) {
     int expected_sum_rank_plus_1 = size_ * (size_ - 1) / 2 + size_;
     EXPECT_EQ(data[0], expected_sum_ranks);
     EXPECT_EQ(data[1], expected_sum_rank_plus_1);
+}
+
+TEST_F(AllreduceTest, allreduce_durations) {
+    using namespace std::chrono_literals;
+    std::vector<std::chrono::milliseconds> const send_data = {std::chrono::milliseconds{rank_}, 1ms};
+    std::vector<std::chrono::milliseconds>       max(2);
+    std::vector<std::chrono::milliseconds>       sum(2);
+
+    kamping::v2::allreduce(send_data, max, kamping::v2::ops::max<>{}, MPI_COMM_WORLD);
+    kamping::v2::allreduce(send_data, sum, std::plus<>{}, MPI_COMM_WORLD);
+
+    EXPECT_EQ(max[0], std::chrono::milliseconds{size_ - 1});
+    EXPECT_EQ(max[1], 1ms);
+    EXPECT_EQ(sum[0], std::chrono::milliseconds{size_ * (size_ - 1) / 2});
+    EXPECT_EQ(sum[1], std::chrono::milliseconds{size_});
+}
+
+TEST_F(AllreduceTest, allreduce_clock_duration_inplace) {
+    kamping::v2::clock::duration elapsed{0.5 * rank_};
+
+    kamping::v2::allreduce(
+        kamping::v2::inplace,
+        kamping::v2::views::ref_single(elapsed),
+        kamping::v2::ops::max<>{},
+        MPI_COMM_WORLD
+    );
+
+    EXPECT_EQ(elapsed, kamping::v2::clock::duration{0.5 * (size_ - 1)});
 }

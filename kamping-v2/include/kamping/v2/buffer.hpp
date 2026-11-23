@@ -10,7 +10,8 @@
 ///
 /// The mapping of builtin C++ types to predefined MPI datatypes is re-exported as well: the concept
 /// `builtin_mpi_type<T>`, `builtin_datatype<T>()`, which returns the datatype (e.g. for the type constructors or raw
-/// MPI calls), and `unpacked_bool`, a `bool` for containers that MPI can send.
+/// MPI calls), `representation_traits<T>`, which makes a class that wraps an arithmetic value a builtin type
+/// (specialize it in `mpi::experimental`), and `unpacked_bool`, a `bool` for containers that MPI can send.
 
 #pragma once
 
@@ -26,8 +27,9 @@ using mpi::experimental::displs;
 using mpi::experimental::ptr;
 using mpi::experimental::type;
 
-// Customization point
+// Customization points
 using mpi::experimental::buffer_traits;
+using mpi::experimental::representation_traits;
 
 // Builtin type mapping
 using mpi::experimental::builtin_datatype;

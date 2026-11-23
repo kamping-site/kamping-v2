@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Karlsruhe Institute of Technology
 // SPDX-License-Identifier: BSL-1.0
 
+#include <chrono>
 #include <complex>
 #include <cstddef>
 #include <functional>
@@ -37,6 +38,16 @@ struct pinned {
     int const value;
 };
 
+// A strong typedef sent as its representation, with addition and comparison but no multiplication.
+struct meters {
+    double value;
+
+    friend meters operator+(meters lhs, meters rhs) {
+        return {lhs.value + rhs.value};
+    }
+    friend auto operator<=>(meters, meters) = default;
+};
+
 struct pinned_max {
     pinned operator()(pinned const& a, pinned const& b) const {
         return a.value >= b.value ? a : b;
@@ -55,6 +66,11 @@ int comm_rank() {
     return rank;
 }
 } // namespace
+
+template <>
+struct mpi::experimental::representation_traits<meters> {
+    using type = double;
+};
 
 // ── op handle ──────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -116,6 +132,27 @@ static_assert(!builtin_op<std::plus<>, char>); // MPI_CHAR is not in the integer
 static_assert(builtin_mpi_type<color>);
 static_assert(!builtin_op<std::plus<>, color>);
 static_assert(!builtin_op<ops::max<>, color>);
+// Unicode characters, like char, have no predefined operations.
+static_assert(builtin_mpi_type<char16_t>);
+static_assert(!builtin_op<std::plus<>, char16_t>);
+// Classes sent as their representation get the operations their functors compute on them.
+using seconds_d = std::chrono::duration<double>;
+static_assert(builtin_op<ops::max<>, seconds_d>);
+static_assert(builtin_op<ops::min<std::chrono::nanoseconds>, std::chrono::nanoseconds>);
+static_assert(builtin_op<std::plus<>, std::chrono::milliseconds const&>);
+static_assert(!builtin_op<std::multiplies<>, seconds_d>);
+static_assert(!builtin_op<std::logical_and<>, std::chrono::nanoseconds>);
+static_assert(!builtin_op<ops::logical_xor<>, std::chrono::nanoseconds>);
+static_assert(!builtin_op<std::bit_or<>, std::chrono::nanoseconds>);
+static_assert(builtin_op<std::plus<>, meters>);
+static_assert(builtin_op<ops::max<>, meters>);
+static_assert(!builtin_op<std::multiplies<>, meters>);
+static_assert(valid_op<ops::max<>, std::vector<seconds_d>, std::vector<seconds_d>>);
+static_assert(reduction_op<std::plus<>, std::chrono::nanoseconds>);
+// ops::max<>, ops::min<> and ops::logical_xor<> are callable only on operands they can compare or test.
+static_assert(!std::is_invocable_v<ops::max<>, pinned const&, pinned const&>);
+static_assert(!std::is_invocable_v<ops::min<>, pinned const&, pinned const&>);
+static_assert(!std::is_invocable_v<ops::logical_xor<>, seconds_d const&, seconds_d const&>);
 // ops:: names the standard functors as well.
 static_assert(std::is_same_v<ops::plus<>, std::plus<>>);
 static_assert(valid_op<std::plus<>, std::vector<int>, std::vector<int>>);
@@ -145,6 +182,41 @@ TEST(OpTest, builtin_op_handle) {
     EXPECT_EQ((builtin_op_handle<std::bit_and<>, unsigned>()), MPI_BAND);
     EXPECT_EQ((builtin_op_handle<std::bit_or<>, std::byte>()), MPI_BOR);
     EXPECT_EQ((builtin_op_handle<std::bit_xor<>, long>()), MPI_BXOR);
+    EXPECT_EQ((builtin_op_handle<ops::max<>, std::chrono::duration<double>>()), MPI_MAX);
+    EXPECT_EQ((builtin_op_handle<std::plus<>, std::chrono::nanoseconds>()), MPI_SUM);
+}
+
+TEST(OpTest, represented_class_reduces_like_its_representation) {
+    meters const local{static_cast<double>(comm_rank())};
+    meters       sum{};
+    meters       max{};
+    int          err = MPI_Allreduce(
+        &local,
+        &sum,
+        1,
+        builtin_datatype<meters>(),
+        builtin_op_handle<std::plus<>, meters>(),
+        MPI_COMM_WORLD
+    );
+    ASSERT_EQ(err, MPI_SUCCESS);
+    err = MPI_Allreduce(
+        &local,
+        &max,
+        1,
+        builtin_datatype<meters>(),
+        builtin_op_handle<ops::max<>, meters>(),
+        MPI_COMM_WORLD
+    );
+    ASSERT_EQ(err, MPI_SUCCESS);
+    // The same results as the functors computed locally.
+    meters expected_sum{};
+    meters expected_max{};
+    for (int rank = 0; rank < comm_size(); ++rank) {
+        expected_sum = std::plus<>{}(expected_sum, meters{static_cast<double>(rank)});
+        expected_max = ops::max<>{}(expected_max, meters{static_cast<double>(rank)});
+    }
+    EXPECT_EQ(sum, expected_sum);
+    EXPECT_EQ(max, expected_max);
 }
 
 TEST(OpTest, functors) {

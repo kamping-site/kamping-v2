@@ -54,6 +54,9 @@ template <>
 struct max<void> {
     /// @return The larger of `lhs` and `rhs` (`std::max`).
     template <typename T>
+        requires requires(T const& lhs, T const& rhs) {
+            { lhs < rhs } -> std::convertible_to<bool>;
+        }
     constexpr T operator()(T const& lhs, T const& rhs) const {
         return std::max(lhs, rhs);
     }
@@ -75,6 +78,9 @@ template <>
 struct min<void> {
     /// @return The smaller of `lhs` and `rhs` (`std::min`).
     template <typename T>
+        requires requires(T const& lhs, T const& rhs) {
+            { lhs < rhs } -> std::convertible_to<bool>;
+        }
     constexpr T operator()(T const& lhs, T const& rhs) const {
         return std::min(lhs, rhs);
     }
@@ -96,6 +102,7 @@ template <>
 struct logical_xor<void> {
     /// @return Whether exactly one of `lhs` and `rhs` is true.
     template <typename T, typename U>
+        requires std::constructible_from<bool, T const&> && std::constructible_from<bool, U const&>
     constexpr bool operator()(T const& lhs, U const& rhs) const {
         return static_cast<bool>(lhs) != static_cast<bool>(rhs);
     }
@@ -141,31 +148,49 @@ concept builtin_in_category = arithmetic_builtin<T> && ((builtin_type_info<T>::c
 
 enum class predefined_op { none, max, min, sum, prod, land, lor, lxor, band, bor, bxor };
 
-// The predefined operation that applies the functor Op to elements of T, following the table of MPI 4.1, Section
-// 6.9.2.
+// The predefined operation that applies the functor Op to elements of T, which are sent as the arithmetic builtin type
+// R, following the table of MPI 4.1, Section 6.9.2 for R.
+template <typename Op, typename T, typename R>
+consteval predefined_op predefined_op_on() {
+    using enum builtin_category;
+    if constexpr (functor_of<ops::max, Op, T> && builtin_in_category<R, integer, floating>) {
+        return predefined_op::max;
+    } else if constexpr (functor_of<ops::min, Op, T> && builtin_in_category<R, integer, floating>) {
+        return predefined_op::min;
+    } else if constexpr (functor_of<std::plus, Op, T> && builtin_in_category<R, integer, floating, complex>) {
+        return predefined_op::sum;
+    } else if constexpr (functor_of<std::multiplies, Op, T> && builtin_in_category<R, integer, floating, complex>) {
+        return predefined_op::prod;
+    } else if constexpr (functor_of<std::logical_and, Op, T> && builtin_in_category<R, integer, logical>) {
+        return predefined_op::land;
+    } else if constexpr (functor_of<std::logical_or, Op, T> && builtin_in_category<R, integer, logical>) {
+        return predefined_op::lor;
+    } else if constexpr (functor_of<ops::logical_xor, Op, T> && builtin_in_category<R, integer, logical>) {
+        return predefined_op::lxor;
+    } else if constexpr (functor_of<std::bit_and, Op, T> && builtin_in_category<R, integer, byte>) {
+        return predefined_op::band;
+    } else if constexpr (functor_of<std::bit_or, Op, T> && builtin_in_category<R, integer, byte>) {
+        return predefined_op::bor;
+    } else if constexpr (functor_of<std::bit_xor, Op, T> && builtin_in_category<R, integer, byte>) {
+        return predefined_op::bxor;
+    } else {
+        return predefined_op::none;
+    }
+}
+
+// The predefined operation that applies the functor Op to elements of T. For an arithmetic builtin type, it follows
+// the table of MPI 4.1, Section 6.9.2. For a class sent as its representation (representation_traits), the functor
+// must also compute a T from two Ts, which rules out e.g. std::multiplies on durations. Enumerations have none.
 template <typename Op, typename T>
 consteval predefined_op predefined_op_of() {
-    using enum builtin_category;
-    if constexpr (functor_of<ops::max, Op, T> && builtin_in_category<T, integer, floating>) {
-        return predefined_op::max;
-    } else if constexpr (functor_of<ops::min, Op, T> && builtin_in_category<T, integer, floating>) {
-        return predefined_op::min;
-    } else if constexpr (functor_of<std::plus, Op, T> && builtin_in_category<T, integer, floating, complex>) {
-        return predefined_op::sum;
-    } else if constexpr (functor_of<std::multiplies, Op, T> && builtin_in_category<T, integer, floating, complex>) {
-        return predefined_op::prod;
-    } else if constexpr (functor_of<std::logical_and, Op, T> && builtin_in_category<T, integer, logical>) {
-        return predefined_op::land;
-    } else if constexpr (functor_of<std::logical_or, Op, T> && builtin_in_category<T, integer, logical>) {
-        return predefined_op::lor;
-    } else if constexpr (functor_of<ops::logical_xor, Op, T> && builtin_in_category<T, integer, logical>) {
-        return predefined_op::lxor;
-    } else if constexpr (functor_of<std::bit_and, Op, T> && builtin_in_category<T, integer, byte>) {
-        return predefined_op::band;
-    } else if constexpr (functor_of<std::bit_or, Op, T> && builtin_in_category<T, integer, byte>) {
-        return predefined_op::bor;
-    } else if constexpr (functor_of<std::bit_xor, Op, T> && builtin_in_category<T, integer, byte>) {
-        return predefined_op::bxor;
+    if constexpr (arithmetic_builtin<T>) {
+        return predefined_op_on<Op, T, T>();
+    } else if constexpr (represented_builtin<T>) {
+        if constexpr (std::is_invocable_r_v<T, Op const&, T const&, T const&>) {
+            return predefined_op_on<Op, T, typename representation_traits<T>::type>();
+        } else {
+            return predefined_op::none;
+        }
     } else {
         return predefined_op::none;
     }
@@ -179,7 +204,10 @@ consteval predefined_op predefined_op_of() {
 /// The functors are `std::plus`, `std::multiplies`, `std::logical_and`, `std::logical_or`, `std::bit_and`,
 /// `std::bit_or`, `std::bit_xor` (also available under `ops::`) and `ops::max`, `ops::min`, `ops::logical_xor`, each
 /// as `F<>` or `F<T>`. Which of them apply to which types follows the MPI standard; e.g. `std::bit_and<>` applies to
-/// integers and `std::byte`, but not to `double`. Enumerations have no predefined operations. The operation itself is
+/// integers and `std::byte`, but not to `double`. A class sent as its representation (`representation_traits`), such
+/// as a `std::chrono::duration`, gets the operations of its representation for which the function object computes a
+/// `T` from two `T`s: `ops::max<>`, `ops::min<>` and `std::plus<>` on durations, but not `std::multiplies<>`.
+/// Enumerations and character types have no predefined operations. The operation itself is
 /// `builtin_op_handle<Op, T>()`.
 template <typename Op, typename T>
 concept builtin_op =
