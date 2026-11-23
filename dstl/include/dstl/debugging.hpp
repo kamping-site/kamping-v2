@@ -148,7 +148,10 @@ inline bool rank_list_contains(std::string_view spec, int rank) {
         auto const       dash  = token.find('-');
         int const        first = parse_int(token.substr(0, dash));
         int const        last  = dash == std::string_view::npos ? first : parse_int(token.substr(dash + 1));
-        found                  = found || (first <= rank && rank <= last);
+        if (first > last) {
+            throw std::invalid_argument("dstl: malformed rank list \"" + std::string(spec) + "\"");
+        }
+        found = found || (first <= rank && rank <= last);
         if (end == std::string_view::npos) {
             return found;
         }
