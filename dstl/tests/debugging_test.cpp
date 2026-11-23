@@ -62,7 +62,7 @@ TEST(DebuggingTest, wait_for_debugger_on_no_rank_is_a_barrier) {
 
 TEST(DebuggingTest, wait_for_debugger_if_requested) {
     char const* const env_var = "DSTL_TEST_WAIT_FOR_DEBUGGER";
-    auto const set_env = [&](char const* value) {
+    auto const        set_env = [&](char const* value) {
 #if defined(_WIN32)
         return _putenv_s(env_var, value == nullptr ? "" : value);
 #else
