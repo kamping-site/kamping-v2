@@ -22,6 +22,10 @@
 #include <thread>
 #include <version>
 
+#if defined(_MSC_VER)
+    #include <intrin.h>
+#endif
+
 #include <mpi.h>
 
 #include "kamping/v2/collectives/barrier.hpp"
@@ -90,12 +94,14 @@ inline bool is_debugger_present() noexcept {
 inline void breakpoint() noexcept {
 #if defined(DSTL_USE_STD_DEBUGGING)
     std::breakpoint();
+#elif defined(_MSC_VER)
+    __debugbreak();
 #elif defined(__i386__) || defined(__x86_64__)
     __asm__ volatile("int3");
 #elif defined(__APPLE__) && defined(__aarch64__) && defined(__clang__)
     // lldb on Apple Silicon steps over this trap instruction on continue.
     __builtin_debugtrap();
-#else
+#elif defined(SIGTRAP)
     // Other trap instructions (e.g. brk on AArch64 Linux) are not stepped over by gdb, so continuing would trap again.
     std::raise(SIGTRAP);
 #endif
