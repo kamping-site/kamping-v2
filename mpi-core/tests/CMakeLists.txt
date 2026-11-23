@@ -11,9 +11,8 @@ target_link_libraries(test_core_handle_range PRIVATE mpi::core kamping_v2_warnin
 gtest_discover_tests(test_core_handle_range)
 
 add_executable(test_core_time time_test.cpp)
-target_link_libraries(test_core_time PRIVATE mpi::core kamping_v2_warnings GTest::gtest_main)
-gtest_discover_tests(test_core_time)
-
+target_link_libraries(test_core_time PRIVATE mpi::core kamping_v2_warnings KaTestrophe::main)
+katestrophe_add_mpi_test(test_core_time CORES 1)
 
 add_executable(test_core_cache cache_test.cpp)
 target_link_libraries(test_core_cache PRIVATE mpi::core kamping_v2_warnings KaTestrophe::main)
