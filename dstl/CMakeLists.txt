@@ -26,6 +26,7 @@ target_sources(
               include/dstl/algorithm/reduce.hpp
               include/dstl/algorithm/shift.hpp
               include/dstl/alltoallv.hpp
+              include/dstl/debugging.hpp
               include/dstl/default_init_allocator.hpp
               include/dstl/detail/alltoallv_common.hpp
               include/dstl/detail/local_fold.hpp
@@ -61,6 +62,40 @@ if (KAMPING_V2_ENABLE_OPENMP)
     endif ()
     target_link_libraries(dstl INTERFACE OpenMP::OpenMP_CXX)
     target_compile_definitions(dstl INTERFACE DSTL_HAS_OPENMP)
+endif ()
+
+# C++26 <debugging> for dstl/debugging.hpp: use it where it links, which on GCC 16 needs libstdc++exp. The definition
+# DSTL_HAS_STD_DEBUGGING records this; the header also checks __cpp_lib_debugging, since the code including it may
+# compile with an older standard.
+include(CheckCXXSourceCompiles)
+include(CMakePushCheckState)
+set(_dstl_std_debugging_source
+    "#include <version>
+#ifndef __cpp_lib_debugging
+#error no <debugging>
+#endif
+#include <debugging>
+int main() { std::breakpoint_if_debugging(); return std::is_debugger_present() ? 1 : 0; }"
+)
+cmake_push_check_state(RESET)
+set(CMAKE_REQUIRED_QUIET ON)
+block()
+    if (CMAKE_CXX26_STANDARD_COMPILE_OPTION)
+        set(CMAKE_CXX_STANDARD 26)
+        set(CMAKE_CXX_STANDARD_REQUIRED ON)
+    endif ()
+    check_cxx_source_compiles("${_dstl_std_debugging_source}" DSTL_STD_DEBUGGING_LINKS)
+    if (NOT DSTL_STD_DEBUGGING_LINKS)
+        set(CMAKE_REQUIRED_LIBRARIES stdc++exp)
+        check_cxx_source_compiles("${_dstl_std_debugging_source}" DSTL_STD_DEBUGGING_LINKS_WITH_STDCXXEXP)
+    endif ()
+endblock()
+cmake_pop_check_state()
+if (DSTL_STD_DEBUGGING_LINKS OR DSTL_STD_DEBUGGING_LINKS_WITH_STDCXXEXP)
+    target_compile_definitions(dstl INTERFACE DSTL_HAS_STD_DEBUGGING)
+endif ()
+if (DSTL_STD_DEBUGGING_LINKS_WITH_STDCXXEXP)
+    target_link_libraries(dstl INTERFACE stdc++exp)
 endif ()
 
 if (KAMPING_V2_INSTALL)

@@ -9,6 +9,7 @@
 
 #include "dstl/algorithm.hpp"            // IWYU pragma: export
 #include "dstl/alltoallv.hpp"            // IWYU pragma: export
+#include "dstl/debugging.hpp"            // IWYU pragma: export
 #include "dstl/distribution.hpp"         // IWYU pragma: export
 #include "dstl/factoring.hpp"            // IWYU pragma: export
 #include "dstl/grid_comm.hpp"            // IWYU pragma: export
