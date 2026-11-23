@@ -62,16 +62,23 @@ TEST(DebuggingTest, wait_for_debugger_on_no_rank_is_a_barrier) {
 
 TEST(DebuggingTest, wait_for_debugger_if_requested) {
     char const* const env_var = "DSTL_TEST_WAIT_FOR_DEBUGGER";
-    unsetenv(env_var);
+    auto const set_env = [&](char const* value) {
+#if defined(_WIN32)
+        return _putenv_s(env_var, value == nullptr ? "" : value);
+#else
+        return value == nullptr ? unsetenv(env_var) : setenv(env_var, value, 1);
+#endif
+    };
+    ASSERT_EQ(set_env(nullptr), 0);
     dstl::wait_for_debugger_if_requested(kamping::v2::comm_world(), env_var);
 
-    setenv(env_var, "", 1);
+    ASSERT_EQ(set_env(""), 0);
     dstl::wait_for_debugger_if_requested(kamping::v2::comm_world(), env_var);
 
-    setenv(env_var, "1000-2000", 1);
+    ASSERT_EQ(set_env("1000-2000"), 0);
     dstl::wait_for_debugger_if_requested(kamping::v2::comm_world(), env_var);
 
-    setenv(env_var, "not a rank", 1);
+    ASSERT_EQ(set_env("not a rank"), 0);
     EXPECT_THROW(dstl::wait_for_debugger_if_requested(kamping::v2::comm_world(), env_var), std::invalid_argument);
-    unsetenv(env_var);
+    EXPECT_EQ(set_env(nullptr), 0);
 }
