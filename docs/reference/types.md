@@ -16,6 +16,15 @@ freed.
 :members:
 ```
 
+A class that wraps a single arithmetic value, such as a strong typedef, is a builtin type if `representation_traits`
+declares that it is sent as that value. The library declares this for `std::chrono::duration`s with an arithmetic
+`rep` (`std::chrono::nanoseconds` is sent as its `long long`, `clock::duration` as a `double`), after checking at
+compile time that the standard library stores a duration as its `rep`, and for `unpacked_bool`. Reductions with
+`ops::max<>`, `ops::min<>` and `std::plus<>` on durations map to `MPI_MAX`, `MPI_MIN` and `MPI_SUM`.
+
+```{doxygenstruct} mpi::experimental::representation_traits
+```
+
 ## Derived datatypes
 
 The datatype of a type is described by specializing `datatype_traits`, by hand or with one of the bases `as_struct`,
