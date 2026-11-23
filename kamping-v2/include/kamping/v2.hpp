@@ -29,6 +29,7 @@
 #include "kamping/v2/sentinels.hpp"             // IWYU pragma: export
 #include "kamping/v2/session.hpp"               // IWYU pragma: export
 #include "kamping/v2/status.hpp"                // IWYU pragma: export
+#include "kamping/v2/time.hpp"                  // IWYU pragma: export
 #include "kamping/v2/type_pool.hpp"             // IWYU pragma: export
 #include "kamping/v2/types/as_struct.hpp"       // IWYU pragma: export
 #include "kamping/v2/types/datatype_traits.hpp" // IWYU pragma: export
