@@ -7,6 +7,4 @@
 
 namespace kamping::v2 {
   using mpi::experimental::clock;
-  using mpi::experimental::wtime;
-  using mpi::experimental::wtick;
 }
