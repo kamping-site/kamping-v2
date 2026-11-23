@@ -20,6 +20,14 @@ was initialized by someone else. A session has a thread support level of its own
 ```{doxygenenum} kamping::v2::thread_level
 ```
 
+## Timing
+
+MPI timing facilities (`MPI_Wtime`, `MPI_Wtick`) are mapped to `std::chrono` compatible time points and durations.
+
+```{doxygenclass} kamping::v2::clock
+:members:
+```
+
 ## Communicators
 
 The predefined communicators `MPI_COMM_WORLD` and `MPI_COMM_SELF` (see {ref}`world-and-sessions`):

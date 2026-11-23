@@ -74,6 +74,7 @@ target_sources(
               include/mpi/status.hpp
               include/mpi/status_vector.hpp
               include/mpi/thread_level.hpp
+	      include/mpi/time.hpp
               include/mpi/type_constructors.hpp
               include/mpi/win.hpp
 )
